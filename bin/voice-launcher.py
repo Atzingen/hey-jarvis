@@ -13,7 +13,10 @@ import argparse
 import difflib
 import re
 import subprocess
+import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -40,11 +43,27 @@ CLAUDE_SYSTEM = (
 CLAUDE_TIMEOUT_QUICK = 45   # sonnet/low
 CLAUDE_TIMEOUT_DEEP = 180   # opus/high
 
+# Perguntas rápidas (não-deep): qual CLI usar.
+# "codex" = gpt-5.4/low, via ChatGPT login (~5-7s típico)
+# "claude" = sonnet/low, via Claude CLI (~10s típico)
+# "pense bem" sempre usa claude/opus/high, independente disso.
+QUICK_PROVIDER = "codex"
+CODEX_TIMEOUT_QUICK = 45
+
 # Overlay flutuante centralizado (estilo Omarchy TUIs de sistema)
 OVERLAY_ENABLED = True
 OVERLAY_AUTOCLOSE_SECONDS = 20
 OVERLAY_ANSWER_FILE = Path("/tmp/jarvis-answer.txt")
 OVERLAY_QUESTION_FILE = Path("/tmp/jarvis-question.txt")
+
+# Executor pra rodar ask_claude em paralelo com o TTS da pergunta entendida.
+# Single worker: no máximo uma pergunta em voo por vez.
+claude_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="claude")
+
+# Interrupção por hotword: durante TTS/espera do Claude, se "hey jarvis"
+# dispara de novo, cancelamos o que está rolando. Threshold elevado em relação
+# ao wake normal pra reduzir falso-positivo do próprio TTS vazando pro mic.
+INTERRUPT_THRESHOLD_BOOST = 0.2
 
 # --- utils -----------------------------------------------------------
 
@@ -182,6 +201,52 @@ def ask_claude(question: str, deep: bool = False) -> str:
         return f"Erro ao consultar: {e}"
 
 
+def ask_codex(question: str) -> str:
+    """Chama codex CLI headless (gpt-5.4 + low reasoning) e retorna texto plano.
+
+    Usa `-o <file>` em vez de stdout porque stdout traz eventos do agente
+    (cabeçalho 'codex', contagem de tokens); o arquivo tem só a última mensagem.
+    """
+    prompt = f"{CLAUDE_SYSTEM}\n\nPergunta: {question}"
+    out_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            out_path = f.name
+        result = subprocess.run(
+            ["codex", "exec",
+             "--skip-git-repo-check",
+             "--ephemeral",
+             "-c", "model_reasoning_effort=low",
+             "-o", out_path,
+             prompt],
+            capture_output=True, text=True, timeout=CODEX_TIMEOUT_QUICK,
+        )
+        out = Path(out_path).read_text().strip() if Path(out_path).exists() else ""
+        if not out:
+            err = (result.stderr or "").strip()[:200]
+            return f"Sem resposta. {err}" if err else "Sem resposta."
+        return out
+    except subprocess.TimeoutExpired:
+        return "Demorei demais para responder, senhor. Tente de novo."
+    except FileNotFoundError:
+        return "Codex CLI não encontrado no ambiente."
+    except Exception as e:
+        return f"Erro ao consultar codex: {e}"
+    finally:
+        if out_path:
+            try:
+                Path(out_path).unlink()
+            except OSError:
+                pass
+
+
+def ask_fast(question: str) -> str:
+    """Dispatcher para perguntas rápidas (não-deep). Escolhe provider via QUICK_PROVIDER."""
+    if QUICK_PROVIDER == "codex":
+        return ask_codex(question)
+    return ask_claude(question, deep=False)
+
+
 def chime(freq_start=880, freq_end=None, ms=120, vol=0.25) -> None:
     """Gera sine wave e toca (blocking)."""
     n = int(SAMPLE_RATE * ms / 1000)
@@ -198,8 +263,49 @@ def chime(freq_start=880, freq_end=None, ms=120, vol=0.25) -> None:
     sd.play(wave.astype(np.float32), SAMPLE_RATE, blocking=True)
 
 
-def tts(text: str) -> None:
-    """Fala texto via piper -> paplay."""
+class InterruptListener:
+    """Thread daemon que lê o mic e seta `fired` se a wake word dispara.
+
+    Assume consumo exclusivo do stream enquanto ativa — o loop principal
+    não deve ler o mesmo stream em paralelo.
+    """
+
+    def __init__(self, stream, wake, threshold: float):
+        self.stream = stream
+        self.wake = wake
+        self.threshold = threshold
+        self._stop = threading.Event()
+        self.fired = False
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self.fired = False
+        self._stop.clear()
+        self.wake.reset()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=1.5)
+
+    def _run(self) -> None:
+        try:
+            while not self._stop.is_set():
+                data, _ = self.stream.read(CHUNK)
+                pred = self.wake.predict(data.flatten())
+                score = max(pred.values()) if pred else 0.0
+                if score > self.threshold:
+                    print(f"[int!]  interrupção detectada (score={score:.2f})")
+                    self.fired = True
+                    return
+        except Exception as e:
+            print(f"   [listener erro: {e}]")
+
+
+def tts(text: str, listener: "InterruptListener | None" = None) -> bool:
+    """Fala texto via piper -> paplay. Retorna True se interrompido pelo listener."""
     wav = "/tmp/voice-tts.wav"
     try:
         subprocess.run(
@@ -207,11 +313,39 @@ def tts(text: str) -> None:
              "--length-scale", str(VOICE_LENGTH_SCALE),
              "-f", wav],
             input=text.encode(),
-            check=True, capture_output=True, timeout=10,
+            check=True, capture_output=True, timeout=15,
         )
-        subprocess.run(["paplay", wav], check=True, timeout=10)
     except Exception as e:
-        print(f"   [tts falhou: {e}]")
+        print(f"   [tts gen falhou: {e}]")
+        return False
+
+    try:
+        proc = subprocess.Popen(["paplay", wav])
+    except FileNotFoundError:
+        return False
+
+    if listener is None:
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        return False
+
+    deadline = time.monotonic() + 60  # hard cap: TTS nunca deveria passar disso
+    while proc.poll() is None:
+        if listener.fired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            return True
+        if time.monotonic() > deadline:
+            print("   [tts: timeout absoluto, matando paplay]")
+            proc.kill()
+            return False
+        time.sleep(0.05)
+    return listener.fired
 
 
 def record(stream: sd.InputStream, seconds: float) -> np.ndarray:
@@ -261,77 +395,133 @@ def main() -> None:
 
     try:
         while True:
-            data, _ = stream.read(CHUNK)
-            chunk = data.flatten()
-            pred = wake.predict(chunk)
-            score = max(pred.values()) if pred else 0.0
+            try:
+                data, _ = stream.read(CHUNK)
+                chunk = data.flatten()
+                pred = wake.predict(chunk)
+                score = max(pred.values()) if pred else 0.0
+            except Exception as e:
+                print(f"[loop erro na leitura/wake: {e}] — sleep 1s e tenta de novo")
+                time.sleep(1)
+                continue
 
             if score > args.wake_threshold:
-                print(f"[wake] hey_jarvis detectado (score={score:.2f})")
-                tts("No que vamos trabalhar, senhor?")
+                try:
+                    print(f"[wake] hey_jarvis detectado (score={score:.2f})")
+                    tts("No que vamos trabalhar, senhor?")
 
-                # flush buffer residual (TTS vazou pro mic + audio anterior)
-                for _ in range(5):
-                    stream.read(CHUNK)
+                    # flush buffer residual (TTS vazou pro mic + audio anterior)
+                    for _ in range(5):
+                        stream.read(CHUNK)
 
-                print(f"[rec]  gravando {RECORD_SECONDS}s...")
-                audio = record(stream, RECORD_SECONDS)
+                    print(f"[rec]  gravando {RECORD_SECONDS}s...")
+                    audio = record(stream, RECORD_SECONDS)
 
-                print("[stt]  transcrevendo...")
-                t0 = time.time()
-                text = transcribe(whisper, audio)
-                print(f"[stt]  '{text}' ({time.time()-t0:.1f}s)")
-
-                kind, payload = parse_command(text)
-                print(f"[cmd]  {kind} :: {payload!r}")
-
-                if kind == "sleep":
-                    tts("Boa noite, senhor")
-                    if args.test:
-                        print("[test] NAO executou systemctl suspend")
-                    else:
-                        subprocess.run(["systemctl", "suspend"], check=False)
-
-                elif kind == "open":
-                    project = payload
-                    spoken = project.replace("-", " ").replace("_", " ")
-                    tts(f"Entendido, abrindo {spoken}")
-                    if args.test:
-                        print(f"[test] NAO lancou dev-layout {project}")
-                    else:
-                        subprocess.Popen([str(LAYOUT_SCRIPT), project])
-
-                elif kind == "open_fail":
-                    tts("Não encontrei esse projeto, senhor")
-
-                elif kind == "ask":
-                    question, deep = payload
-                    print(f"[ask]  deep={deep} q={question!r}")
-                    # feedback sonoro antes da espera
-                    chime(440, 330, ms=100, vol=0.15)
+                    print("[stt]  transcrevendo...")
                     t0 = time.time()
-                    resposta = ask_claude(question, deep=deep) if not args.test else "[test] resposta fake"
-                    elapsed = time.time() - t0
-                    print(f"[ans]  {elapsed:.1f}s :: {resposta[:200]}")
-                    if not args.test:
-                        show_overlay(question, resposta, deep)
-                    tts(resposta)
+                    text = transcribe(whisper, audio)
+                    print(f"[stt]  '{text}' ({time.time()-t0:.1f}s)")
 
-                else:
-                    tts("Não entendi, senhor")
+                    kind, payload = parse_command(text)
+                    print(f"[cmd]  {kind} :: {payload!r}")
 
-                # reset wake word state + cooldown
-                wake.reset()
-                time.sleep(0.3)
-                for _ in range(5):
-                    stream.read(CHUNK)
+                    if kind == "sleep":
+                        tts("Boa noite, senhor")
+                        if args.test:
+                            print("[test] NAO executou systemctl suspend")
+                        else:
+                            subprocess.run(["systemctl", "suspend"], check=False)
+
+                    elif kind == "open":
+                        project = payload
+                        spoken = project.replace("-", " ").replace("_", " ")
+                        tts(f"Entendido, abrindo {spoken}")
+                        if args.test:
+                            print(f"[test] NAO lancou dev-layout {project}")
+                        else:
+                            subprocess.Popen([str(LAYOUT_SCRIPT), project])
+
+                    elif kind == "open_fail":
+                        tts("Não encontrei esse projeto, senhor")
+
+                    elif kind == "ask":
+                        question, deep = payload
+                        print(f"[ask]  deep={deep} q={question!r}")
+                        t0 = time.time()
+
+                        if args.test:
+                            tts(f"{'Pensando sobre' if deep else 'Entendi'}: {question}")
+                            tts("[test] resposta fake")
+                        else:
+                            if deep:
+                                fut = claude_executor.submit(ask_claude, question, True)
+                            else:
+                                fut = claude_executor.submit(ask_fast, question)
+                            prefix = "Pensando sobre" if deep else "Entendi"
+
+                            # fase busy: listener assume leitura do mic
+                            listener = InterruptListener(
+                                stream, wake,
+                                args.wake_threshold + INTERRUPT_THRESHOLD_BOOST,
+                            )
+                            listener.start()
+
+                            interrupted = tts(f"{prefix}: {question}", listener)
+
+                            # espera o claude (se não foi interrompido ainda)
+                            deadline = t0 + CLAUDE_TIMEOUT_DEEP + 15
+                            while not interrupted and not fut.done():
+                                if listener.fired or time.time() > deadline:
+                                    interrupted = True
+                                    break
+                                time.sleep(0.1)
+
+                            if interrupted:
+                                listener.stop()
+                                print("[int]  interrompido pelo usuário")
+                                # confirmação curta (sem listener: não interromper a interrupção)
+                                tts("Ok, senhor")
+                            else:
+                                try:
+                                    resposta = fut.result(timeout=2)
+                                except Exception as e:
+                                    resposta = f"Erro inesperado: {e}"
+                                elapsed = time.time() - t0
+                                print(f"[ans]  {elapsed:.1f}s :: {resposta[:200]}")
+                                show_overlay(question, resposta, deep)
+                                if tts(resposta, listener):
+                                    print("[int]  resposta interrompida")
+                                listener.stop()
+
+                    else:
+                        tts("Não entendi, senhor")
+
+                except Exception as e:
+                    print(f"[wake handler erro: {type(e).__name__}: {e}]")
+                    try:
+                        tts("Tive um problema, senhor. Pode repetir?")
+                    except Exception:
+                        pass
+
+                # reset wake word state + cooldown (sempre roda, mesmo após erro)
+                try:
+                    wake.reset()
+                    time.sleep(0.3)
+                    for _ in range(5):
+                        stream.read(CHUNK)
+                except Exception:
+                    pass
                 print("-> aguardando novo wake word...\n")
 
     except KeyboardInterrupt:
         print("\n>> bye")
     finally:
-        stream.stop()
-        stream.close()
+        claude_executor.shutdown(wait=False, cancel_futures=True)
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

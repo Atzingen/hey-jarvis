@@ -4,10 +4,12 @@ Voice-activated dev launcher for Linux + Hyprland. Say **"hey jarvis"**, then ei
 
 - **"abrir `<projeto>`"** → opens a 2×2 Ghostty grid + VS Code + Chrome layout for a project in `~/Desktop/dev/`
 - **"pense bem `<pergunta>`"** → asks Claude (Opus, high effort) and speaks the answer
-- anything else → asks Claude (Sonnet, low effort) and speaks the answer
+- anything else → asks a fast model (Codex `gpt-5.4`/low by default, ~5-7s; switchable to Claude Sonnet/low) and speaks the answer
 - **"dormir"** / **"durma"** → `systemctl suspend`
 
-Always-on wake word detection (~2% CPU), everything runs locally except the Claude call.
+Saying "hey jarvis" again *during* an answer interrupts the TTS and the pending response.
+
+Always-on wake word detection (~2% CPU). Everything runs locally except the LLM calls.
 
 ## Pipeline
 
@@ -25,9 +27,12 @@ faster-whisper (small / int8 / CPU, pt-BR)
 route:
   • "dormir"     → systemctl suspend
   • "abrir X"    → dev-layout X
-  • "pense bem"  → claude -p --model opus   --effort high → piper TTS
-  • else         → claude -p --model sonnet --effort low  → piper TTS
+  • "pense bem"  → claude -p --model opus --effort high                     → piper TTS
+  • else         → codex exec -c model_reasoning_effort=low --ephemeral      → piper TTS
+                   (or claude sonnet/low if QUICK_PROVIDER = "claude")
 ```
+
+During the busy phase (TTS + model call), an `InterruptListener` thread keeps reading the mic with a slightly higher wake threshold. Re-triggering `hey_jarvis` cancels the in-flight TTS/answer cleanly.
 
 ## Requirements
 
@@ -36,7 +41,8 @@ route:
 - `python` (3.11+), `pipewire` + `pipewire-pulse` (for `paplay`)
 - `hyprland`, `hyprctl`
 - `ghostty` (terminals), `code` (VS Code), `google-chrome-stable` — used by `dev-layout`
-- [`claude` CLI](https://docs.claude.com/en/docs/claude-code) — the Claude Code CLI, authenticated with your account
+- [`claude` CLI](https://docs.claude.com/en/docs/claude-code) — the Claude Code CLI, authenticated (used for "pense bem"; also used for the fast path when `QUICK_PROVIDER="claude"`)
+- [`codex` CLI](https://github.com/openai/codex) — OpenAI Codex CLI, authenticated via `codex login` (used for the fast path by default)
 - [`piper`](https://github.com/rhasspy/piper) TTS binary on `$PATH` (pip's `piper-tts` installs it)
 - [`gum`](https://github.com/charmbracelet/gum) — used for the floating answer overlay
 - a working microphone
@@ -144,9 +150,12 @@ Constants at the top of `bin/voice-launcher.py`:
 | `VOICE_LENGTH_SCALE` | 1.15 | >1 = slower, more formal |
 | `WAKE_THRESHOLD` | 0.5 | openWakeWord trigger score |
 | `RECORD_SECONDS` | 4.0 | how long to record after wake |
-| `CLAUDE_SYSTEM` | (see file) | system prompt for TTS-friendly answers |
+| `CLAUDE_SYSTEM` | (see file) | system prompt for TTS-friendly answers (shared by both providers) |
 | `CLAUDE_TIMEOUT_QUICK` / `CLAUDE_TIMEOUT_DEEP` | 45 / 180 | seconds |
-| `OVERLAY_ENABLED` | `True` | show the floating Ghostty overlay on Claude answers |
+| `QUICK_PROVIDER` | `"codex"` | fast-path provider: `"codex"` (gpt-5.4/low, ~5-7s) or `"claude"` (sonnet/low, ~10s) |
+| `CODEX_TIMEOUT_QUICK` | 45 | seconds |
+| `INTERRUPT_THRESHOLD_BOOST` | 0.2 | added to wake threshold during busy phase (reduces false-positive from TTS bleed) |
+| `OVERLAY_ENABLED` | `True` | show the floating Ghostty overlay on model answers |
 | `OVERLAY_AUTOCLOSE_SECONDS` | 20 | auto-close delay for the overlay |
 
 Command line:
