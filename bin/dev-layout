@@ -1,0 +1,131 @@
+#!/bin/bash
+# dev-layout.sh <projeto>
+#   ws[1..5] livre  -> 4 ghostty (3 com claude, 1 bash) em 2x2 top-row alta
+#   ws[6..9] livre  -> code em cima + chrome embaixo, ambos no projeto
+
+set -e
+
+PROJECT="${1:?usage: dev-layout.sh <projeto> (em ~/Desktop/dev)}"
+PROJ_DIR="$HOME/Desktop/dev/$PROJECT"
+if [ ! -d "$PROJ_DIR" ]; then
+    echo "erro: $PROJ_DIR nao existe" >&2
+    echo "disponiveis:" >&2; ls -1 ~/Desktop/dev/ >&2
+    exit 1
+fi
+
+pick_ws() {
+    hyprctl workspaces -j | python3 -c "
+import json,sys
+lo,hi = $1,$2
+occ = {w['id'] for w in json.load(sys.stdin) if w['windows']>0}
+for i in range(lo, hi+1):
+    if i not in occ: print(i); sys.exit(0)
+sys.exit(1)" || { echo "sem ws livre em $1..$2" >&2; exit 1; }
+}
+
+ws_addrs() {
+    hyprctl clients -j | python3 -c "
+import json,sys
+ws = $1
+print(' '.join(c['address'] for c in json.load(sys.stdin)
+               if c['workspace']['id']==ws and c['class']=='com.mitchellh.ghostty'))"
+}
+
+new_addr() {
+    # diff entre $2 (depois) e $1 (antes), retorna o addr novo
+    python3 -c "
+b,a = set('$1'.split()), set('$2'.split())
+diff = a - b
+print(next(iter(diff)) if diff else '')"
+}
+
+launch_ghostty() {
+    if [ "$1" = "1" ]; then
+        uwsm-app -- ghostty --working-directory="$PROJ_DIR" \
+            -e "$SHELL" -c "claude --dangerously-skip-permissions; exec $SHELL" &
+    else
+        uwsm-app -- ghostty --working-directory="$PROJ_DIR" &
+    fi
+}
+
+wait_new_addr() {
+    # espera ate aparecer uma nova janela em ws=$1 (comparada ao snapshot $2); timeout 5s
+    local ws=$1 before="$2" tries=0 addr=""
+    while [ $tries -lt 50 ]; do
+        sleep 0.1
+        addr=$(new_addr "$before" "$(ws_addrs $ws)")
+        [ -n "$addr" ] && { echo "$addr"; return; }
+        tries=$((tries+1))
+    done
+    echo "" >&2
+    return 1
+}
+
+TERM_WS=$(pick_ws 1 5)
+CODE_WS=$(pick_ws 6 9)
+echo ">> projeto=$PROJECT  terminais=ws$TERM_WS  code+browser=ws$CODE_WS"
+
+# === terminais ===
+hyprctl dispatch workspace "$TERM_WS"
+sleep 0.3
+
+B=$(ws_addrs $TERM_WS)
+
+launch_ghostty 1
+W1=$(wait_new_addr $TERM_WS "$B"); B="$B $W1"
+
+launch_ghostty 1
+W2=$(wait_new_addr $TERM_WS "$B"); B="$B $W2"
+
+# foca W1 por endereco (nao via movefocus — ignora mouse)
+hyprctl dispatch focuswindow "address:$W1"
+hyprctl dispatch layoutmsg "preselect d"
+launch_ghostty 1
+W3=$(wait_new_addr $TERM_WS "$B"); B="$B $W3"
+
+hyprctl dispatch focuswindow "address:$W2"
+hyprctl dispatch layoutmsg "preselect d"
+launch_ghostty 0
+W4=$(wait_new_addr $TERM_WS "$B")
+
+echo "   terminais: W1=$W1 W2=$W2 W3=$W3 W4=$W4"
+
+# resize: top row +206px de altura em cada coluna
+sleep 0.3
+hyprctl dispatch focuswindow "address:$W2"; hyprctl dispatch resizeactive 0 206
+sleep 0.2
+hyprctl dispatch focuswindow "address:$W1"; hyprctl dispatch resizeactive 0 206
+
+# === vscode + browser ===
+hyprctl dispatch workspace "$CODE_WS"
+sleep 0.3
+
+code_before=$(hyprctl clients -j | python3 -c "
+import json,sys
+print(' '.join(c['address'] for c in json.load(sys.stdin) if c['workspace']['id']==$CODE_WS))")
+
+uwsm-app -- code "$PROJ_DIR" &
+# espera VS Code aparecer
+tries=0; CODE_ADDR=""
+while [ $tries -lt 60 ]; do
+    sleep 0.2
+    CODE_ADDR=$(hyprctl clients -j | python3 -c "
+import json,sys
+for c in json.load(sys.stdin):
+    if c['workspace']['id']==$CODE_WS and c['class']=='code':
+        print(c['address']); break")
+    [ -n "$CODE_ADDR" ] && break
+    tries=$((tries+1))
+done
+echo "   code=$CODE_ADDR"
+
+# foca code pelo endereco e preselect d -> chrome vai embaixo
+hyprctl dispatch focuswindow "address:$CODE_ADDR"
+hyprctl dispatch layoutmsg "preselect d"
+uwsm-app -- google-chrome-stable --new-window \
+    "https://github.com/" \
+    "https://github.com/" \
+    "https://claude.ai/new" &
+
+wait
+echo ">> ok"

@@ -1,0 +1,6 @@
+#!/bin/bash
+# wrapper: ativa conda env 'voice' e roda voice-launcher.py
+set -e
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate voice
+exec python -u ~/.local/bin/voice-launcher.py "$@"

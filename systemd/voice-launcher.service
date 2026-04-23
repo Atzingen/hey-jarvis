@@ -1,0 +1,16 @@
+[Unit]
+Description=Voice launcher (hey jarvis -> dev-layout)
+After=pipewire.service pipewire-pulse.service graphical-session.target
+Wants=pipewire.service pipewire-pulse.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/voice-launcher
+Restart=on-failure
+RestartSec=5
+# journalctl --user -u voice-launcher -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
