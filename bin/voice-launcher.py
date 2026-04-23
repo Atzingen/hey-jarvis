@@ -132,7 +132,7 @@ def parse_command(text: str):
     return ("ask", (text, False))
 
 
-def show_overlay(question: str, answer: str, deep: bool) -> None:
+def show_overlay(question: str, answer: str, label: str) -> None:
     """Lança terminal flutuante (ghostty --class=TUI.float) com pergunta + resposta.
 
     A regra `tag +floating-window` do Omarchy captura a class TUI.float e
@@ -147,7 +147,7 @@ def show_overlay(question: str, answer: str, deep: bool) -> None:
         print(f"   [overlay tmp falhou: {e}]")
         return
 
-    header = "Jarvis — pense bem (opus/high)" if deep else "Jarvis (sonnet/low)"
+    header = f"Jarvis ({label})"
 
     shell_cmd = f"""
 clear
@@ -446,7 +446,13 @@ def main() -> None:
 
                     elif kind == "ask":
                         question, deep = payload
-                        print(f"[ask]  deep={deep} q={question!r}")
+                        if deep:
+                            label = "claude opus/high"
+                        elif QUICK_PROVIDER == "codex":
+                            label = "codex gpt-5.4/low"
+                        else:
+                            label = "claude sonnet/low"
+                        print(f"[ask]  provider={label} q={question!r}")
                         t0 = time.time()
 
                         if args.test:
@@ -487,8 +493,8 @@ def main() -> None:
                                 except Exception as e:
                                     resposta = f"Erro inesperado: {e}"
                                 elapsed = time.time() - t0
-                                print(f"[ans]  {elapsed:.1f}s :: {resposta[:200]}")
-                                show_overlay(question, resposta, deep)
+                                print(f"[ans]  {elapsed:.1f}s [{label}] :: {resposta[:200]}")
+                                show_overlay(question, resposta, label)
                                 if tts(resposta, listener):
                                     print("[int]  resposta interrompida")
                                 listener.stop()
