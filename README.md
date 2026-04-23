@@ -38,6 +38,7 @@ route:
 - `ghostty` (terminals), `code` (VS Code), `google-chrome-stable` — used by `dev-layout`
 - [`claude` CLI](https://docs.claude.com/en/docs/claude-code) — the Claude Code CLI, authenticated with your account
 - [`piper`](https://github.com/rhasspy/piper) TTS binary on `$PATH` (pip's `piper-tts` installs it)
+- [`gum`](https://github.com/charmbracelet/gum) — used for the floating answer overlay
 - a working microphone
 
 **Python packages** — see `requirements.txt`. Tested on Python 3.11 with a conda env named `voice`.
@@ -93,6 +94,10 @@ Examples:
 | `hey jarvis ... pense bem, como eu deveria estruturar esse deploy?` | Opus/high answers with more latency |
 | `hey jarvis ... dormir` | suspends the machine |
 
+For "ask" routes (Claude answers), a floating centered overlay also appears alongside the TTS — a Ghostty window with class `TUI.float` showing the question + answer in `gum`-styled boxes. On Omarchy this class is picked up by `windowrule tag +floating-window` and rendered as `float on, center on, size 875 600` automatically. On vanilla Hyprland, add those rules for class `TUI.float` to your config.
+
+The overlay auto-closes after `OVERLAY_AUTOCLOSE_SECONDS` (default 20) or any keypress. Disable by setting `OVERLAY_ENABLED = False`.
+
 Tune the wake-word sensitivity or whisper model:
 
 ```bash
@@ -141,6 +146,8 @@ Constants at the top of `bin/voice-launcher.py`:
 | `RECORD_SECONDS` | 4.0 | how long to record after wake |
 | `CLAUDE_SYSTEM` | (see file) | system prompt for TTS-friendly answers |
 | `CLAUDE_TIMEOUT_QUICK` / `CLAUDE_TIMEOUT_DEEP` | 45 / 180 | seconds |
+| `OVERLAY_ENABLED` | `True` | show the floating Ghostty overlay on Claude answers |
+| `OVERLAY_AUTOCLOSE_SECONDS` | 20 | auto-close delay for the overlay |
 
 Command line:
 

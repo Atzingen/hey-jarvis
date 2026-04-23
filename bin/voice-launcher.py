@@ -40,6 +40,12 @@ CLAUDE_SYSTEM = (
 CLAUDE_TIMEOUT_QUICK = 45   # sonnet/low
 CLAUDE_TIMEOUT_DEEP = 180   # opus/high
 
+# Overlay flutuante centralizado (estilo Omarchy TUIs de sistema)
+OVERLAY_ENABLED = True
+OVERLAY_AUTOCLOSE_SECONDS = 20
+OVERLAY_ANSWER_FILE = Path("/tmp/jarvis-answer.txt")
+OVERLAY_QUESTION_FILE = Path("/tmp/jarvis-question.txt")
+
 # --- utils -----------------------------------------------------------
 
 def list_projects() -> list[str]:
@@ -105,6 +111,47 @@ def parse_command(text: str):
 
     # 4. default: pergunta livre -> sonnet + low
     return ("ask", (text, False))
+
+
+def show_overlay(question: str, answer: str, deep: bool) -> None:
+    """Lança terminal flutuante (ghostty --class=TUI.float) com pergunta + resposta.
+
+    A regra `tag +floating-window` do Omarchy captura a class TUI.float e
+    aplica float/center/size 875x600 automaticamente.
+    """
+    if not OVERLAY_ENABLED:
+        return
+    try:
+        OVERLAY_QUESTION_FILE.write_text(question.strip() or "(vazio)")
+        OVERLAY_ANSWER_FILE.write_text(answer.strip() or "(sem resposta)")
+    except OSError as e:
+        print(f"   [overlay tmp falhou: {e}]")
+        return
+
+    header = "Jarvis — pense bem (opus/high)" if deep else "Jarvis (sonnet/low)"
+
+    shell_cmd = f"""
+clear
+echo
+gum style --bold --foreground 212 --margin '1 2' '{header}'
+echo
+echo '  » pergunta:'
+gum style --border normal --padding '0 1' --margin '0 2' --width 80 "$(cat {OVERLAY_QUESTION_FILE})"
+echo
+echo '  « resposta:'
+gum style --border rounded --padding '1 2' --margin '0 2' --width 80 "$(cat {OVERLAY_ANSWER_FILE})"
+echo
+echo '  (auto-fecha em {OVERLAY_AUTOCLOSE_SECONDS}s — ou qualquer tecla)'
+read -n 1 -s -t {OVERLAY_AUTOCLOSE_SECONDS} -r || true
+"""
+    try:
+        subprocess.Popen(
+            ["ghostty", "--class=TUI.float", "--title=Jarvis",
+             "-e", "bash", "-c", shell_cmd],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        print("   [overlay: ghostty não encontrado]")
 
 
 def ask_claude(question: str, deep: bool = False) -> str:
@@ -266,6 +313,8 @@ def main() -> None:
                     resposta = ask_claude(question, deep=deep) if not args.test else "[test] resposta fake"
                     elapsed = time.time() - t0
                     print(f"[ans]  {elapsed:.1f}s :: {resposta[:200]}")
+                    if not args.test:
+                        show_overlay(question, resposta, deep)
                     tts(resposta)
 
                 else:
