@@ -1,0 +1,20 @@
+// Drop this block into ~/.config/waybar/config.jsonc (it's a module definition).
+// Remember to also add "custom/jarvis" to one of modules-left / modules-center / modules-right.
+//
+//   left-click  = jarvis toggle-notify   (on/off + notify)
+//   right-click = jarvis pause-notify 30m (pause 30 min, useful before meetings)
+
+"custom/jarvis": {
+  "exec": "jarvis status",
+  "return-type": "json",
+  "interval": 2,
+  "format": "{icon}",
+  "format-icons": {
+    "on":     "󰋋",
+    "off":    "󰟎",
+    "paused": "󰂛"
+  },
+  "tooltip": true,
+  "on-click":       "jarvis toggle-notify",
+  "on-click-right": "jarvis pause-notify 30m"
+}

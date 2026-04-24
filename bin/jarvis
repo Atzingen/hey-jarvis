@@ -1,0 +1,161 @@
+#!/bin/bash
+# jarvis — controla o serviço voice-launcher.service
+#
+# uso:
+#   jarvis on | off | toggle
+#   jarvis status             # JSON pro waybar
+#   jarvis status-short       # 'on' ou 'off'
+#   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
+#   jarvis log                # journalctl -f no serviço
+#
+#   jarvis pause-meeting         # (uso interno do watcher de reunião)
+#   jarvis resume-from-meeting   # (uso interno do watcher de reunião)
+
+set -e
+
+UNIT="voice-launcher.service"
+RESUME_TIMER="jarvis-resume.timer"
+STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MARKER="$STATE_DIR/jarvis-meeting-paused"
+RESUME_AT_FILE="$STATE_DIR/jarvis-resume-at"
+
+is_active() {
+    systemctl --user is-active --quiet "$UNIT"
+}
+
+cancel_pending_resume() {
+    systemctl --user stop "$RESUME_TIMER" 2>/dev/null || true
+    rm -f "$RESUME_AT_FILE"
+}
+
+cmd_on() {
+    cancel_pending_resume
+    systemctl --user start "$UNIT"
+    rm -f "$MARKER"
+}
+
+cmd_off() {
+    cancel_pending_resume
+    systemctl --user stop "$UNIT"
+    rm -f "$MARKER"
+}
+
+cmd_toggle() {
+    if is_active; then cmd_off; else cmd_on; fi
+}
+
+cmd_toggle_notify() {
+    cmd_toggle
+    local state
+    state=$(cmd_status_short)
+    notify-send -t 1500 "Jarvis" "agora $state" 2>/dev/null || true
+}
+
+cmd_status_short() {
+    if is_active; then echo "on"; else echo "off"; fi
+}
+
+cmd_status() {
+    # JSON pro waybar. alt define o ícone (on/off/paused); class aciona .on/.off/.paused no CSS.
+    local text alt tooltip
+    if is_active; then
+        text="on"
+        alt="on"
+        local since
+        since=$(systemctl --user show "$UNIT" -p ActiveEnterTimestamp --value)
+        tooltip="Jarvis: ativo\ndesde $since"
+    elif [ -f "$MARKER" ]; then
+        text="paused"
+        alt="paused"
+        tooltip="Jarvis: pausado (reunião detectada)"
+    elif systemctl --user is-active --quiet "$RESUME_TIMER"; then
+        text="paused"
+        alt="paused"
+        local target now left
+        target=$(cat "$RESUME_AT_FILE" 2>/dev/null || echo 0)
+        now=$(date +%s)
+        left=$((target - now))
+        if [ "$left" -gt 3600 ]; then
+            tooltip="Jarvis: pausado\nvolta em $((left/3600))h $(((left%3600)/60))min"
+        elif [ "$left" -gt 60 ]; then
+            tooltip="Jarvis: pausado\nvolta em $((left/60))min"
+        elif [ "$left" -gt 0 ]; then
+            tooltip="Jarvis: pausado\nvolta em ${left}s"
+        else
+            tooltip="Jarvis: pausado"
+        fi
+    else
+        text="off"
+        alt="off"
+        tooltip="Jarvis: parado"
+    fi
+    printf '{"text":"%s","alt":"%s","class":"%s","tooltip":"%s"}\n' "$text" "$alt" "$alt" "$tooltip"
+}
+
+cmd_pause_notify() {
+    local dur="${1:-30m}"
+    cmd_pause "$dur"
+    notify-send -t 2000 "Jarvis" "pausado por $dur" 2>/dev/null || true
+}
+
+cmd_pause() {
+    local dur="${1:-}"
+    if [ -z "$dur" ]; then
+        echo "uso: jarvis pause <duração>  (ex: 30s, 45m, 1h, 2h30m)" >&2
+        return 2
+    fi
+    cancel_pending_resume
+    systemctl --user stop "$UNIT"
+    # timer transiente que liga o serviço depois de <dur>
+    systemd-run --user --quiet \
+        --unit="${RESUME_TIMER%.timer}" \
+        --on-active="$dur" \
+        systemctl --user start "$UNIT"
+    # guarda epoch alvo pro tooltip (systemd aceita '1h30m', date -d não)
+    local secs
+    secs=$(systemd-analyze timespan "$dur" 2>/dev/null | awk '/μs/ {print int($2/1000000)}')
+    if [ -n "$secs" ]; then
+        echo $(( $(date +%s) + secs )) > "$RESUME_AT_FILE"
+    fi
+    echo "Jarvis pausado. Volta em $dur."
+}
+
+cmd_pause_meeting() {
+    # chamado pelo watcher quando outro app começa a usar o mic.
+    # só age se o serviço estiver ativo — senão respeita o estado do user.
+    if is_active; then
+        systemctl --user stop "$UNIT"
+        touch "$MARKER"
+    fi
+}
+
+cmd_resume_from_meeting() {
+    # só religa se foi o próprio watcher que desligou (marker existe).
+    if [ -f "$MARKER" ] && ! is_active; then
+        systemctl --user start "$UNIT"
+        rm -f "$MARKER"
+    fi
+}
+
+cmd_log() {
+    shift || true
+    journalctl --user -u "$UNIT" -f "$@"
+}
+
+case "${1:-}" in
+    on)                   cmd_on ;;
+    off)                  cmd_off ;;
+    toggle)               cmd_toggle ;;
+    toggle-notify)        cmd_toggle_notify ;;
+    status)               cmd_status ;;
+    status-short)         cmd_status_short ;;
+    pause)                cmd_pause "${2:-}" ;;
+    pause-notify)         cmd_pause_notify "${2:-30m}" ;;
+    pause-meeting)        cmd_pause_meeting ;;
+    resume-from-meeting)  cmd_resume_from_meeting ;;
+    log)                  cmd_log "$@" ;;
+    *)
+        sed -n '2,13p' "$0" | sed 's/^# \?//'
+        exit 2
+        ;;
+esac

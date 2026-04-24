@@ -1,0 +1,25 @@
+/*
+ * Optional CSS for the custom/jarvis waybar module.
+ * Append to ~/.config/waybar/style.css (or don't — the module works without it).
+ *
+ * Waybar sets `class="on"|"off"|"paused"` on the module element based on the
+ * JSON emitted by `jarvis status`, so we can paint each state differently.
+ */
+
+#custom-jarvis {
+  min-width: 12px;
+  margin: 0 7.5px;
+}
+
+#custom-jarvis.on {
+  /* listening */
+  color: #9ccc65;
+}
+
+#custom-jarvis.off {
+  color: #888;
+}
+
+#custom-jarvis.paused {
+  color: #ddb020;
+}
