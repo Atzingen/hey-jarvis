@@ -395,7 +395,7 @@ def main() -> None:
     print(">> script de layout:", LAYOUT_SCRIPT, "(existe)" if LAYOUT_SCRIPT.exists() else "(AUSENTE!)")
     print(f">> modo: {'TEST (dry-run)' if args.test else 'REAL'}")
     signal.signal(signal.SIGUSR1, _on_sigusr1)
-    print(">> pronto — diga 'hey jarvis' (ou Super+Ctrl+H) e espere o chime, depois fale o projeto\n")
+    print(">> pronto — diga 'hey jarvis' (ou o atalho push-to-talk) e espere o chime, depois fale o projeto\n")
 
     stream = sd.InputStream(
         samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=CHUNK,
