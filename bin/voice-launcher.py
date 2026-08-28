@@ -10,6 +10,7 @@ Comandos:
 """
 
 import argparse
+import signal
 import difflib
 import re
 import subprocess
@@ -364,6 +365,16 @@ def transcribe(whisper: WhisperModel, audio: np.ndarray) -> str:
     return " ".join(s.text for s in segments).strip()
 
 
+# --- push-to-talk ----------------------------------------------------
+# SIGUSR1 dispara a escuta como se a wake word tivesse sido detectada
+# (bind de teclado: systemctl --user kill -s SIGUSR1 voice-launcher.service).
+PTT = threading.Event()
+
+
+def _on_sigusr1(signum, frame):
+    PTT.set()
+
+
 # --- main loop -------------------------------------------------------
 
 def main() -> None:
@@ -383,7 +394,8 @@ def main() -> None:
     print(f">> projetos ({len(projs)}): {', '.join(projs)}")
     print(">> script de layout:", LAYOUT_SCRIPT, "(existe)" if LAYOUT_SCRIPT.exists() else "(AUSENTE!)")
     print(f">> modo: {'TEST (dry-run)' if args.test else 'REAL'}")
-    print(">> pronto — diga 'hey jarvis' e espere o chime, depois fale o projeto\n")
+    signal.signal(signal.SIGUSR1, _on_sigusr1)
+    print(">> pronto — diga 'hey jarvis' (ou Super+Ctrl+H) e espere o chime, depois fale o projeto\n")
 
     stream = sd.InputStream(
         samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=CHUNK,
@@ -405,9 +417,15 @@ def main() -> None:
                 time.sleep(1)
                 continue
 
-            if score > args.wake_threshold:
+            ptt = PTT.is_set()
+            if ptt:
+                PTT.clear()
+            if ptt or score > args.wake_threshold:
                 try:
-                    print(f"[wake] hey_jarvis detectado (score={score:.2f})")
+                    if ptt:
+                        print("[wake] push-to-talk (SIGUSR1)")
+                    else:
+                        print(f"[wake] hey_jarvis detectado (score={score:.2f})")
                     tts("No que vamos trabalhar, senhor?")
 
                     # flush buffer residual (TTS vazou pro mic + audio anterior)
