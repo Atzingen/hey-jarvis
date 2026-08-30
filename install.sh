@@ -23,7 +23,7 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
-         jarvis_stt.py jarvis_events.py jarvis-window.py dev-layout)
+         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis-window.py dev-layout)
 
 if [[ ${1:-} == "--uninstall" ]]; then
   say "Stopping and disabling voice-launcher.service"
@@ -50,6 +50,8 @@ if (( ! UPDATE_ONLY )); then
   need python3 || missing+=(python)
   need ghostty || need xdg-terminal-exec || missing+=(ghostty)
   need pactl || missing+=(pipewire-pulse)
+  need wl-copy || missing+=(wl-clipboard)
+  need wtype || missing+=(wtype)
   ldconfig -p 2>/dev/null | grep -q libportaudio || missing+=(portaudio)
   if (( ${#missing[@]} )); then
     if need omarchy; then
@@ -125,9 +127,8 @@ fi
 if [[ -f "$HOME/.config/hypr/bindings.lua" ]] && ! grep -q "jarvis" "$HOME/.config/hypr/bindings.lua"; then
   cat <<EOF
 
-Optional Hyprland keybindings — add to ~/.config/hypr/bindings.lua:
-  o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
-  o.bind("CTRL + SHIFT + H", "Jarvis push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
+Optional Hyprland keybindings (toggle, push-to-talk, dictation with Ctrl+Shift+K/L):
+  see integrations/hypr-bindings.lua — append it to ~/.config/hypr/bindings.lua
 EOF
 fi
 say "Settings: jarvis config   |   Logs: jarvis log"

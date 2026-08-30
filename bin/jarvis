@@ -7,6 +7,7 @@
 #   jarvis status-short       # 'on' ou 'off'
 #   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
 #   jarvis log                # journalctl -f no serviço
+#   jarvis dictate [toggle|start|stop|cancel]   # ditado: transcreve e cola na janela ativa
 #   jarvis config             # tela de configuração (terminal flutuante)
 #   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
 #
@@ -144,6 +145,21 @@ cmd_log() {
     journalctl --user -u "$UNIT" -f "$@"
 }
 
+cmd_dictate() {
+    # ditado: start | stop | toggle | cancel  (Ctrl+Shift+K/L nos binds do Hyprland)
+    local action="${1:-toggle}"
+    local rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    case "$action" in start|stop|toggle|cancel) ;; *) echo "uso: jarvis dictate start|stop|toggle|cancel" >&2; return 2 ;; esac
+    if [ "$action" = start ] && [ -f "$rt/jarvis-dictating" ]; then return 0; fi
+    if [ "$action" = stop ] || [ "$action" = cancel ]; then [ -f "$rt/jarvis-dictating" ] || return 0; fi
+    if ! is_active; then
+        notify-send -t 2500 "Jarvis" "desligado — ligue o Jarvis para ditar (jarvis on)" 2>/dev/null || true
+        return 1
+    fi
+    echo "$action" > "$rt/jarvis-dictate.cmd"
+    systemctl --user kill -s SIGUSR2 "$UNIT"
+}
+
 cmd_config() {
     # sem args: tela de configuração em terminal flutuante.
     # com args (show|get|set|reset|path): passa pro CLI do módulo de config.
@@ -176,6 +192,7 @@ case "${1:-}" in
     resume-from-meeting)  cmd_resume_from_meeting ;;
     log)                  cmd_log "$@" ;;
     config)               shift; cmd_config "$@" ;;
+    dictate)              cmd_dictate "${2:-toggle}" ;;
     *)
         sed -n '2,13p' "$0" | sed 's/^# \?//'
         exit 2

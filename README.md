@@ -18,6 +18,7 @@ There are **no keywords**. Everything you say goes to the model, which understan
 - [The bar widget](#the-bar-widget)
 - [The conversation window](#the-conversation-window)
 - [Settings](#settings) · [Main](#main-settings) · [Advanced](#advanced-settings) · [Profiles](#profiles)
+- [Dictation](#dictation)
 - [Speech-to-text: local or OpenAI](#speech-to-text-local-or-openai)
 - [Models and machine access](#models-and-machine-access)
 - [Language](#language)
@@ -47,6 +48,7 @@ There are **no keywords**. Everything you say goes to the model, which understan
 | **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU) or OpenAI Realtime (`gpt-live-transcribe`) with live provisional text. Automatic fallback. |
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
 | **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
+| **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
 | **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, hover panel with the voice guide and buttons (on/off, pause, logs, settings, install). |
 
 ---
@@ -189,6 +191,9 @@ Everything is configurable, three ways:
 | `voice_length_scale` | `1.15` | speech speed (>1 slower) |
 | `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
 | `window_enabled` | `true` | the conversation window |
+| `dictation_window` | `true` | live transcript + audio meter while dictating |
+| `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
+| `dictation_polish` / `dictation_polish_model` | `false` / `gemma3:4b` | optional Ollama pass for punctuation/hesitations |
 
 ### Advanced settings
 
@@ -210,12 +215,28 @@ Everything is configurable, three ways:
 | `barge_hits_tts` / `barge_hits_idle` | `3/4` / `2/3` | N of the last M frames with speech to trigger |
 | `interrupt_threshold_boost` | `0.2` | extra wake threshold during the answer (TTS false positives) |
 | `barge_debug` | `true` | log `[barge] rms/gate/vad` once a second while busy |
+| `dictation_max_seconds` | `600` | recording cap for a dictation |
 | `dev_dir` | `~/Desktop/dev` | where "open project X" looks |
 | `layout_script` | `~/.local/bin/dev-layout` | run as `<script> <project>` |
 
 ### Profiles
 
 `p` in the settings screen saves the current values as `~/.config/jarvis/profiles/<name>.toml`; `o` loads one (then `s` to apply). Useful for "quiet office" vs "home speakers", or en vs pt-BR setups.
+
+---
+
+## Dictation
+
+Jarvis doubles as a speech-to-text tool for any window — the same microphone, STT backend, hotwords and window, no second daemon or second Whisper copy in VRAM.
+
+- **Toggle** (`Ctrl+Shift+K`): press, talk, press again → the text is transcribed, optionally polished, copied to the clipboard (top of Omarchy's clipboard history) and **pasted into the active window** (`Ctrl+V`, or `Ctrl+Shift+V` when the active window is a terminal). While recording, any other key cancels.
+- **Push-to-talk** (`Ctrl+Shift+L`): hold to talk, release to paste.
+- The window shows the **live transcript** (with the OpenAI backend the words appear as you speak) and a scrolling **audio level meter**, then the phase: TRANSCRIBING → POLISHING → PASTED.
+- If Jarvis is in a conversation when you press the key, the conversation yields the microphone to dictation.
+
+Settings (`jarvis config` → Dictation): `dictation_output` = `paste` / `type` (types the text with `wtype`) / `clipboard` (copy only); `dictation_polish` (off by default) runs the transcript through a local Ollama model (`dictation_polish_model`, default `gemma3:4b`) that only fixes punctuation and removes hesitations — it never rewrites, and falls back to the raw text if the output looks wrong or Ollama is unavailable; `dictation_window` shows/hides the window; `dictation_max_seconds` (advanced) caps a recording.
+
+CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybindings call (`integrations/hypr-bindings.lua`). Requires `wl-clipboard` and `wtype`.
 
 ---
 
@@ -279,6 +300,7 @@ Runtime overrides: `voice-launcher --test` (dry run: no layouts, no suspend), `-
 ```lua
 o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
 o.bind("CTRL + SHIFT + H", "Jarvis: push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
+-- dictation (Ctrl+Shift+K toggle, Ctrl+Shift+L push-to-talk, any other key cancels): see integrations/hypr-bindings.lua
 ```
 
 Push-to-talk (`SIGUSR1`) starts a conversation as if the wake word had fired — handy during a call.
@@ -326,6 +348,7 @@ hey-jarvis/
 │   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
 │   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
+│   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
 │   ├── jarvis-window.py        conversation window viewer
 │   └── dev-layout              Hyprland dev layout (2×2 Ghostty + VS Code + Chrome)
 ├── systemd/voice-launcher.service
@@ -343,7 +366,7 @@ hey-jarvis/
 ## Requirements
 
 - Arch Linux with Hyprland — developed on Omarchy 4 (the bar widget needs the Omarchy shell; the voice service works on any Hyprland).
-- Python 3.11+, PipeWire, PortAudio, a terminal (`ghostty` by default), a microphone.
+- Python 3.11+, PipeWire, PortAudio, `wl-clipboard` + `wtype` (dictation paste), a terminal (`ghostty` by default), a microphone.
 - Codex CLI and/or Claude Code CLI, logged in.
 - Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription.
 

@@ -41,7 +41,8 @@ BarWidget {
       r7p: pt ? "“pode dormir”" : "“go to sleep”",                        r7a: pt ? "suspende o computador" : "suspends the computer",
       k1p: "Ctrl+Shift+H", k1a: pt ? "falar agora — pula o “hey jarvis” (push-to-talk)" : "talk now — skips “hey jarvis” (push-to-talk)",
       k2p: "Ctrl+Shift+J", k2a: pt ? "liga/desliga o Jarvis" : "toggles Jarvis on/off",
-      k3p: "jarvis config", k3a: pt ? "tela de configuração no terminal" : "settings screen in the terminal",
+      k3p: "Ctrl+Shift+K", k3a: pt ? "ditado: fale, aperte de novo e o texto é colado na janela ativa" : "dictation: talk, press again, text is pasted into the active window",
+      k4p: "jarvis config", k4a: pt ? "tela de configuração no terminal" : "settings screen in the terminal",
       btnOn: pt ? "Ligar" : "Turn on", btnOff: pt ? "Desligar" : "Turn off",
       btnPause: pt ? "Pausar 30 min" : "Pause 30 min", btnLogs: "Logs",
       btnConfig: pt ? "Config" : "Settings", btnInstall: pt ? "Instalar" : "Install"
@@ -255,6 +256,7 @@ BarWidget {
           VoiceRow { phrase: root.t("k1p"); action: root.t("k1a") }
           VoiceRow { phrase: root.t("k2p"); action: root.t("k2a") }
           VoiceRow { phrase: root.t("k3p"); action: root.t("k3a") }
+          VoiceRow { phrase: root.t("k4p"); action: root.t("k4a") }
         }
 
         Rectangle { width: content.implicitWidth; height: 1; color: Color.popups.text; opacity: 0.15 }

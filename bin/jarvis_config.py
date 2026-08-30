@@ -134,6 +134,20 @@ SETTINGS: list[Setting] = [
             "Janela flutuante com fase, countdown, trocas e dicas.",
             group="Interface"),
 
+    Setting("dictation_window", True, "Janela do ditado",
+            "Mostra a transcrição ao vivo e o medidor de áudio enquanto você dita.",
+            group="Ditado"),
+    Setting("dictation_output", "paste", "Saída do ditado",
+            "paste = copia e cola na janela ativa (Ctrl+V; Ctrl+Shift+V em terminais); "
+            "type = digita o texto; clipboard = só copia (fica no topo do histórico).",
+            group="Ditado", choices=["paste", "type", "clipboard"]),
+    Setting("dictation_polish", False, "Revisar o ditado (Ollama)",
+            "Passa o texto por um modelo local só pra pontuar e tirar hesitações. Precisa do Ollama.",
+            group="Ditado"),
+    Setting("dictation_polish_model", "gemma3:4b", "Modelo da revisão",
+            "Modelo do Ollama usado na revisão do ditado.",
+            group="Ditado"),
+
     # --- avançado ---------------------------------------------------
     Setting("whisper_model", "auto", "Modelo Whisper (local)",
             "auto = large-v3-turbo em GPU, small em CPU. Maior = mais preciso e mais lento.",
@@ -196,6 +210,9 @@ SETTINGS: list[Setting] = [
             "Escreve níveis rms/gate/vad no journal a cada segundo na fase busy.",
             section="advanced", group="Interrupção (barge-in)"),
 
+    Setting("dictation_max_seconds", 600, "Duração máxima do ditado (s)",
+            "Teto de gravação de um ditado sem a tecla de parar.",
+            section="advanced", group="Sistema", min=30, max=3600, step=30),
     Setting("dev_dir", "~/Desktop/dev", "Pasta dos projetos",
             "Onde \"abrir <projeto>\" procura.",
             section="advanced", group="Sistema"),
@@ -208,7 +225,7 @@ BY_KEY = {s.key: s for s in SETTINGS}
 
 GROUP_EN = {"Geral": "General", "Escuta": "Listening", "Modelos": "Models", "Voz": "Voice",
             "Interface": "Interface", "Reconhecimento": "Recognition", "Conversa": "Conversation",
-            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System"}
+            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation"}
 
 
 def text_for(setting: Setting, lang: str) -> tuple[str, str]:

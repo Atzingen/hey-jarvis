@@ -24,7 +24,9 @@ from jarvis_i18n import T  # noqa: E402
 
 # fase -> cor ANSI; badge e dica vêm do i18n (chave ph_<fase>)
 PHASE_COLOR = {"listening": "96", "recording": "92", "transcribing": "93", "thinking": "95",
-               "speaking": "94", "followup": "96", "handoff": "93"}
+               "speaking": "94", "followup": "96", "handoff": "93",
+               "dictating": "92", "polishing": "93", "pasted": "92", "copied": "92", "cancelled": "90"}
+METER = " ▁▂▃▄▅▆▇█"
 
 
 def load_state() -> dict | None:
@@ -65,6 +67,25 @@ def render(state: dict) -> str:
         f"\x1b[1m{title}\x1b[0m" + " " * pad + f"\x1b[1;{color}m[ {badge} ]\x1b[0m",
         "\x1b[90m" + "─" * width + "\x1b[0m",
     ]
+
+    # --- ditado: transcrição grande + medidor de áudio -------------------------
+    if state.get("mode") == "dictation":
+        text = state.get("partial") or state.get("final") or ""
+        body = [""]
+        if text:
+            body += ["  " + line for line in _wrap(text + (" …" if phase == "dictating" else ""), width - 4)]
+        else:
+            body += ["  \x1b[90m" + (T(lang, "dict_empty") if phase != "dictating" else "…") + "\x1b[0m"]
+        levels = state.get("levels") or []
+        meter = "".join(METER[min(8, int(l * 8.99))] for l in levels[-(width - 4):])
+        footer = ["\x1b[90m" + "─" * width + "\x1b[0m",
+                  ("  \x1b[92m" if phase == "dictating" else "  \x1b[90m") + meter + "\x1b[0m",
+                  "\x1b[90m" + "─" * width + "\x1b[0m"]
+        footer += ["  \x1b[90m" + line + "\x1b[0m" for line in textwrap.wrap(hint, width - 2)]
+        avail = max(3, rows - len(header) - len(footer) - 1)
+        body = body[-avail:] + [""] * max(0, avail - len(body))
+        lines = header + body + footer
+        return "\x1b[H" + "\n".join(l + "\x1b[K" for l in lines) + "\x1b[0J"
 
     # --- conversa: um bloco por fala, rótulo do falante em destaque ------------
     blocks: list[list[str]] = []

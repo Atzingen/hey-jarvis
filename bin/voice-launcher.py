@@ -47,6 +47,7 @@ from faster_whisper.vad import get_vad_model
 from openwakeword.model import Model as WakeModel
 
 import jarvis_config  # mesmo diretório (~/.local/bin)
+import jarvis_dictate
 import jarvis_events
 import jarvis_i18n
 import jarvis_stt
@@ -338,14 +339,16 @@ class JarvisWindow:
     a conversa) e fecha a janela; o viewer sai sozinho no estado "closed".
     """
 
-    def __init__(self):
+    def __init__(self, enabled: bool | None = None):
         self.state: dict = {}
+        self.enabled = WINDOW_ENABLED if enabled is None else enabled
 
-    def open(self) -> None:
-        if not WINDOW_ENABLED:
+    def open(self, mode: str = "conversation", phase: str = "listening") -> None:
+        if not self.enabled:
             return
         QUIT_FLAG.unlink(missing_ok=True)
-        self.state = {"phase": "listening", "detail": "", "deadline": None, "exchanges": [], "lang": LANG}
+        self.state = {"mode": mode, "phase": phase, "detail": "", "deadline": None,
+                      "exchanges": [], "lang": LANG}
         self._write()
         try:
             launch_detached(["ghostty", "--class=TUI.float", "--title=Jarvis",
@@ -354,7 +357,7 @@ class JarvisWindow:
             print("   [janela: ghostty não encontrado]")
 
     def update(self, phase: str | None = None, **fields) -> None:
-        if not WINDOW_ENABLED:
+        if not self.enabled:
             return
         if phase is not None:
             self.state["phase"] = phase
@@ -363,14 +366,14 @@ class JarvisWindow:
         self._write()
 
     def add_exchange(self, question: str, answer: str, label: str) -> None:
-        if not WINDOW_ENABLED:
+        if not self.enabled:
             return
         self.state.setdefault("exchanges", []).append(
             {"q": question, "a": answer, "label": label})
         self._write()
 
     def set_last_answer(self, answer: str) -> None:
-        if not WINDOW_ENABLED:
+        if not self.enabled:
             return
         exchanges = self.state.get("exchanges")
         if exchanges:
@@ -378,7 +381,7 @@ class JarvisWindow:
             self._write()
 
     def close(self) -> None:
-        if not WINDOW_ENABLED:
+        if not self.enabled:
             return
         self.update(phase="closed")
 
@@ -937,12 +940,15 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 audio = record_until_silence(
                     stream, vad_model, wait_seconds=wait,
                     on_speech_start=lambda: window.update(phase="recording"),
-                    abort_check=quit_requested,
+                    abort_check=lambda: quit_requested() or dictate_requested(),
                     on_chunk=session.feed,
                 )
 
             if audio is None:
                 session.close()
+                if dictate_requested():
+                    print("[conv] cedendo o microfone pro ditado")
+                    return
                 if quit_requested():
                     consume_quit()
                     print("[conv] encerrada pela tecla na janela")
@@ -1028,11 +1034,12 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 if listener.fired:
                     interrupted = True
                     break
-                if quit_requested():
-                    consume_quit()
+                if quit_requested() or dictate_requested():
+                    if quit_requested():
+                        consume_quit()
                     cancel.set()
                     listener.stop()
-                    print("[conv] encerrada pela tecla na janela (durante espera)")
+                    print("[conv] encerrada durante a espera (tecla na janela ou ditado)")
                     return
                 time.sleep(0.1)
 
@@ -1109,6 +1116,88 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
         window.close()
 
 
+# --- ditado ------------------------------------------------------------
+# SIGUSR2 = comando de ditado (`jarvis dictate start|stop|toggle|cancel` deixa o
+# verbo em jarvis_dictate.CMD_FILE antes de sinalizar). Ditado tem prioridade
+# sobre uma conversa em andamento: ela é encerrada e o mic passa pro ditado.
+DICT = threading.Event()
+
+
+def _on_sigusr2(signum, frame):
+    DICT.set()
+
+
+def dictate_requested() -> bool:
+    return DICT.is_set()
+
+
+def run_dictation(stream, stt, args) -> None:
+    """Grava até o comando de parar, transcreve, revisa (opcional) e cola na janela ativa."""
+    window = JarvisWindow(enabled=CFG["dictation_window"])
+    window.open(mode="dictation", phase="dictating")
+    jarvis_dictate.set_recording(True)
+    session = stt.begin(on_partial=lambda t: window.update(partial=t))
+    levels: deque = deque(maxlen=120)
+    outcome = "stop"
+    t0 = time.monotonic()
+    last_ui = 0.0
+    print("[dict] gravando — pare com o mesmo atalho")
+    chime(880, 1320, ms=60, vol=0.12)
+    try:
+        while True:
+            if DICT.is_set():
+                DICT.clear()
+                cmd = jarvis_dictate.take_command()
+                if cmd == "cancel":
+                    outcome = "cancel"
+                    break
+                if cmd in ("stop", "toggle"):
+                    break
+            if time.monotonic() - t0 > CFG["dictation_max_seconds"]:
+                print("[dict] teto de duração atingido")
+                break
+            data, _ = stream.read(CHUNK)
+            chunk = data.flatten()
+            session.feed(chunk)
+            levels.append(jarvis_dictate.level_of(chunk))
+            now = time.monotonic()
+            if now - last_ui > 0.1:
+                window.update(levels=list(levels))
+                last_ui = now
+    finally:
+        jarvis_dictate.set_recording(False)
+
+    if outcome == "cancel":
+        session.close()
+        print("[dict] cancelado")
+        window.update(phase="cancelled")
+        time.sleep(0.8)
+        window.close()
+        return
+
+    window.update(phase="transcribing")
+    t1 = time.time()
+    text = session.finish()
+    print(f"[dict] {time.monotonic()-t0:.1f}s de áudio -> {len(text)} chars em {time.time()-t1:.1f}s :: {text[:120]!r}")
+    if text and CFG["dictation_polish"]:
+        window.update(phase="polishing", final=text, partial="")
+        t2 = time.time()
+        text = jarvis_dictate.polish(text, LANG, CFG["dictation_polish_model"])
+        print(f"[dict] revisão em {time.time()-t2:.1f}s :: {text[:120]!r}")
+    if not text:
+        window.update(phase="cancelled", final="", partial="")
+        time.sleep(1.0)
+        window.close()
+        return
+    window.update(final=text, partial="")
+    result = jarvis_dictate.paste_text(text, CFG["dictation_output"], dry_run=args.test)
+    print(f"[dict] saída: {result}")
+    window.update(phase="pasted" if result in ("pasted", "typed", "dry-run") else "copied")
+    chime(1320, 880, ms=60, vol=0.10)
+    time.sleep(1.5)
+    window.close()
+
+
 # --- push-to-talk ----------------------------------------------------
 # SIGUSR1 dispara a escuta como se a wake word tivesse sido detectada
 # (bind de teclado: systemctl --user kill -s SIGUSR1 voice-launcher.service).
@@ -1154,6 +1243,8 @@ def main() -> None:
     print(f">> perguntas rápidas: {model_label(False)} | pense bem: {model_label(True)}")
     print(f">> modo: {'TEST (dry-run)' if args.test else 'REAL'}")
     signal.signal(signal.SIGUSR1, _on_sigusr1)
+    signal.signal(signal.SIGUSR2, _on_sigusr2)
+    jarvis_dictate.set_recording(False)
     spoken = WAKE_WORD.replace("_", " ")
     print(f">> pronto — diga '{spoken}' (ou o atalho push-to-talk) e fale depois da saudação\n")
 
@@ -1175,6 +1266,22 @@ def main() -> None:
             except Exception as e:
                 print(f"[loop erro na leitura/wake: {e}] — sleep 1s e tenta de novo")
                 time.sleep(1)
+                continue
+
+            if DICT.is_set():
+                DICT.clear()
+                cmd = jarvis_dictate.take_command()
+                if cmd in ("start", "toggle"):
+                    try:
+                        run_dictation(stream, stt, args)
+                    except Exception as e:
+                        print(f"[dict erro: {type(e).__name__}: {e}]")
+                        jarvis_dictate.set_recording(False)
+                    try:
+                        wake.reset()
+                        flush_stream(stream)
+                    except Exception:
+                        pass
                 continue
 
             ptt = PTT.is_set()
