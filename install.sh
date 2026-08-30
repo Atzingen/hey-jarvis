@@ -23,7 +23,7 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
-         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis-window.py dev-layout)
+         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis-window.py jarvis-app.py jarvis-panel.py dev-layout)
 
 if [[ ${1:-} == "--uninstall" ]]; then
   say "Stopping and disabling voice-launcher.service"
@@ -31,6 +31,8 @@ if [[ ${1:-} == "--uninstall" ]]; then
   rm -f "$UNIT_DIR/voice-launcher.service"; systemctl --user daemon-reload
   say "Removing scripts from $BIN_DIR"
   for f in "${SCRIPTS[@]}"; do rm -f "$BIN_DIR/$f"; done
+  rm -f "$HOME/.local/share/applications/jarvis.desktop"
+  rm -rf "$HOME/.local/share/jarvis/app"
   [[ -d $VENV ]] && { say "Removing $VENV"; rm -rf "$VENV"; }
   rm -f /tmp/jarvis-state.json /tmp/jarvis-quit
   if [[ ${2:-} == "--purge" ]]; then
@@ -109,6 +111,17 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH — t
 # --- 5. systemd user service ---------------------------------------------------
 say "Installing voice-launcher.service"
 install -Dm644 "$HERE/systemd/voice-launcher.service" "$UNIT_DIR/voice-launcher.service"
+
+say "Installing the panel app to $HOME/.local/share/jarvis/app"
+rm -rf "$HOME/.local/share/jarvis/app"
+mkdir -p "$HOME/.local/share/jarvis"
+cp -rL "$HERE/app" "$HOME/.local/share/jarvis/app"
+
+say "Installing desktop entry (Jarvis in the app launcher)"
+mkdir -p "$HOME/.local/share/applications"
+sed "s|@BIN@|$BIN_DIR|" "$HERE/integrations/jarvis.desktop" | grep -v '^#' \
+  > "$HOME/.local/share/applications/jarvis.desktop"
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" || true
 systemctl --user daemon-reload
 systemctl --user enable voice-launcher.service >/dev/null 2>&1 || true
 if systemctl --user is-active --quiet voice-launcher.service; then

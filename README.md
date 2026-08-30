@@ -1,14 +1,47 @@
-# Jarvis — a local-first voice assistant for Omarchy
+# Jarvis — talk to your Omarchy desktop
 
-> Say **"hey jarvis"**, talk naturally, and let the model decide what you meant. Runs on Arch Linux + Hyprland (built for [Omarchy](https://omarchy.org)) and ships as an Omarchy shell plugin.
+> **Say "hey jarvis". Ask anything. Watch it happen.** A local-first voice assistant for Arch Linux + Hyprland that understands what you mean, runs it on your machine, and talks back — in English or Brazilian Portuguese. Ships as an Omarchy shell plugin.
+
+![Jarvis bar panel](docs/screenshots/bar-panel.png)
+
+## Your computer, one sentence away
+
+You are deep in a terminal and need a second project open. You want to know how many containers are still running before you close the lid. You have a paragraph in your head and no patience to type it. With Jarvis you just say it:
+
+- *"hey jarvis, let's work on iaprev"* — a 2×2 terminal grid, VS Code and a browser open on that project.
+- *"how many Docker containers are running?"* — it runs `docker ps` and tells you the number.
+- *"think hard: Postgres or SQLite for this?"* — the question goes to the strongest model and comes back as a spoken, reasoned answer.
+- **`Ctrl+Shift+K`**, talk, `Ctrl+Shift+K` again — your words are transcribed and pasted into whatever window has focus. Speech-to-text for every app, no extra daemon.
+
+There are **no keywords to memorize**. Everything you say goes to a model that already has access to your machine — the same Codex CLI and Claude Code you use for coding — so it can answer by *doing*, not by guessing.
+
+## Why you'll like it
+
+| | |
+|---|---|
+| **Private by default** | Wake word, voice capture and (with a GPU) transcription run **locally**. Nothing leaves the machine until you wake it — and when you do, only your words go to the model you chose. |
+| **Feels like a conversation** | It listens until you stop talking, keeps the context of the last exchanges, opens a follow-up window after every answer and lets you **talk over it** to interrupt. |
+| **Actually does things** | Opens projects and apps, suspends the machine, runs commands and reads their output. Two model tiers: fast (Codex) for everyday questions, "think hard" (Claude Fable) when it matters. |
+| **Dictation everywhere** | The same microphone and Whisper model double as a system-wide speech-to-text: toggle or push-to-talk, live transcript, optional local polish for punctuation. |
+| **At home in Omarchy — and beyond** | A brain icon in your bar with a hover panel (voice guide, keybindings, one-click controls) that follows your theme and language. The exact same panel also opens as a standalone window (`jarvis app`, or "Jarvis" in the launcher) on any Linux. |
+| **Yours to tune** | `jarvis config` — a terminal settings screen with profiles, or a scriptable CLI. Wake word, silence timing, models, voices, STT backend: everything is a key in one `config.toml`. |
+
+## Try it in two minutes
+
+```bash
+omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable   # the bar widget
+# hover the icon → Install (sets up the voice service), or: bash install.sh
+```
+
+Then say **"hey jarvis"** and ask for something. Add the [keybindings](#keybindings) for push-to-talk and dictation, and you are done. The panel also opens as a standalone window — search for **Jarvis** in your launcher or run `jarvis app` (works outside Omarchy too).
 
 ![Jarvis conversation window](docs/screenshots/window-en.png)
 
-Jarvis is an always-on voice assistant that lives in your Omarchy bar. Wake word detection, speech capture and (with a GPU) transcription run **locally**; the thinking is done by the coding agents you already use — **OpenAI Codex CLI** for fast answers and **Claude Code CLI** when you ask it to think hard — and both have **access to your machine**, so *"how many Docker containers are running?"* or *"open a terminal on workspace 3"* are answered by actually doing it.
-
-There are **no keywords**. Everything you say goes to the model, which understands the intent and either answers, runs something, opens a project or an app, or ends the conversation. Speaks and understands **English or Brazilian Portuguese**.
-
 ---
+
+# Reference
+
+Everything below is the detailed documentation: how a conversation flows, every setting, the CLI, the architecture and the troubleshooting notes.
 
 ## Table of contents
 
@@ -49,7 +82,7 @@ There are **no keywords**. Everything you say goes to the model, which understan
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
 | **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
 | **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
-| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, hover panel with the voice guide and buttons (on/off, pause, logs, settings, install). |
+| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, hover panel in cards — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
 
 ---
 
@@ -126,7 +159,7 @@ bash install.sh --uninstall --purge    # also removes ~/.config/jarvis (settings
 omarchy plugin remove atzingen.jarvis  # removes the bar widget
 ```
 
-Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis`, `~/.local/share/piper-voices`, `~/.config/jarvis` and `~/.config/systemd/user/voice-launcher.service`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
+Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis`, `~/.local/share/piper-voices`, `~/.config/jarvis`, `~/.local/share/applications/jarvis.desktop` and `~/.config/systemd/user/voice-launcher.service`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
 
 You also need the model CLIs you want to use: [Codex CLI](https://github.com/openai/codex) (`codex login`) for the fast path and/or [Claude Code](https://docs.claude.com/en/docs/claude-code) for "think hard" (or set `quick_provider = "claude"` to use Claude for everything).
 
@@ -136,13 +169,30 @@ You also need the model CLIs you want to use: [Codex CLI](https://github.com/ope
 
 ![Bar](docs/screenshots/bar.png)
 
-![Bar panel on hover](docs/screenshots/bar-panel.png)
+The hover panel is the screenshot at the top of this page.
 
-The brain icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off. Left-click toggles, right-click pauses for 30 minutes. Hovering opens a panel with the voice guide, keybindings and buttons: **Turn on/off · Pause 30 min · Logs · Settings** (and **Install** when the service isn't set up yet). Panel texts follow the configured language.
+The icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off, **󰍬** (urgent color) while a dictation is being recorded. Left-click toggles, right-click pauses for 30 minutes, middle-click starts/stops a dictation. Hovering opens the panel, organized in cards:
 
-> The Omarchy bar colors *active* icons with the theme's `urgent` color (red) unless the theme sets `[bar] active` in `shell.toml`. Jarvis uses `Color.accent` for its own icon; if you want *every* active icon in the accent, install [`docs/bar-active-accent.sh`](docs/bar-active-accent.sh) as a `theme-set` hook (`omarchy hook install theme-set docs/bar-active-accent.sh`) — it rewrites `~/.config/omarchy/shell.toml` on each theme change.
+- **Hero** — state line (on / paused / off / recording, with "since HH:MM" or "back in N min") and an on/off switch (or **Install** when the service isn't set up yet);
+- **Chips** — what it is running with right now: language, STT provider, quick model, "think hard" model;
+- **Voice conversation** — the spoken-command guide;
+- **Dictation** — the speech-to-text keys (`Ctrl+Shift+K` toggle, `Ctrl+Shift+L` push-to-talk, any other key cancels), the live state (ready / recording / Jarvis off) and a **Dictate now / Stop and paste** button;
+- **Keybindings** — every shortcut as a key cap, plus the mouse actions on the icon;
+- **Footer** — icon actions: power, pause 30 min, dictate, logs, settings.
 
----
+Section colors derive from the theme accent (voice = accent, dictation and keys = the accent rotated on the hue wheel), so the panel follows every Omarchy theme. Panel texts follow the configured language.
+
+### The same panel as an app — on any Linux
+
+The exact same panel opens as a standalone window: **`jarvis app`**, or search for **Jarvis** in your application launcher (`install.sh` adds a desktop entry). It is the same `PanelContent.qml` the bar popup renders — same cards, same colors, same **Dictate now / Stop and paste** button — hosted by whatever is available:
+
+1. **quickshell** (Omarchy / Arch): renders the QML directly (`app/qs/shell.qml`);
+2. **PySide6** (Ubuntu, Fedora, anywhere Qt runs — `pip install PySide6`): the same QML via `bin/jarvis-panel.py`;
+3. **no Qt at all**: a terminal (curses) rendition of the panel, pure stdlib (`bin/jarvis-app.py`).
+
+Outside the Omarchy shell there is no theme to follow, so the standalone window uses a fixed dark palette (`app/qs/Commons/`).
+
+![Jarvis standalone window](docs/screenshots/app.png)
 
 ## The conversation window
 
@@ -285,6 +335,7 @@ Custom `greeting`, `voice` or `system_prompt` values override the language defau
 | `jarvis on` / `off` / `toggle` / `toggle-notify` | control the service (`toggle-notify` also sends a notification) |
 | `jarvis pause <dur>` / `pause-notify [dur]` | stop now, start again after `30s`, `45m`, `1h`, `2h30m`… |
 | `jarvis status` / `status-short` | JSON for bars (`{text, alt, class, tooltip}`, `alt` = on/off/paused) / `on`\|`off` |
+| `jarvis app` | the panel as a window — quickshell → PySide6 → terminal fallback (also the **Jarvis** entry in the app launcher) |
 | `jarvis log` | `journalctl --user -u voice-launcher -f` |
 | `jarvis config` | settings screen (floating terminal) |
 | `jarvis config show \| get \| set \| reset \| path` | scriptable settings |
@@ -337,12 +388,15 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
 ```
 hey-jarvis/
 ├── manifest.json               Omarchy shell plugin manifest (id atzingen.jarvis)
-├── BarWidget.qml               the bar widget (status, hover panel, buttons, Install)
+├── BarWidget.qml               the bar widget: icon + hover popup hosting PanelContent
+├── PanelContent.qml            THE panel — shared by the bar popup and `jarvis app`
+├── StatusPoller.qml            shared state plumbing (service, dictation marker, config chips)
+├── app/qs/                     standalone hosts: shell.qml (quickshell), main.qml (PySide6), qs shims
 ├── install.sh                  idempotent installer (env, voices, scripts, service)
 ├── bin/
 │   ├── voice-launcher          wrapper (venv or conda env `voice`)
 │   ├── voice-launcher.py       main loop: wake → capture → STT → model → actions → TTS
-│   ├── jarvis                  CLI: on/off/pause/status/log/config
+│   ├── jarvis                  CLI: on/off/pause/status/app/log/config
 │   ├── jarvis_config.py        settings schema, defaults, TOML, profiles, CLI
 │   ├── jarvis-config.py        settings screen (curses)
 │   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
@@ -350,10 +404,13 @@ hey-jarvis/
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
 │   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
 │   ├── jarvis-window.py        conversation window viewer
+│   ├── jarvis-panel.py         `jarvis app` via PySide6 (same QML, for non-Omarchy distros)
+│   ├── jarvis-app.py           `jarvis app` fallback: the panel as a terminal (curses) screen
 │   └── dev-layout              Hyprland dev layout (2×2 Ghostty + VS Code + Chrome)
 ├── systemd/voice-launcher.service
 ├── integrations/
 │   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
+│   ├── jarvis.desktop          desktop entry template (Jarvis in the app launcher)
 │   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
 ├── docs/                       screenshots, bar-active-accent hook
 ├── requirements.txt            Python deps

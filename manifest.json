@@ -2,15 +2,19 @@
   "schemaVersion": 1,
   "id": "atzingen.jarvis",
   "name": "Jarvis",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": "Gustavo von Atzingen",
-  "description": "Local-first voice assistant for Omarchy: wake word, natural conversation, barge-in, Codex/Claude answers with machine access, live conversation window. Bar widget with status, controls and settings.",
+  "description": "Local-first voice assistant for Omarchy: wake word, natural conversation, barge-in, Codex/Claude answers with machine access, live conversation window, dictation (speech-to-text into the active window). Bar widget with status, dictation controls and settings.",
   "homepage": "https://github.com/Atzingen/hey-jarvis",
-  "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
   "barWidget": {
     "displayName": "Jarvis",
-    "description": "Voice assistant status (on / paused / off) with a hover panel: voice guide, on/off, pause, logs, settings.",
+    "description": "Voice assistant status (on / paused / off / recording) with a hover panel in cards: voice guide, dictation (speech-to-text) start/stop, keybindings, on/off, pause, logs, settings.",
     "category": "System",
     "defaultSection": "center",
     "allowMultiple": false

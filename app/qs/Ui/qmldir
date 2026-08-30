@@ -1,0 +1,5 @@
+module qs.Ui
+Button 1.0 Button.qml
+ToggleSwitch 1.0 ToggleSwitch.qml
+PanelActionButton 1.0 PanelActionButton.qml
+PanelSeparator 1.0 PanelSeparator.qml

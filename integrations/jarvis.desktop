@@ -1,0 +1,15 @@
+# Entrada de desktop do Jarvis — o install.sh copia isto pra
+# ~/.local/share/applications/jarvis.desktop trocando @BIN@ pelo caminho real,
+# então "Jarvis" aparece na busca de aplicativos (GNOME, KDE, walker/omarchy…).
+[Desktop Entry]
+Type=Application
+Name=Jarvis
+GenericName=Voice assistant
+Comment=Local-first voice assistant — status, voice guide, dictation and controls
+Comment[pt_BR]=Assistente de voz local — status, guia de voz, ditado e controles
+Exec=@BIN@/jarvis app
+Icon=audio-input-microphone
+Terminal=false
+Categories=Utility;
+Keywords=voice;assistant;speech;dictation;jarvis;
+Keywords[pt_BR]=voz;assistente;fala;ditado;jarvis;

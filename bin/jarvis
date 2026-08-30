@@ -8,6 +8,7 @@
 #   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
 #   jarvis log                # journalctl -f no serviço
 #   jarvis dictate [toggle|start|stop|cancel]   # ditado: transcreve e cola na janela ativa
+#   jarvis app                # tela principal (status, guia, ditado, ações) em terminal flutuante
 #   jarvis config             # tela de configuração (terminal flutuante)
 #   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
 #
@@ -160,21 +161,61 @@ cmd_dictate() {
     systemctl --user kill -s SIGUSR2 "$UNIT"
 }
 
+launch_tui() {
+    # roda um script de TUI: direto se já há terminal; senão num terminal flutuante,
+    # com fallback pros terminais comuns (fora do Omarchy: Ubuntu, Fedora, etc).
+    local title="$1"; shift
+    if [ -t 1 ]; then
+        exec "$@"
+    fi
+    if command -v ghostty >/dev/null 2>&1; then
+        local launch=(ghostty --class=TUI.float --title="$title"
+                      --window-width=110 --window-height=40 -e "$@")
+        if command -v uwsm-app >/dev/null 2>&1; then exec uwsm-app -- "${launch[@]}"; fi
+        exec "${launch[@]}"
+    fi
+    if command -v xdg-terminal-exec >/dev/null 2>&1; then exec xdg-terminal-exec "$@"; fi
+    local term
+    for term in x-terminal-emulator gnome-terminal konsole kitty alacritty foot xterm; do
+        if command -v "$term" >/dev/null 2>&1; then
+            case "$term" in
+                gnome-terminal) exec "$term" --title="$title" -- "$@" ;;
+                *)              exec "$term" -e "$@" ;;
+            esac
+        fi
+    done
+    echo "jarvis: nenhum terminal encontrado pra abrir a tela" >&2
+    return 1
+}
+
+cmd_app() {
+    # a MESMA interface do popup da bar, como janela própria:
+    #   1. quickshell (Omarchy/Arch) roda o QML direto;
+    #   2. PySide6 (Ubuntu etc.) roda o mesmo QML via Qt;
+    #   3. sem Qt nenhum: versão terminal (curses), zero dependências.
+    local bindir appdir
+    bindir="$(dirname "$(readlink -f "$0")")"
+    appdir="$HOME/.local/share/jarvis/app"
+    [ -e "$appdir/qs/shell.qml" ] || appdir="$bindir/../app"
+    if [ -e "$appdir/qs/shell.qml" ]; then
+        if command -v quickshell >/dev/null 2>&1; then
+            exec quickshell -p "$appdir/qs"
+        fi
+        if python3 -c 'import PySide6' 2>/dev/null; then
+            exec python3 "$bindir/jarvis-panel.py" "$appdir"
+        fi
+    fi
+    launch_tui "Jarvis" python3 "$bindir/jarvis-app.py"
+}
+
 cmd_config() {
     # sem args: tela de configuração em terminal flutuante.
     # com args (show|get|set|reset|path): passa pro CLI do módulo de config.
     local bindir
     bindir="$(dirname "$(readlink -f "$0")")"
     if [ $# -eq 0 ]; then
-        if [ -t 1 ]; then
-            exec python3 "$bindir/jarvis-config.py"
-        fi
-        local launch=(ghostty --class=TUI.float --title="Jarvis — configuração"
-                      -e python3 "$bindir/jarvis-config.py")
-        if command -v uwsm-app >/dev/null 2>&1; then
-            exec uwsm-app -- "${launch[@]}"
-        fi
-        exec "${launch[@]}"
+        launch_tui "Jarvis — configuração" python3 "$bindir/jarvis-config.py"
+        return
     fi
     exec python3 "$bindir/jarvis_config.py" "$@"
 }
@@ -190,6 +231,7 @@ case "${1:-}" in
     pause-notify)         cmd_pause_notify "${2:-30m}" ;;
     pause-meeting)        cmd_pause_meeting ;;
     resume-from-meeting)  cmd_resume_from_meeting ;;
+    app)                  cmd_app ;;
     log)                  cmd_log "$@" ;;
     config)               shift; cmd_config "$@" ;;
     dictate)              cmd_dictate "${2:-toggle}" ;;
