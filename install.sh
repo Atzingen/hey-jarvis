@@ -1,7 +1,9 @@
 #!/bin/bash
 # Jarvis installer — idempotent. Run from the plugin/repo folder:
-#   bash install.sh            # full install (python env, voices, scripts, systemd service)
-#   bash install.sh --update   # re-copy scripts + restart the service (after git pull)
+#   bash install.sh              # full install (python env, voices, scripts, systemd service)
+#   bash install.sh --update     # re-copy scripts + restart the service (after git pull)
+#   bash install.sh --uninstall  # stop/disable the service, remove scripts, unit and venv
+#                                # (keeps ~/.config/jarvis and the Piper voices; add --purge to remove them)
 #
 # Python environment: reuses a conda env named `voice` if it exists, otherwise
 # creates a venv at ~/.local/share/jarvis/venv. GPU wheels (cuBLAS/cuDNN) are
@@ -19,6 +21,27 @@ UPDATE_ONLY=0
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
+
+SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
+         jarvis_stt.py jarvis_events.py jarvis-window.py dev-layout)
+
+if [[ ${1:-} == "--uninstall" ]]; then
+  say "Stopping and disabling voice-launcher.service"
+  systemctl --user disable --now voice-launcher.service 2>/dev/null || true
+  rm -f "$UNIT_DIR/voice-launcher.service"; systemctl --user daemon-reload
+  say "Removing scripts from $BIN_DIR"
+  for f in "${SCRIPTS[@]}"; do rm -f "$BIN_DIR/$f"; done
+  [[ -d $VENV ]] && { say "Removing $VENV"; rm -rf "$VENV"; }
+  rm -f /tmp/jarvis-state.json /tmp/jarvis-quit
+  if [[ ${2:-} == "--purge" ]]; then
+    say "Removing ~/.config/jarvis and Piper voices"
+    rm -rf "$HOME/.config/jarvis" "$VOICES"
+  else
+    say "Kept ~/.config/jarvis (settings, profiles) and $VOICES — pass --purge to remove them"
+  fi
+  say "Uninstalled. Remove the bar widget with: omarchy plugin remove atzingen.jarvis"
+  exit 0
+fi
 
 # --- 1. system dependencies ---------------------------------------------------
 if (( ! UPDATE_ONLY )); then
@@ -76,8 +99,7 @@ fi
 # --- 4. scripts -----------------------------------------------------------------
 say "Installing scripts to $BIN_DIR"
 mkdir -p "$BIN_DIR"
-for f in voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py \
-         jarvis_stt.py jarvis_events.py jarvis-window.py dev-layout; do
+for f in "${SCRIPTS[@]}"; do
   install -Dm755 "$HERE/bin/$f" "$BIN_DIR/$f"
 done
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH — the bar widget and keybindings need it." ;; esac
@@ -104,8 +126,8 @@ if [[ -f "$HOME/.config/hypr/bindings.lua" ]] && ! grep -q "jarvis" "$HOME/.conf
   cat <<EOF
 
 Optional Hyprland keybindings — add to ~/.config/hypr/bindings.lua:
-  o.bind("CTRL + SHIFT + J", "Toggle Jarvis",  { exec = "jarvis toggle-notify" })
-  o.bind("CTRL + SHIFT + H", "Jarvis push-to-talk", { exec = "systemctl --user kill -s SIGUSR1 voice-launcher.service" })
+  o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
+  o.bind("CTRL + SHIFT + H", "Jarvis push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
 EOF
 fi
 say "Settings: jarvis config   |   Logs: jarvis log"

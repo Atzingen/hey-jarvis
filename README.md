@@ -116,6 +116,16 @@ bash install.sh
 
 After a `git pull`, `bash install.sh --update` re-copies the scripts and restarts the service.
 
+### Uninstall
+
+```bash
+bash install.sh --uninstall            # stops/disables the service, removes scripts, unit and the venv it created
+bash install.sh --uninstall --purge    # also removes ~/.config/jarvis (settings, profiles) and the Piper voices
+omarchy plugin remove atzingen.jarvis  # removes the bar widget
+```
+
+Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis`, `~/.local/share/piper-voices`, `~/.config/jarvis` and `~/.config/systemd/user/voice-launcher.service`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
+
 You also need the model CLIs you want to use: [Codex CLI](https://github.com/openai/codex) (`codex login`) for the fast path and/or [Claude Code](https://docs.claude.com/en/docs/claude-code) for "think hard" (or set `quick_provider = "claude"` to use Claude for everything).
 
 ---
@@ -357,3 +367,23 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 ## License
 
 MIT — see `LICENSE`.
+
+### Third-party components
+
+Installed by `install.sh` into the Python environment or `~/.local/share`, each under its own license:
+
+| Component | Role | License |
+|---|---|---|
+| [openWakeWord](https://github.com/dscripka/openWakeWord) + `hey_jarvis` model | wake word | Apache-2.0 |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | local speech-to-text | MIT |
+| Whisper models (OpenAI, via Systran conversions) | STT weights | MIT |
+| [Silero VAD](https://github.com/snakers4/silero-vad) (bundled in faster-whisper) | voice activity detection | MIT |
+| [Piper](https://github.com/rhasspy/piper) (`piper-tts`) | text-to-speech, called as a subprocess | GPL-3.0-or-later |
+| Piper voices `pt_BR-faber-medium`, `en_US-lessac-medium` | TTS voices | see each voice's `MODEL_CARD` on Hugging Face (`rhasspy/piper-voices`) |
+| [sounddevice](https://github.com/spatialaudio/python-sounddevice) / PortAudio | microphone | MIT / MIT |
+| [onnxruntime](https://github.com/microsoft/onnxruntime) | ONNX inference | MIT |
+| [websockets](https://github.com/python-websockets/websockets) | OpenAI Realtime client | BSD-3-Clause |
+| NumPy | audio buffers | BSD-3-Clause |
+| NVIDIA cuBLAS / cuDNN wheels (optional, `requirements-gpu.txt`) | CUDA for local Whisper | NVIDIA EULA |
+
+Codex CLI and Claude Code CLI are not bundled — you install and log into them yourself, under their own terms. Using the OpenAI Realtime API or the model CLIs sends your speech/questions to those providers.
