@@ -35,9 +35,9 @@ BarWidget {
       r1p: pt ? "“abre o projeto X”" : "“open project X”",              r1a: pt ? "layout dev: Ghostty 2×2 + VS Code + Chrome" : "dev layout: Ghostty 2×2 + VS Code + Chrome",
       r2p: pt ? "“abre o btop / o Chrome”" : "“open btop / Chrome”",      r2a: pt ? "abre um app instalado" : "launches an installed app",
       r3p: pt ? "“pense bem <pergunta>”" : "“think hard <question>”",   r3a: pt ? "modelo mais forte (Claude Fable)" : "stronger model (Claude Fable)",
-      r4p: pt ? "“quantos containers tem no Docker?”" : "“how many Docker containers?”", r4a: pt ? "ele roda o comando e responde o resultado" : "runs the command, answers with the result",
+      r4p: pt ? "“quantos containers no Docker?”" : "“how many Docker containers?”", r4a: pt ? "ele roda o comando e responde o resultado" : "runs the command, answers with the result",
       r5p: pt ? "falar por cima da resposta" : "talk over the answer",   r5a: pt ? "ele para e escuta você (barge-in)" : "it stops and listens (barge-in)",
-      r6p: pt ? "“fecha a conversa” / “é só isso”" : "“close the conversation” / “that's all”", r6a: pt ? "encerra (o modelo entende)" : "ends it (the model understands)",
+      r6p: pt ? "“fecha a conversa” / “é só isso”" : "“close it” / “that's all, thanks”", r6a: pt ? "encerra (o modelo entende)" : "ends it (the model understands)",
       r7p: pt ? "“pode dormir”" : "“go to sleep”",                        r7a: pt ? "suspende o computador" : "suspends the computer",
       k1p: "Ctrl+Shift+H", k1a: pt ? "falar agora — pula o “hey jarvis” (push-to-talk)" : "talk now — skips “hey jarvis” (push-to-talk)",
       k2p: "Ctrl+Shift+J", k2a: pt ? "liga/desliga o Jarvis" : "toggles Jarvis on/off",
@@ -141,7 +141,8 @@ BarWidget {
     spacing: 10
     Text {
       text: phrase
-      width: 300
+      width: 360
+      elide: Text.ElideRight
       color: Color.accent
       font.family: Style.font.family
       font.pixelSize: Style.font.body
