@@ -1,6 +1,12 @@
 #!/bin/bash
-# wrapper: ativa conda env 'voice' e roda voice-launcher.py
+# wrapper: runs voice-launcher.py inside the Jarvis Python environment.
+# Prefers the venv created by install.sh; falls back to a conda env named `voice`.
 set -e
-source ~/miniconda3/etc/profile.d/conda.sh
+VENV="$HOME/.local/share/jarvis/venv"
+if [ -x "$VENV/bin/python" ]; then
+    export PATH="$VENV/bin:$PATH"   # piper lives in the env's bin
+    exec "$VENV/bin/python" -u "$HOME/.local/bin/voice-launcher.py" "$@"
+fi
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate voice
-exec python -u ~/.local/bin/voice-launcher.py "$@"
+exec python -u "$HOME/.local/bin/voice-launcher.py" "$@"

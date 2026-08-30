@@ -1,0 +1,5 @@
+# Opcional: whisper local em CUDA (NVIDIA). O ctranslate2 precisa de cuBLAS 12 + cuDNN 9;
+# estes wheels do pip bastam (sem instalar o CUDA Toolkit no sistema).
+# pip install -r requirements-gpu.txt
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

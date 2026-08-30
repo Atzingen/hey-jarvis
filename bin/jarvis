@@ -7,6 +7,8 @@
 #   jarvis status-short       # 'on' ou 'off'
 #   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
 #   jarvis log                # journalctl -f no serviço
+#   jarvis config             # tela de configuração (terminal flutuante)
+#   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
 #
 #   jarvis pause-meeting         # (uso interno do watcher de reunião)
 #   jarvis resume-from-meeting   # (uso interno do watcher de reunião)
@@ -142,6 +144,25 @@ cmd_log() {
     journalctl --user -u "$UNIT" -f "$@"
 }
 
+cmd_config() {
+    # sem args: tela de configuração em terminal flutuante.
+    # com args (show|get|set|reset|path): passa pro CLI do módulo de config.
+    local bindir
+    bindir="$(dirname "$(readlink -f "$0")")"
+    if [ $# -eq 0 ]; then
+        if [ -t 1 ]; then
+            exec python3 "$bindir/jarvis-config.py"
+        fi
+        local launch=(ghostty --class=TUI.float --title="Jarvis — configuração"
+                      -e python3 "$bindir/jarvis-config.py")
+        if command -v uwsm-app >/dev/null 2>&1; then
+            exec uwsm-app -- "${launch[@]}"
+        fi
+        exec "${launch[@]}"
+    fi
+    exec python3 "$bindir/jarvis_config.py" "$@"
+}
+
 case "${1:-}" in
     on)                   cmd_on ;;
     off)                  cmd_off ;;
@@ -154,6 +175,7 @@ case "${1:-}" in
     pause-meeting)        cmd_pause_meeting ;;
     resume-from-meeting)  cmd_resume_from_meeting ;;
     log)                  cmd_log "$@" ;;
+    config)               shift; cmd_config "$@" ;;
     *)
         sed -n '2,13p' "$0" | sed 's/^# \?//'
         exit 2

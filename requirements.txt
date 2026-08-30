@@ -5,3 +5,4 @@ sounddevice==0.5.5
 numpy==2.4.4
 onnxruntime==1.24.4
 ctranslate2==4.7.1
+websockets==17.1

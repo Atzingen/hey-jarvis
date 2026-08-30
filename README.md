@@ -1,243 +1,300 @@
-# hey-jarvis
+# Jarvis — a local-first voice assistant for Omarchy
 
-> Voice-activated dev launcher for Linux + Hyprland. Say **"hey jarvis"**, then tell it what you want.
+> Say **"hey jarvis"**, talk naturally, and let the model decide what you meant. Runs on Arch Linux + Hyprland (built for [Omarchy](https://omarchy.org)) and ships as an Omarchy shell plugin.
 
-Always-on wake word detection (~2% CPU). Everything runs locally except the LLM calls for open-ended questions.
+![Jarvis conversation window](docs/screenshots/window-en.png)
+
+Jarvis is an always-on voice assistant that lives in your Omarchy bar. Wake word detection, speech capture and (with a GPU) transcription run **locally**; the thinking is done by the coding agents you already use — **OpenAI Codex CLI** for fast answers and **Claude Code CLI** when you ask it to think hard — and both have **access to your machine**, so *"how many Docker containers are running?"* or *"open a terminal on workspace 3"* are answered by actually doing it.
+
+There are **no keywords**. Everything you say goes to the model, which understands the intent and either answers, runs something, opens a project or an app, or ends the conversation. Speaks and understands **English or Brazilian Portuguese**.
 
 ---
 
-## What you can say
+## Table of contents
 
-| Phrase | Action |
+- [Features](#features)
+- [How a conversation works](#how-a-conversation-works)
+- [Install](#install)
+- [The bar widget](#the-bar-widget)
+- [The conversation window](#the-conversation-window)
+- [Settings](#settings) · [Main](#main-settings) · [Advanced](#advanced-settings) · [Profiles](#profiles)
+- [Speech-to-text: local or OpenAI](#speech-to-text-local-or-openai)
+- [Models and machine access](#models-and-machine-access)
+- [Language](#language)
+- [The `jarvis` CLI](#the-jarvis-cli)
+- [Keybindings](#keybindings)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Requirements](#requirements)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## Features
+
+| | |
 |---|---|
-| **"abrir `<projeto>`"** *(also `abra`, `abre`)* | Spawns a 2×2 Ghostty grid + VS Code + Chrome layout for `~/Desktop/dev/<projeto>` |
-| **"pense bem `<pergunta>`"** | Asks Claude (Opus / high effort), speaks + shows the answer |
-| *anything else* | Asks a fast model (Codex `gpt-5.4` / low, ~5–7 s by default) and speaks the answer |
-| **"dormir"** / **"durma"** | `systemctl suspend` |
-
-Saying **"hey jarvis"** *again* while it's answering interrupts the TTS and the pending model call.
+| **Wake word, always on** | openWakeWord (`hey jarvis`, ~2 % CPU). Nothing leaves the machine until you wake it. Push-to-talk keybinding too. |
+| **Natural turns** | Speech is captured by a VAD: it records while you talk and stops after ~1.2 s of silence — no fixed recording window. |
+| **Conversation, not commands** | After every answer a 20 s follow-up window opens; just keep talking. Previous exchanges go to the model as context. |
+| **Barge-in** | Talk over Jarvis while it thinks or speaks: it stops, listens, and chains what you said. An energy gate keeps it from interrupting itself through the speakers. |
+| **The model decides** | No keyword parsing. The model receives an *action protocol* (open project, open app, sleep, end conversation) and emits markers the launcher executes; anything else about the machine it does itself. |
+| **Machine access** | Codex runs without sandbox / Claude with permissions skipped, so answers about your system come from real commands. Toggleable. |
+| **Two model tiers** | Fast path: Codex (low effort, fast tier). Say **"think hard …"** (*"pense bem …"*) for Claude Fable / high effort. |
+| **Live window** | A floating window shows the phase (listening / recording / thinking / answering / your turn, with countdown), the conversation with speaker labels, live speech-to-text, and what the model is doing while you wait. |
+| **Long tasks don't die** | If a model call exceeds its deadline it is handed to a separate scratch terminal that keeps running and shows the answer. |
+| **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU) or OpenAI Realtime (`gpt-live-transcribe`) with live provisional text. Automatic fallback. |
+| **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
+| **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
+| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, hover panel with the voice guide and buttons (on/off, pause, logs, settings, install). |
 
 ---
 
-## Pipeline
+## How a conversation works
 
 ```
-mic 16 kHz int16
-  │
-  ▼
-openWakeWord  (hey_jarvis, ONNX)     ← always-on, ~2% CPU
-  │ score > 0.5
-  ▼
-piper TTS  "No que vamos trabalhar, senhor?"
-  │
-  ▼
-record 4 s
-  │
-  ▼
-faster-whisper  (small / int8 / CPU, pt-BR)
-  │
-  ▼
-route:
-  • "dormir"     → systemctl suspend
-  • "abrir X"    → dev-layout X
-  • "pense bem"  → claude -p --model opus --effort high
-  • else         → codex exec -c model_reasoning_effort=low --ephemeral
-                   (or claude sonnet/low if QUICK_PROVIDER = "claude")
-  │
-  ▼
-piper TTS + floating Ghostty overlay
+"hey jarvis"  ──►  greeting  ──►  you talk … 1.2 s silence  ──►  speech-to-text
+                                                                       │
+                     ┌─────────────────────────────────────────────────┘
+                     ▼
+              model (Codex, or Claude for "think hard")
+              gets: system prompt + action protocol + machine notes + last exchanges
+                     │
+        ┌────────────┼───────────────────────────────┐
+        ▼            ▼                               ▼
+   spoken answer   markers → launcher executes     anything else about the machine
+   (Piper TTS)     <<ABRIR_PROJETO: x>> dev layout  → the model runs it itself
+                   <<ABRIR_APP: x>>     launch app
+                   <<DORMIR>>           suspend
+                   <<FIM>>              end conversation
+                     │
+                     ▼
+        20 s follow-up window — keep talking, or say goodbye, or stay silent
 ```
 
-During the busy phase (TTS + model call), an `InterruptListener` thread keeps reading the mic with a slightly higher wake threshold. Re-triggering `hey_jarvis` cancels the in-flight response cleanly.
+Things you can say (any phrasing works — these are examples):
+
+| You say | What happens |
+|---|---|
+| "how many Docker containers are running?" | the model runs `docker ps` and answers with the number |
+| "open a terminal on workspace 1" | the model does it (`omarchy-launch-terminal`, `hyprctl dispatch …`) and confirms |
+| "let's work on hey-jarvis" / "abre o projeto iaprev" | `<<ABRIR_PROJETO>>` → 2×2 Ghostty grid + VS Code + Chrome for `~/Desktop/dev/<project>` |
+| "open btop" / "abre o Chrome" | `<<ABRIR_APP>>` → launches the installed app (TUIs float like Omarchy's own) |
+| "think hard: should I use Postgres or SQLite here?" | Claude Fable, high effort |
+| "go to sleep" / "pode dormir" | `<<DORMIR>>` → `systemctl suspend` |
+| "that's all, thanks" / "fecha essa conversa" | `<<FIM>>` → goodbye, conversation closes |
+| *talk while it is answering* | it stops and listens (barge-in) |
+| **"pause"** / **"fim"** (single word) | the only two local hard commands: mute / end |
+
+Data-heavy answers (weather for the week, rankings) are spoken as a summary; the full detail — after a `---` line in the model's reply — is shown only in the window.
 
 ---
 
 ## Install
 
+**As an Omarchy plugin** (Omarchy 4+, recommended):
+
 ```bash
-git clone https://github.com/Atzingen/hey-jarvis.git
-cd hey-jarvis
-
-# 1. Python environment
-conda create -n voice python=3.11 -y
-conda activate voice
-pip install -r requirements.txt
-
-# 2. Scripts to ~/.local/bin/
-install -Dm755 bin/voice-launcher     ~/.local/bin/voice-launcher
-install -Dm755 bin/voice-launcher.py  ~/.local/bin/voice-launcher.py
-install -Dm755 bin/dev-layout         ~/.local/bin/dev-layout
-install -Dm755 bin/jarvis             ~/.local/bin/jarvis
-
-# 3. Systemd user unit
-install -Dm644 systemd/voice-launcher.service \
-  ~/.config/systemd/user/voice-launcher.service
-
-# 4. Enable + start
-systemctl --user daemon-reload
-systemctl --user enable --now voice-launcher.service
+omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable
 ```
 
-The wrapper `bin/voice-launcher` assumes the conda env is at `~/miniconda3/envs/voice`. If you use venv / uv / pyenv, edit that one line.
+This installs the bar widget. Hover the icon → **Install** runs `install.sh` in a terminal, which sets up the voice service:
+
+1. system packages if missing (`portaudio`, `pipewire-pulse`, a terminal);
+2. a Python environment — reuses a conda env named `voice` if you have one, otherwise a venv at `~/.local/share/jarvis/venv` — with `requirements.txt` (+ CUDA wheels when an NVIDIA GPU is detected);
+3. Piper voices for en-US and pt-BR into `~/.local/share/piper-voices`;
+4. the scripts into `~/.local/bin`;
+5. the `voice-launcher.service` user unit, enabled and started.
+
+**Manually** (any Hyprland setup):
+
+```bash
+git clone https://github.com/Atzingen/hey-jarvis.git && cd hey-jarvis
+bash install.sh
+```
+
+After a `git pull`, `bash install.sh --update` re-copies the scripts and restarts the service.
+
+You also need the model CLIs you want to use: [Codex CLI](https://github.com/openai/codex) (`codex login`) for the fast path and/or [Claude Code](https://docs.claude.com/en/docs/claude-code) for "think hard" (or set `quick_provider = "claude"` to use Claude for everything).
 
 ---
 
-## Requirements
+## The bar widget
 
-**System packages** *(Arch names)*
+![Bar](docs/screenshots/bar.png)
 
-| Group | Packages |
-|---|---|
-| core | `python` (3.11+), `pipewire`, `pipewire-pulse` |
-| compositor | `hyprland` — `dev-layout` uses `hyprctl` |
-| layout apps | `ghostty`, `code`, `google-chrome-stable` |
-| LLM CLIs | [`claude`](https://docs.claude.com/en/docs/claude-code) (Claude Code) — used for "pense bem" and for the fast path when `QUICK_PROVIDER="claude"` |
-| | [`codex`](https://github.com/openai/codex) — OpenAI Codex CLI, authenticated via `codex login` (default fast path) |
-| TTS | [`piper`](https://github.com/rhasspy/piper) — `pip install piper-tts` already installs the binary |
-| UI | [`gum`](https://github.com/charmbracelet/gum) — renders the floating answer overlay |
-| hardware | a working microphone |
+The brain icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off. Left-click toggles, right-click pauses for 30 minutes. Hovering opens a panel with the voice guide, keybindings and buttons: **Turn on/off · Pause 30 min · Logs · Settings** (and **Install** when the service isn't set up yet). Panel texts follow the configured language.
 
-**Python packages** — see `requirements.txt`. Tested on Python 3.11 with a conda env named `voice`.
+> The Omarchy bar colors *active* icons with the theme's `urgent` color (red) unless the theme sets `[bar] active` in `shell.toml`. Jarvis uses `Color.accent` for its own icon; if you want *every* active icon in the accent, install [`docs/bar-active-accent.sh`](docs/bar-active-accent.sh) as a `theme-set` hook (`omarchy hook install theme-set docs/bar-active-accent.sh`) — it rewrites `~/.config/omarchy/shell.toml` on each theme change.
 
-**Piper voice** *(Portuguese default)*
+---
+
+## The conversation window
+
+![Conversation window (pt-BR)](docs/screenshots/window-pt.png)
+
+A floating terminal opens the moment a conversation starts and stays until it ends:
+
+- **badge** with the current phase — LISTENING / RECORDING / TRANSCRIBING / THINKING / ANSWERING / YOUR TURN (with a countdown) / IN TERMINAL;
+- the **conversation** as separate blocks per speaker (`▌ you` / `▌ Jarvis` with the model label), most recent at the bottom;
+- while recording with the OpenAI backend, **your words appear as you speak** (provisional text);
+- a fixed **activity strip** at the bottom: what the model is doing right now (`running: docker ps …`, `thinking: …`), so waiting never feels dead;
+- **hints** for the phase (talk over me, ask to end, `q` closes).
+
+`q` or `Esc` in the window ends the conversation.
+
+---
+
+## Settings
+
+![Settings screen](docs/screenshots/settings-en.png)
+
+Everything is configurable, three ways:
+
+- **`jarvis config`** (also the **Settings** button in the bar panel): a terminal screen. *Main* options on top, *Advanced* collapsed below (Enter expands). `←/→`/Enter cycles options or edits a value, `d` resets one key, `D` resets everything, `s` saves and restarts the service, `p` saves the current values as a named profile, `o` loads a profile, `e` opens the file in `$EDITOR`, `q`/Esc quits (asks to save if there are pending changes). Changed values are marked `*`; the footer explains the selected item and its default.
+- **CLI**: `jarvis config show | get <key> | set <key> <value> | reset [<key>] | path` — validated (choices, min/max), secrets masked.
+- **The file**: `~/.config/jarvis/config.toml` (mode 0600). Only the keys you changed are written; each is documented inline. Anything missing uses the built-in default.
+
+### Main settings
+
+| Key | Default | What |
+|---|---|---|
+| `language` | `en` | `en` or `pt-BR` — voice, recognition language, prompts, window and settings texts |
+| `wake_word` | `hey_jarvis` | openWakeWord model: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` |
+| `wake_threshold` | `0.5` | wake score threshold (lower = more sensitive) |
+| `stt_provider` | `auto` | `auto` / `local` / `openai` — see [Speech-to-text](#speech-to-text-local-or-openai) |
+| `openai_api_key` | `""` | key for the `openai` STT backend (empty = `OPENAI_API_KEY` env) |
+| `end_silence_seconds` | `1.2` | continuous silence that ends your turn — raise it if it cuts you off |
+| `followup_seconds` | `20.0` | listening window after each answer, no wake word needed |
+| `quick_provider` | `codex` | fast path: `codex` (Codex CLI) or `claude` (Claude Code CLI) |
+| `system_access` | `true` | let the model run commands on the machine (no sandbox / no approvals); `false` = knowledge-only |
+| `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default) and reasoning effort |
+| `codex_fast` | `true` | Codex fast mode (`service_tier=fast`) |
+| `claude_quick_model` / `claude_quick_effort` | `sonnet` / `low` | fast path when `quick_provider = "claude"` |
+| `deep_model` / `deep_effort` | `fable` / `high` | "think hard" (always Claude Code CLI): `fable`, `opus`, `sonnet`, `haiku` |
+| `voice` | `auto` | Piper voice; `auto` = the language default (`en_US-lessac-medium` / `pt_BR-faber-medium`) |
+| `voice_length_scale` | `1.15` | speech speed (>1 slower) |
+| `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
+| `window_enabled` | `true` | the conversation window |
+
+### Advanced settings
+
+| Key | Default | What |
+|---|---|---|
+| `whisper_model` | `auto` | `auto` = `large-v3-turbo` on GPU, `small` on CPU; or any faster-whisper size |
+| `whisper_device` | `auto` | `auto` / `cuda` / `cpu` |
+| `openai_stt_model` | `gpt-live-transcribe` | or `gpt-realtime-whisper`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` |
+| `vad_speech_threshold` | `0.5` | silero probability to count a frame as speech |
+| `first_speech_wait_seconds` | `6.0` | how long to wait for you to start after the greeting |
+| `max_utterance_seconds` | `45.0` | hard cap per utterance |
+| `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
+| `max_history_exchanges` | `4` | previous exchanges sent as context |
+| `handoff_seconds_quick` / `_deep` | `45` / `180` | after this the model call moves to a scratch terminal (it keeps running) |
+| `system_prompt` | `""` | style instructions; empty = language default (edit in `$EDITOR`) |
+| `barge_min_rms` | `0.012` | energy floor for your speech to count as an interruption |
+| `tts_bleed_factor` | `1.5` | speech must exceed N× the TTS bleed measured on the mic |
+| `barge_tts_warmup_frames` | `4` | frames calibrating the bleed at the start of each TTS |
+| `barge_hits_tts` / `barge_hits_idle` | `3/4` / `2/3` | N of the last M frames with speech to trigger |
+| `interrupt_threshold_boost` | `0.2` | extra wake threshold during the answer (TTS false positives) |
+| `barge_debug` | `true` | log `[barge] rms/gate/vad` once a second while busy |
+| `dev_dir` | `~/Desktop/dev` | where "open project X" looks |
+| `layout_script` | `~/.local/bin/dev-layout` | run as `<script> <project>` |
+
+### Profiles
+
+`p` in the settings screen saves the current values as `~/.config/jarvis/profiles/<name>.toml`; `o` loads one (then `s` to apply). Useful for "quiet office" vs "home speakers", or en vs pt-BR setups.
+
+---
+
+## Speech-to-text: local or OpenAI
+
+`stt_provider` picks how your speech becomes text. Both backends sit behind the same interface (`bin/jarvis_stt.py`), so the rest of the pipeline doesn't care.
+
+| Provider | What it does | When |
+|---|---|---|
+| `local` | faster-whisper on the machine. NVIDIA GPU: `large-v3-turbo` fp16 — ~0.1 s for 10 s of speech on an RTX 4090. CPU: `small` int8 — ~1.5 s on a desktop, 3–5 s on a laptop. No key, no network, offline. Project and app names are passed as `hotwords`. | default; always the fallback |
+| `openai` | OpenAI Realtime API (`gpt-live-transcribe`, WebSocket): audio streams while you talk, **provisional text shows live in the window**, final transcript on commit. Project names as `keywords`. If the API fails (no network, bad key, no credits, timeout) the buffered audio is transcribed locally — you never lose an utterance. ≈ US$ 0.017 per spoken minute. | machines without a GPU, or when you want live text |
+| `auto` | GPU present → `local`; no GPU and a key → `openai`; else `local` on CPU. | default value |
 
 ```bash
-mkdir -p ~/.local/share/piper-voices
-cd ~/.local/share/piper-voices
-curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx
-curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json
+jarvis config set openai_api_key sk-...      # or export OPENAI_API_KEY in the service environment
+jarvis config set stt_provider openai
+voice-launcher --stt local                   # one-off override for a run
 ```
 
-Any other Piper voice works — edit `VOICE` at the top of `bin/voice-launcher.py`.
+The API session is opened the moment Jarvis starts listening, so the handshake overlaps with you starting to speak; only speech is sent (no silence, no greeting).
+
+---
+
+## Models and machine access
+
+- **Fast path** — `quick_provider`: Codex CLI (`codex exec --json --ephemeral`, effort `codex_effort`, `service_tier=fast` when `codex_fast`) or Claude Code (`claude -p --output-format stream-json`).
+- **"Think hard"** — say *"think hard …"* / *"pense bem …"*: always Claude Code with `deep_model` / `deep_effort`.
+- **`system_access`** (default on) — Codex runs with `--dangerously-bypass-approvals-and-sandbox`, Claude with `--dangerously-skip-permissions`. The model is told it is on your computer and must answer with *results*, not commands. It also gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `systemd-run --user … -- <app>` to launch without blocking, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`). Turn it off for knowledge-only answers (`--sandbox read-only` / `--tools ""`).
+- Both CLIs run in **streaming JSON mode**; `bin/jarvis_events.py` turns their events (commands run, reasoning, messages) into the live activity lines in the window and in the scratch terminal.
+- Every subprocess Jarvis spawns — apps, windows, the model CLI — is launched in its own systemd scope (`uwsm-app` / `systemd-run --scope`), outside the service cgroup. Restarting `voice-launcher.service` never kills what it opened.
+
+---
+
+## Language
+
+`language = "en"` or `"pt-BR"` changes, at once: the Piper voice (with `voice = "auto"`), the speech-recognition language (Whisper / OpenAI), the system prompt and action protocol sent to the model, the fixed spoken phrases (greeting, "thinking, sir", "I didn't catch that"…), the conversation window, the settings screen and the bar panel. The repository default is English; `jarvis config set language pt-BR` switches to Portuguese.
+
+Custom `greeting`, `voice` or `system_prompt` values override the language defaults.
 
 ---
 
 ## The `jarvis` CLI
 
-A small control wrapper around the systemd service. Use it manually, from keybinds, or from waybar:
-
 | Command | Effect |
 |---|---|
-| `jarvis on` | start the service (cancels any pending resume timer) |
-| `jarvis off` | stop the service (cancels any pending resume timer) |
-| `jarvis toggle` | flip state |
-| `jarvis toggle-notify` | toggle + `notify-send` with new state *(used by keybinds and waybar)* |
-| `jarvis pause <duration>` | stop now, start again later. Accepts `30s`, `45m`, `1h`, `2h30m`, … |
-| `jarvis pause-notify [dur]` | pause + notify. Defaults to 30 min if `dur` omitted *(used by waybar right-click)* |
-| `jarvis status` | JSON for waybar: `{text, alt, class, tooltip}`. States: `on` / `off` / `paused` |
-| `jarvis status-short` | one of `on` \| `off` (for scripts) |
+| `jarvis on` / `off` / `toggle` / `toggle-notify` | control the service (`toggle-notify` also sends a notification) |
+| `jarvis pause <dur>` / `pause-notify [dur]` | stop now, start again after `30s`, `45m`, `1h`, `2h30m`… |
+| `jarvis status` / `status-short` | JSON for bars (`{text, alt, class, tooltip}`, `alt` = on/off/paused) / `on`\|`off` |
 | `jarvis log` | `journalctl --user -u voice-launcher -f` |
+| `jarvis config` | settings screen (floating terminal) |
+| `jarvis config show \| get \| set \| reset \| path` | scriptable settings |
 
-The `paused` state differentiates between a manual pause-timer and an auto-pause (future: meeting watcher) via a marker file in `$XDG_RUNTIME_DIR`.
-
----
-
-## Hyprland keybinding
-
-Append to `~/.config/hypr/bindings.conf`:
-
-```
-bindd = SUPER CTRL, J, Toggle Jarvis (voice launcher), exec, jarvis toggle-notify
-```
-
-Then <kbd>Super</kbd> + <kbd>Ctrl</kbd> + <kbd>J</kbd> toggles the service and flashes a notification. See `integrations/hypr-binding.conf`.
+Runtime overrides: `voice-launcher --test` (dry run: no layouts, no suspend), `--stt local|openai|auto`, `--whisper-model <size>`, `--wake-threshold 0.6`.
 
 ---
 
-## Waybar module
+## Keybindings
 
-Drop the module definition into `~/.config/waybar/config.jsonc` and add `"custom/jarvis"` to `modules-center` (or wherever you like):
+`~/.config/hypr/bindings.lua` (Omarchy 4, Lua):
 
-```jsonc
-"custom/jarvis": {
-  "exec": "jarvis status",
-  "return-type": "json",
-  "interval": 2,
-  "format": "{icon}",
-  "format-icons": {
-    "on":     "󰋋",
-    "off":    "󰟎",
-    "paused": "󰂛"
-  },
-  "tooltip": true,
-  "on-click":       "jarvis toggle-notify",
-  "on-click-right": "jarvis pause-notify 30m"
-}
+```lua
+o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
+o.bind("CTRL + SHIFT + H", "Jarvis: push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
 ```
 
-Ready-to-copy files are in `integrations/waybar/module.jsonc` and `integrations/waybar/style.css`.
-
-**Controls**
-
-| | Action |
-|---|---|
-| Hover | tooltip with state + timestamp / ETA |
-| Left click | toggle on/off |
-| Right click | pause for 30 min *(meeting shortcut)* |
-
-Icons are Material Design Nerd Font glyphs — `U+F02CB` (headphones), `U+F07CE` (headphones-off), `U+F009B` (sleep).
+Push-to-talk (`SIGUSR1`) starts a conversation as if the wake word had fired — handy during a call.
 
 ---
 
-## Runtime controls (raw)
+## Architecture
 
-```bash
-systemctl --user stop    voice-launcher   # mute mic now
-systemctl --user start   voice-launcher
-systemctl --user restart voice-launcher   # after editing the .py
-systemctl --user disable voice-launcher   # stop auto-start on boot
-systemctl --user status  voice-launcher
-journalctl  --user -u    voice-launcher -f   # live log (wake scores, transcripts, routes)
+```
+mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
+                                              │
+                    ┌─────────────────────────┴──────────────────────────┐
+                    │  conversation loop (voice-launcher.py)              │
+                    │   greeting (Piper) → VAD capture → STT session      │
+                    │   → model (Codex/Claude, streaming JSON)            │
+                    │   → actions (markers) → TTS → follow-up window      │
+                    │  BargeInListener: wake word or speech over TTS      │
+                    └───┬──────────────┬──────────────┬──────────────────┘
+                        ▼              ▼              ▼
+                 jarvis_stt.py   jarvis_events.py  /tmp/jarvis-state.json ──► jarvis-window.py
+                 local whisper   CLI events →                                (floating viewer)
+                 or OpenAI RT    activity lines
 ```
 
-Or any of the `jarvis` commands above.
-
----
-
-## The `dev-layout` script
-
-Called by the voice launcher for `"abrir X"`, but works standalone too:
-
-```bash
-dev-layout iaprev
-```
-
-It picks the lowest free workspace in `1..5` and in `6..9`, then spawns:
-
-- **Workspace 1–5** — 2×2 Ghostty grid. Three terminals auto-run `claude --dangerously-skip-permissions`; one is a plain shell. Top row resized by +206 px.
-- **Workspace 6–9** — VS Code in the top half, Chrome in the bottom with three tabs (github.com, github.com, claude.ai/new).
-
-All windows `cd` into `~/Desktop/dev/<projeto>`. Tweak the script to taste.
-
----
-
-## Configuration
-
-Constants at the top of `bin/voice-launcher.py`:
-
-| Constant | Default | What |
-|---|---|---|
-| `SAMPLE_RATE` | `16000` | mic sample rate |
-| `DEV_DIR` | `~/Desktop/dev` | where `match_project` scans |
-| `VOICE` | `~/.local/share/piper-voices/pt_BR-faber-medium.onnx` | piper voice |
-| `VOICE_LENGTH_SCALE` | `1.15` | >1 = slower, more formal |
-| `WAKE_THRESHOLD` | `0.5` | openWakeWord trigger score |
-| `RECORD_SECONDS` | `4.0` | how long to record after wake |
-| `QUICK_PROVIDER` | `"codex"` | fast path: `"codex"` (gpt-5.4/low, ~5–7 s) or `"claude"` (sonnet/low, ~10 s) |
-| `CODEX_TIMEOUT_QUICK` | `45` | seconds |
-| `CLAUDE_TIMEOUT_QUICK` / `CLAUDE_TIMEOUT_DEEP` | `45 / 180` | seconds |
-| `CLAUDE_SYSTEM` | *(see file)* | system prompt shared by both providers, forces TTS-friendly output |
-| `INTERRUPT_THRESHOLD_BOOST` | `0.2` | added to wake threshold during busy phase (reduces TTS-bleed false positives) |
-| `OVERLAY_ENABLED` | `True` | show the floating Ghostty overlay on model answers |
-| `OVERLAY_AUTOCLOSE_SECONDS` | `20` | auto-close delay |
-
-**Command-line overrides**
-
-```bash
-voice-launcher --test                 # dry-run: don't open layouts, don't suspend
-voice-launcher --wake-threshold 0.6
-voice-launcher --whisper-model medium # tiny | base | small | medium
-```
+- One thread reads the microphone at a time. The wake loop hands the stream to the conversation; during the busy phase the `BargeInListener` owns it.
+- Barge-in gate: the TTS bleed level is calibrated on the first frames of each utterance and only ever updated from frames *below* the gate, so it never learns from your voice.
+- The window is a plain file watcher: the launcher writes state, the viewer renders. No IPC to break.
+- Config is a schema (`bin/jarvis_config.py: SETTINGS`) with defaults, labels, help, choices and limits — the TUI, the CLI and the TOML writer are all generated from it.
 
 ---
 
@@ -245,22 +302,55 @@ voice-launcher --whisper-model medium # tiny | base | small | medium
 
 ```
 hey-jarvis/
+├── manifest.json               Omarchy shell plugin manifest (id atzingen.jarvis)
+├── BarWidget.qml               the bar widget (status, hover panel, buttons, Install)
+├── install.sh                  idempotent installer (env, voices, scripts, service)
 ├── bin/
-│   ├── voice-launcher          wrapper that activates the conda env
-│   ├── voice-launcher.py       main loop (wake → STT → route → TTS/action)
-│   ├── dev-layout              Hyprland 2×2 grid + VS Code + Chrome
-│   └── jarvis                  CLI to control the systemd service
-├── systemd/
-│   └── voice-launcher.service  user unit
+│   ├── voice-launcher          wrapper (venv or conda env `voice`)
+│   ├── voice-launcher.py       main loop: wake → capture → STT → model → actions → TTS
+│   ├── jarvis                  CLI: on/off/pause/status/log/config
+│   ├── jarvis_config.py        settings schema, defaults, TOML, profiles, CLI
+│   ├── jarvis-config.py        settings screen (curses)
+│   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
+│   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
+│   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
+│   ├── jarvis-window.py        conversation window viewer
+│   └── dev-layout              Hyprland dev layout (2×2 Ghostty + VS Code + Chrome)
+├── systemd/voice-launcher.service
 ├── integrations/
-│   ├── hypr-binding.conf       Super+Ctrl+J toggle
-│   └── waybar/
-│       ├── module.jsonc        waybar module definition
-│       └── style.css           optional colors per state
-├── requirements.txt
-├── README.md
+│   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
+│   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
+├── docs/                       screenshots, bar-active-accent hook
+├── requirements.txt            Python deps
+├── requirements-gpu.txt        optional cuBLAS/cuDNN wheels for CUDA whisper
 └── LICENSE                     MIT
 ```
+
+---
+
+## Requirements
+
+- Arch Linux with Hyprland — developed on Omarchy 4 (the bar widget needs the Omarchy shell; the voice service works on any Hyprland).
+- Python 3.11+, PipeWire, PortAudio, a terminal (`ghostty` by default), a microphone.
+- Codex CLI and/or Claude Code CLI, logged in.
+- Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription.
+
+Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets…). Tested with Python 3.11.
+
+---
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Nothing happens on "hey jarvis" | `jarvis log` — is the service running? `wake_threshold` too high? default mic device (`pactl info`)? |
+| It cuts me off mid-sentence | raise `end_silence_seconds` (1.5–2.0) |
+| It interrupts itself while speaking | raise `tts_bleed_factor` / `barge_min_rms`; `barge_debug` prints the measured levels in the log |
+| It doesn't stop when I talk over it | lower `barge_min_rms`; check `[barge]` lines in `jarvis log` for your speech level |
+| `openai indisponível … fallback local` in the log | key, credits (`credit_balance_exhausted`) or network — answers still come from local whisper |
+| Whisper on CPU although I have a GPU | `pip install -r requirements-gpu.txt` in the env; `jarvis log` shows `whisper …/cuda` |
+| Answers say "I can't access…" | `system_access` is off, or the CLI isn't logged in |
+| Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
 
 ---
 
