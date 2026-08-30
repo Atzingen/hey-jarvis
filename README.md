@@ -134,6 +134,8 @@ You also need the model CLIs you want to use: [Codex CLI](https://github.com/ope
 
 ![Bar](docs/screenshots/bar.png)
 
+![Bar panel on hover](docs/screenshots/bar-panel.png)
+
 The brain icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off. Left-click toggles, right-click pauses for 30 minutes. Hovering opens a panel with the voice guide, keybindings and buttons: **Turn on/off · Pause 30 min · Logs · Settings** (and **Install** when the service isn't set up yet). Panel texts follow the configured language.
 
 > The Omarchy bar colors *active* icons with the theme's `urgent` color (red) unless the theme sets `[bar] active` in `shell.toml`. Jarvis uses `Color.accent` for its own icon; if you want *every* active icon in the accent, install [`docs/bar-active-accent.sh`](docs/bar-active-accent.sh) as a `theme-set` hook (`omarchy hook install theme-set docs/bar-active-accent.sh`) — it rewrites `~/.config/omarchy/shell.toml` on each theme change.
