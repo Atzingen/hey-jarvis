@@ -61,6 +61,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 - [Repository layout](#repository-layout)
 - [Requirements](#requirements)
 - [Troubleshooting](#troubleshooting)
+- [Security model](#security-model)
 - [License](#license)
 
 ---
@@ -371,7 +372,7 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
                     │  BargeInListener: wake word or speech over TTS      │
                     └───┬──────────────┬──────────────┬──────────────────┘
                         ▼              ▼              ▼
-                 jarvis_stt.py   jarvis_events.py  /tmp/jarvis-state.json ──► jarvis-window.py
+                 jarvis_stt.py   jarvis_events.py  $XDG_RUNTIME_DIR/jarvis-state.json ─► jarvis-window.py
                  local whisper   CLI events →                                (floating viewer)
                  or OpenAI RT    activity lines
 ```
@@ -444,6 +445,12 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
 
 ---
+
+## Security model
+
+What runs where, what `install.sh` writes, which network endpoints are ever
+contacted, and how to turn the model's machine access off — one page, written
+for reviewers: [SECURITY.md](SECURITY.md).
 
 ## License
 

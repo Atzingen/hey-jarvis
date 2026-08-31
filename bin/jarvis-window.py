@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 """Viewer da janela persistente da conversa do Jarvis.
 
-Renderiza /tmp/jarvis-state.json (escrito pelo voice-launcher) num terminal
+Renderiza $XDG_RUNTIME_DIR/jarvis-state.json (escrito pelo voice-launcher) num terminal
 flutuante: fase atual (com countdown), últimas trocas e dicas no rodapé.
-Tecla q/Esc cria /tmp/jarvis-quit (encerra a conversa) e fecha. Sai sozinho
+Tecla q/Esc cria $XDG_RUNTIME_DIR/jarvis-quit (encerra a conversa) e fecha. Sai sozinho
 quando o estado vira "closed".
 """
 import json
+import os
 import select
 import shutil
 import sys
@@ -16,8 +17,9 @@ import time
 import tty
 from pathlib import Path
 
-STATE_FILE = Path("/tmp/jarvis-state.json")
-QUIT_FLAG = Path("/tmp/jarvis-quit")
+_RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
+QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from jarvis_i18n import T  # noqa: E402

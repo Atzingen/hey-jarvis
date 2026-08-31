@@ -34,7 +34,7 @@ if [[ ${1:-} == "--uninstall" ]]; then
   rm -f "$HOME/.local/share/applications/jarvis.desktop"
   rm -rf "$HOME/.local/share/jarvis/app"
   [[ -d $VENV ]] && { say "Removing $VENV"; rm -rf "$VENV"; }
-  rm -f /tmp/jarvis-state.json /tmp/jarvis-quit
+  rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/jarvis-state.json "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/jarvis-quit /tmp/jarvis-state.json /tmp/jarvis-quit
   if [[ ${2:-} == "--purge" ]]; then
     say "Removing ~/.config/jarvis and Piper voices"
     rm -rf "$HOME/.config/jarvis" "$VOICES"
@@ -91,12 +91,27 @@ fi
 if (( ! UPDATE_ONLY )); then
   say "Downloading Piper voices (pt-BR + en-US) into $VOICES"
   mkdir -p "$VOICES"
-  base="https://huggingface.co/rhasspy/piper-voices/resolve/main"
-  for spec in "pt/pt_BR/faber/medium/pt_BR-faber-medium" "en/en_US/lessac/medium/en_US-lessac-medium"; do
+  # Pinned to an immutable revision of rhasspy/piper-voices, and every file is
+  # verified against its sha256 before being kept (no mutable-branch downloads).
+  PIPER_REV="39ab474be869e9181350af6a65e4953eef67aaa0"
+  base="https://huggingface.co/rhasspy/piper-voices/resolve/$PIPER_REV"
+  voice_files=(
+    "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx 858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7"
+    "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json 7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f"
+    "en/en_US/lessac/medium/en_US-lessac-medium.onnx 5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+    "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+  )
+  for entry in "${voice_files[@]}"; do
+    read -r spec sha <<<"$entry"
     name="${spec##*/}"
-    for ext in onnx onnx.json; do
-      [[ -f "$VOICES/$name.$ext" ]] || curl -sL -o "$VOICES/$name.$ext" "$base/$spec.$ext"
-    done
+    [[ -f "$VOICES/$name" ]] && continue
+    curl -sL -o "$VOICES/$name.tmp" "$base/$spec"
+    echo "$sha  $VOICES/$name.tmp" | sha256sum -c --quiet - || {
+      rm -f "$VOICES/$name.tmp"
+      warn "checksum mismatch for $name — voice not installed"
+      exit 1
+    }
+    mv "$VOICES/$name.tmp" "$VOICES/$name"
   done
 fi
 

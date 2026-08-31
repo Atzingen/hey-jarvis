@@ -28,6 +28,7 @@ um terminal rascunho separado, onde segue executando até terminar.
 
 import argparse
 import json
+import os
 import signal
 import difflib
 import re
@@ -99,8 +100,9 @@ BARGE_DEBUG = CFG["barge_debug"]
 
 # Janela persistente da conversa (ghostty float rodando jarvis-window.py).
 WINDOW_ENABLED = CFG["window_enabled"]
-STATE_FILE = Path("/tmp/jarvis-state.json")
-QUIT_FLAG = Path("/tmp/jarvis-quit")
+_RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
+QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 VIEWER_SCRIPT = Path(__file__).resolve().parent / "jarvis-window.py"
 
 # Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá).
