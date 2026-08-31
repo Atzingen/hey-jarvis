@@ -4,8 +4,8 @@ import qs.Commons
 
 // Janela standalone do painel do Jarvis rodando em quickshell (Omarchy/Arch):
 //   quickshell -p <este diretório>
-// Renderiza o MESMO PanelContent.qml do popup da bar (symlink neste diretório —
-// o quickshell só carrega arquivos dentro do config root); o estado vem do
+// Renderiza o MESMO PanelContent.qml do popup da bar (arquivo real neste
+// diretório — o quickshell só carrega arquivos dentro do config root); o estado vem do
 // mesmo StatusPoller.qml. Fora do quickshell, use bin/jarvis-panel.py (PySide6).
 ShellRoot {
   FloatingWindow {

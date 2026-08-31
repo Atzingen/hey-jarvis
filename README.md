@@ -184,7 +184,7 @@ Section colors derive from the theme accent (voice = accent, dictation and keys 
 
 ### The same panel as an app — on any Linux
 
-The exact same panel opens as a standalone window: **`jarvis app`**, or search for **Jarvis** in your application launcher (`install.sh` adds a desktop entry). It is the same `PanelContent.qml` the bar popup renders — same cards, same colors, same **Dictate now / Stop and paste** button — hosted by whatever is available:
+The exact same panel opens as a standalone window: **`jarvis app`**, or search for **Jarvis** in your application launcher (`install.sh` adds a desktop entry). It is the same `app/qs/PanelContent.qml` the bar popup renders — same cards, same colors, same **Dictate now / Stop and paste** button — hosted by whatever is available:
 
 1. **quickshell** (Omarchy / Arch): renders the QML directly (`app/qs/shell.qml`);
 2. **PySide6** (Ubuntu, Fedora, anywhere Qt runs — `pip install PySide6`): the same QML via `bin/jarvis-panel.py`;
@@ -389,9 +389,8 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
 hey-jarvis/
 ├── manifest.json               Omarchy shell plugin manifest (id atzingen.jarvis)
 ├── BarWidget.qml               the bar widget: icon + hover popup hosting PanelContent
-├── PanelContent.qml            THE panel — shared by the bar popup and `jarvis app`
-├── StatusPoller.qml            shared state plumbing (service, dictation marker, config chips)
-├── app/qs/                     standalone hosts: shell.qml (quickshell), main.qml (PySide6), qs shims
+├── app/qs/                     PanelContent.qml (THE panel, shared by popup and app),
+│                               StatusPoller.qml, shell.qml (quickshell), main.qml (PySide6), qs shims
 ├── install.sh                  idempotent installer (env, voices, scripts, service)
 ├── bin/
 │   ├── voice-launcher          wrapper (venv or conda env `voice`)

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import qs.Ui
+import "app/qs" as Shared
 
 // Jarvis bar widget. The icon shows the voice-launcher.service state; hovering
 // opens the panel (PanelContent.qml — the same QML the standalone `jarvis app`
@@ -27,7 +28,7 @@ BarWidget {
     if (close) root.popupOpen = false
   }
 
-  StatusPoller { id: poller }
+  Shared.StatusPoller { id: poller }
 
   onPopupOpenChanged: if (popupOpen) poller.probeNow()
 
@@ -107,7 +108,7 @@ BarWidget {
         onHoveredChanged: if (!hovered) closeTimer.restart()
       }
 
-      PanelContent {
+      Shared.PanelContent {
         id: panelContent
         x: Style.space(18)
         y: Style.space(16)
