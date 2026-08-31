@@ -6,6 +6,7 @@
 #   jarvis status             # JSON pro waybar
 #   jarvis status-short       # 'on' ou 'off'
 #   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
+#   jarvis wake on|off|toggle|status   # só a escuta do "hey jarvis" (mic fecha; atalhos seguem)
 #   jarvis log                # journalctl -f no serviço
 #   jarvis dictate [toggle|start|stop|cancel]   # ditado: transcreve e cola na janela ativa
 #   jarvis app                # tela principal (status, guia, ditado, ações) em terminal flutuante
@@ -21,6 +22,7 @@ UNIT="voice-launcher.service"
 RESUME_TIMER="jarvis-resume.timer"
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 MARKER="$STATE_DIR/jarvis-meeting-paused"
+WAKE_OFF="$STATE_DIR/jarvis-wake-off"
 RESUME_AT_FILE="$STATE_DIR/jarvis-resume-at"
 
 is_active() {
@@ -63,11 +65,17 @@ cmd_status() {
     # JSON pro waybar. alt define o ícone (on/off/paused); class aciona .on/.off/.paused no CSS.
     local text alt tooltip
     if is_active; then
-        text="on"
-        alt="on"
         local since
         since=$(systemctl --user show "$UNIT" -p ActiveEnterTimestamp --value)
-        tooltip="Jarvis: ativo\ndesde $since"
+        if [ -f "$WAKE_OFF" ]; then
+            text="manual"
+            alt="manual"
+            tooltip="Jarvis: ativo — só atalhos (wake word desligada)\ndesde $since"
+        else
+            text="on"
+            alt="on"
+            tooltip="Jarvis: ativo\ndesde $since"
+        fi
     elif [ -f "$MARKER" ]; then
         text="paused"
         alt="paused"
@@ -144,6 +152,29 @@ cmd_resume_from_meeting() {
 cmd_log() {
     shift || true
     journalctl --user -u "$UNIT" -f "$@"
+}
+
+cmd_wake() {
+    # liga/desliga SÓ a escuta contínua do "hey jarvis". off = o serviço segue de
+    # pé com o mic fechado; push-to-talk e ditado continuam funcionando. O efeito
+    # é imediato (marcador em runtime) e persiste no config (wake_word_enabled).
+    local action="${1:-toggle}" bindir
+    bindir="$(dirname "$(readlink -f "$0")")"
+    case "$action" in
+        status) if [ -f "$WAKE_OFF" ]; then echo off; else echo on; fi; return 0 ;;
+        toggle) if [ -f "$WAKE_OFF" ]; then action=on; else action=off; fi ;;
+        on|off) ;;
+        *) echo "uso: jarvis wake on|off|toggle|status" >&2; return 2 ;;
+    esac
+    if [ "$action" = off ]; then
+        touch "$WAKE_OFF"
+        python3 "$bindir/jarvis_config.py" set wake_word_enabled false >/dev/null
+        echo "wake word off — só atalhos (push-to-talk/ditado)"
+    else
+        rm -f "$WAKE_OFF"
+        python3 "$bindir/jarvis_config.py" set wake_word_enabled true >/dev/null
+        echo "wake word on — escutando \"hey jarvis\""
+    fi
 }
 
 cmd_dictate() {
@@ -234,6 +265,7 @@ case "${1:-}" in
     app)                  cmd_app ;;
     log)                  cmd_log "$@" ;;
     config)               shift; cmd_config "$@" ;;
+    wake)                 cmd_wake "${2:-toggle}" ;;
     dictate)              cmd_dictate "${2:-toggle}" ;;
     *)
         sed -n '2,13p' "$0" | sed 's/^# \?//'

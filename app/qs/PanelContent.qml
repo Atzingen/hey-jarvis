@@ -20,7 +20,8 @@ Item {
 
   signal runRequested(string cmd, bool close)
 
-  readonly property bool isOn: serviceState === "on"
+  readonly property bool isOn: serviceState === "on" || serviceState === "manual"
+  readonly property bool wakeOn: serviceState === "on"
   readonly property bool isPaused: serviceState === "paused"
   readonly property bool pt: lang.indexOf("pt") === 0
 
@@ -45,6 +46,9 @@ Item {
   // --- strings -----------------------------------------------------------
   readonly property var str: pt ? ({
     statusOn: "Ativo — escutando “hey jarvis”", statusPaused: "Pausado", statusOff: "Desligado — microfone livre",
+    statusManual: "Ativo — só atalhos (“hey jarvis” desligado, mic fechado)",
+    swService: "serviço", swWake: "“hey jarvis”",
+    keyWake: "liga/desliga só a escuta “hey jarvis”",
     statusDictating: "Gravando ditado…",
     notInstalled: "Não instalado — clique em Instalar para configurar o serviço de voz",
     chipLang: "IDIOMA", chipStt: "STT", chipQuick: "RÁPIDO", chipDeep: "PENSE BEM",
@@ -79,6 +83,9 @@ Item {
     footHint: "ícone da bar: clique liga/desliga · direito pausa 30 min · meio dita"
   }) : ({
     statusOn: "Active — listening for “hey jarvis”", statusPaused: "Paused", statusOff: "Off — microphone free",
+    statusManual: "Active — hotkeys only (“hey jarvis” off, mic closed)",
+    swService: "service", swWake: "“hey jarvis”",
+    keyWake: "toggles just the wake-word listening",
     statusDictating: "Recording dictation…",
     notInstalled: "Not installed — click Install to set up the voice service",
     chipLang: "LANGUAGE", chipStt: "STT", chipQuick: "QUICK", chipDeep: "THINK HARD",
@@ -114,7 +121,9 @@ Item {
   })
 
   readonly property string statusLine: !installed ? str.notInstalled
-    : dictating ? str.statusDictating : isOn ? str.statusOn : isPaused ? str.statusPaused : str.statusOff
+    : dictating ? str.statusDictating
+    : serviceState === "manual" ? str.statusManual
+    : isOn ? str.statusOn : isPaused ? str.statusPaused : str.statusOff
 
   function run(cmd, close) { panel.runRequested(cmd, close) }
 
@@ -380,13 +389,48 @@ Item {
         width: panel.installed ? heroSwitch.implicitWidth : installBtn.implicitWidth
         height: panel.installed ? heroSwitch.implicitHeight : installBtn.implicitHeight
 
-        ToggleSwitch {
+        Column {
           id: heroSwitch
           visible: panel.installed
-          checked: panel.isOn
-          foreground: panel.fg
-          accent: Color.accent
-          onToggled: panel.run("jarvis toggle-notify", false)
+          spacing: Style.space(4)
+
+          Row {
+            anchors.right: parent.right
+            spacing: Style.space(8)
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: panel.str.swService
+              color: Qt.darker(panel.fg, 1.5)
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.caption
+              font.letterSpacing: 1
+            }
+            ToggleSwitch {
+              checked: panel.isOn
+              foreground: panel.fg
+              accent: Color.accent
+              onToggled: panel.run("jarvis toggle-notify", false)
+            }
+          }
+          Row {
+            anchors.right: parent.right
+            spacing: Style.space(8)
+            opacity: panel.isOn ? 1.0 : 0.4
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: panel.str.swWake
+              color: Qt.darker(panel.fg, 1.5)
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.caption
+              font.letterSpacing: 1
+            }
+            ToggleSwitch {
+              checked: panel.wakeOn
+              foreground: panel.fg
+              accent: Color.accent
+              onToggled: if (panel.isOn) panel.run("jarvis wake toggle", false)
+            }
+          }
         }
         Button {
           id: installBtn
@@ -495,6 +539,7 @@ Item {
         KeyRow { width: parent.width; key: "Ctrl+Shift+L"; action: panel.str.keyDictPtt; tint: panel.dictColor }
         KeyRow { width: parent.width; key: panel.str.keyClick; action: panel.str.keyClickAction; tint: Qt.darker(panel.fg, 1.3) }
         KeyRow { width: parent.width; key: panel.str.keyRight; action: panel.str.keyRightAction; tint: Qt.darker(panel.fg, 1.3) }
+        KeyRow { width: parent.width; key: "jarvis wake"; action: panel.str.keyWake; tint: Qt.darker(panel.fg, 1.3) }
         KeyRow { width: parent.width; key: "jarvis config"; action: panel.str.keyConfig; tint: Qt.darker(panel.fg, 1.3) }
       }
     }

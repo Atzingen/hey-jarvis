@@ -64,6 +64,10 @@ Wake word detection, voice activity detection, local transcription and TTS all
 run on the machine. Nothing is recorded or sent anywhere until the wake word
 fires, and with the default local STT the audio never leaves the machine.
 
+`jarvis wake off` (or the “hey jarvis” switch on the panel) disables the
+continuous listening entirely: the microphone stream is **closed** while idle
+and only opens on an explicit user action — push-to-talk or dictation hotkeys.
+
 ## Model machine access (`system_access`)
 
 By design, answers come from the coding agents the user already has: Codex CLI

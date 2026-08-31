@@ -226,6 +226,7 @@ Everything is configurable, three ways:
 | Key | Default | What |
 |---|---|---|
 | `language` | `en` | `en` or `pt-BR` — voice, recognition language, prompts, window and settings texts |
+| `wake_word_enabled` | `true` | `false` = hotkeys-only mode: the mic stays closed while idle; push-to-talk (`Ctrl+Shift+H`) and dictation (`Ctrl+Shift+K/L`) still open it on demand. `jarvis wake` toggles it live |
 | `wake_word` | `hey_jarvis` | openWakeWord model: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` |
 | `wake_threshold` | `0.5` | wake score threshold (lower = more sensitive) |
 | `stt_provider` | `auto` | `auto` / `local` / `openai` — see [Speech-to-text](#speech-to-text-local-or-openai) |
@@ -335,6 +336,7 @@ Custom `greeting`, `voice` or `system_prompt` values override the language defau
 |---|---|
 | `jarvis on` / `off` / `toggle` / `toggle-notify` | control the service (`toggle-notify` also sends a notification) |
 | `jarvis pause <dur>` / `pause-notify [dur]` | stop now, start again after `30s`, `45m`, `1h`, `2h30m`… |
+| `jarvis wake on\|off\|toggle\|status` | just the wake-word listening: `off` keeps the service up with the **microphone closed** — push-to-talk and dictation still work (takes effect instantly, persists as `wake_word_enabled`) |
 | `jarvis status` / `status-short` | JSON for bars (`{text, alt, class, tooltip}`, `alt` = on/off/paused) / `on`\|`off` |
 | `jarvis app` | the panel as a window — quickshell → PySide6 → terminal fallback (also the **Jarvis** entry in the app launcher) |
 | `jarvis log` | `journalctl --user -u voice-launcher -f` |

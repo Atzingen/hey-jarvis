@@ -14,7 +14,7 @@ BarWidget {
 
   property bool popupOpen: false
 
-  readonly property bool isOn: poller.serviceState === "on"
+  readonly property bool isOn: poller.serviceState === "on" || poller.serviceState === "manual"
   readonly property bool isPaused: poller.serviceState === "paused"
   readonly property string pluginDir: String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/\/$/, "")
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -58,7 +58,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: poller.dictating ? "󰍬" : root.isOn ? "󰧑" : root.isPaused ? "󱍎" : "󱍄"
-    active: root.isOn || poller.dictating
+    active: poller.serviceState === "on" || poller.dictating  // modo manual: cérebro sem cor de ativo
     // Active state in the theme accent (the bar default falls back to `urgent`, red).
     activeColor: poller.dictating ? Color.urgent : Color.accent
     tooltipText: ""

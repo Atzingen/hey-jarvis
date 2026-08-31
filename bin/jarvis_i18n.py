@@ -292,6 +292,11 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "language": ("Language", "Language Jarvis speaks and understands. Also picks the default voice and the speech-recognition language."),
     "stt_provider": ("Speech recognition", "local = Whisper on this machine (GPU if present, else CPU); openai = Realtime API with live text (needs the key); auto = GPU→local, no GPU→openai if a key exists."),
     "openai_api_key": ("OpenAI API key", "Used by the openai speech recognition. Empty = OPENAI_API_KEY environment variable."),
+    "wake_word_enabled": (
+        "Wake word listening",
+        "on = always listening for \"hey jarvis\"; off = mic closed while idle — only "
+        "push-to-talk (Ctrl+Shift+H) and dictation (Ctrl+Shift+K/L) activate. `jarvis wake` toggles it live.",
+    ),
     "wake_word": ("Wake word", "openWakeWord model that wakes the assistant."),
     "wake_threshold": ("Wake word sensitivity", "Minimum score to trigger (lower = more sensitive, more false positives)."),
     "end_silence_seconds": ("Silence that ends your turn (s)", "Continuous pause that marks the end of what you said. Raise it if it cuts you off."),

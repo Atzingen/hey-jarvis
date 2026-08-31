@@ -33,6 +33,7 @@ STRINGS = {
         "status_paused": "Pausado",
         "status_off": "Desligado — microfone livre",
         "status_dictating": "Gravando ditado…",
+        "status_manual": "Ativo — só atalhos (“hey jarvis” desligado, mic fechado)",
         "not_installed": "Serviço não instalado — rode install.sh",
         "chips": [("IDIOMA", "language"), ("STT", "stt_provider"),
                   ("RÁPIDO", "quick_provider"), ("PENSE BEM", "deep_model")],
@@ -66,9 +67,10 @@ STRINGS = {
             ("jarvis config", "configuração no terminal"),
         ],
         "btn_on": "Ligar", "btn_off": "Desligar", "btn_pause": "Pausar 30 min",
+        "btn_wake_on": "Ligar “hey jarvis”", "btn_wake_off": "Desligar “hey jarvis”",
         "btn_dictate": "Ditar agora", "btn_dictate_stop": "Parar e colar",
         "btn_logs": "Logs", "btn_config": "Config", "btn_quit": "Sair",
-        "hint": "←/→ ou Tab navega · Enter executa · atalhos: l liga/desliga  p pausa  d dita  g logs  c config · q sai",
+        "hint": "←/→ ou Tab navega · Enter executa · atalhos: l liga/desliga  w wake  p pausa  d dita  g logs  c config · q sai",
         "logs_hint": "Ctrl+C volta pra tela do Jarvis",
     },
     "en": {
@@ -76,6 +78,7 @@ STRINGS = {
         "status_paused": "Paused",
         "status_off": "Off — microphone free",
         "status_dictating": "Recording dictation…",
+        "status_manual": "Active — hotkeys only (“hey jarvis” off, mic closed)",
         "not_installed": "Voice service not installed — run install.sh",
         "chips": [("LANGUAGE", "language"), ("STT", "stt_provider"),
                   ("QUICK", "quick_provider"), ("THINK HARD", "deep_model")],
@@ -109,9 +112,10 @@ STRINGS = {
             ("jarvis config", "settings in the terminal"),
         ],
         "btn_on": "Turn on", "btn_off": "Turn off", "btn_pause": "Pause 30 min",
+        "btn_wake_on": "Wake word on", "btn_wake_off": "Wake word off",
         "btn_dictate": "Dictate now", "btn_dictate_stop": "Stop and paste",
         "btn_logs": "Logs", "btn_config": "Settings", "btn_quit": "Quit",
-        "hint": "←/→ or Tab moves · Enter runs · hotkeys: l toggle  p pause  d dictate  g logs  c settings · q quits",
+        "hint": "←/→ or Tab moves · Enter runs · hotkeys: l toggle  w wake  p pause  d dictate  g logs  c settings · q quits",
         "logs_hint": "Ctrl+C returns to the Jarvis screen",
     },
 }
@@ -211,6 +215,8 @@ class App:
             return t["not_installed"], self.C_URGENT
         if self.dictating:
             return t["status_dictating"], self.C_URGENT
+        if self.state == "manual":
+            return t["status_manual"], self.C_DICT
         if self.state == "on":
             return t["status_on"], self.C_ACCENT
         if self.state == "paused":
@@ -219,9 +225,10 @@ class App:
 
     def buttons(self) -> list[tuple[str, str]]:
         t = self.t
-        on = self.state == "on"
+        on = self.state in ("on", "manual")
         items = [("toggle", t["btn_off"] if on else t["btn_on"])]
         if on:
+            items.append(("wake", t["btn_wake_off"] if self.state == "on" else t["btn_wake_on"]))
             items.append(("pause", t["btn_pause"]))
         items.append(("dictate", t["btn_dictate_stop"] if self.dictating else t["btn_dictate"]))
         items += [("logs", t["btn_logs"]), ("config", t["btn_config"]), ("quit", t["btn_quit"])]
@@ -233,6 +240,8 @@ class App:
             return False
         if action == "toggle":
             self.run_cmd("toggle")
+        elif action == "wake":
+            self.run_cmd("wake", "toggle")
         elif action == "pause":
             self.run_cmd("pause", "30m")
         elif action == "dictate":
@@ -299,7 +308,7 @@ class App:
     def build_dict_card(self, width: int) -> Card:
         t = self.t
         meta = (t["dict_recording"] if self.dictating
-                else t["dict_ready"] if self.state == "on" else t["dict_off"])
+                else t["dict_ready"] if self.state in ("on", "manual") else t["dict_off"])
         lines: list[tuple[int, str, str]] = []
         for chunk in textwrap.wrap(t["dict_intro"], width - 4):
             lines.append((curses.color_pair(self.C_DIM), chunk, None))
@@ -375,7 +384,7 @@ class App:
         pos = x0
         for i, (action, label) in enumerate(btns):
             sel = i == self.cursor
-            disabled = action == "dictate" and self.state != "on"
+            disabled = action == "dictate" and self.state not in ("on", "manual")
             attr = curses.A_REVERSE | curses.A_BOLD if sel else 0
             if disabled:
                 attr |= curses.A_DIM
@@ -409,7 +418,7 @@ class App:
         return True
 
     def loop(self) -> None:
-        hotkeys = {"l": "toggle", "p": "pause", "d": "dictate", "g": "logs", "c": "config"}
+        hotkeys = {"l": "toggle", "w": "wake", "p": "pause", "d": "dictate", "g": "logs", "c": "config"}
         while True:
             self.poll()
             self.draw()

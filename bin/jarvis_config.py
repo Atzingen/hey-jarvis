@@ -70,6 +70,10 @@ SETTINGS: list[Setting] = [
     Setting("language", "en", "Idioma",
             "Idioma em que o Jarvis fala e entende. Define também a voz padrão e o idioma do reconhecimento.",
             group="Geral", choices=jarvis_i18n.LANGUAGES),
+    Setting("wake_word_enabled", True, "Escuta da palavra-chave",
+            "on = fica escutando \"hey jarvis\"; off = mic fechado quando ocioso — só o "
+            "push-to-talk (Ctrl+Shift+H) e o ditado (Ctrl+Shift+K/L) ativam. `jarvis wake` alterna na hora.",
+            group="Escuta"),
     Setting("wake_word", "hey_jarvis", "Palavra-chave",
             "Modelo openWakeWord que acorda o assistente.",
             group="Escuta", choices=WAKE_WORDS),

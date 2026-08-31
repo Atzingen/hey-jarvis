@@ -103,6 +103,7 @@ WINDOW_ENABLED = CFG["window_enabled"]
 _RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
 STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
 QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
+WAKE_OFF_FILE = _RUNTIME_DIR / "jarvis-wake-off"  # existe = sem escuta da wake word (só atalhos)
 VIEWER_SCRIPT = Path(__file__).resolve().parent / "jarvis-window.py"
 
 # Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá).
@@ -1247,24 +1248,58 @@ def main() -> None:
     signal.signal(signal.SIGUSR1, _on_sigusr1)
     signal.signal(signal.SIGUSR2, _on_sigusr2)
     jarvis_dictate.set_recording(False)
+    # sincroniza o modo de escuta com a config (o `jarvis wake` alterna o marcador em runtime)
+    if CFG["wake_word_enabled"]:
+        WAKE_OFF_FILE.unlink(missing_ok=True)
+    else:
+        WAKE_OFF_FILE.touch()
     spoken = WAKE_WORD.replace("_", " ")
     print(f">> pronto — diga '{spoken}' (ou o atalho push-to-talk) e fale depois da saudação\n")
 
-    stream = sd.InputStream(
-        samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=CHUNK,
-    )
-    stream.start()
+    def open_stream() -> sd.InputStream:
+        st = sd.InputStream(
+            samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=CHUNK,
+        )
+        st.start()
+        return st
+
+    stream = open_stream()
 
     # chime inicial confirmando que tá no ar
     chime(660, 990, ms=80, vol=0.15)
 
     try:
+        wake_was_off = False
         while True:
+            # Modo manual (marcador jarvis-wake-off): sem escuta da wake word — o
+            # mic fica FECHADO enquanto ocioso; só o push-to-talk (SIGUSR1) e o
+            # ditado (SIGUSR2) abrem o stream, que volta a fechar em seguida.
+            wake_off = WAKE_OFF_FILE.exists()
+            if wake_off != wake_was_off:
+                wake_was_off = wake_off
+                print("[wake] escuta da wake word DESLIGADA — mic fechado; push-to-talk e ditado seguem ativos"
+                      if wake_off else "[wake] escuta da wake word religada")
+            score = 0.0
             try:
-                data, _ = stream.read(CHUNK)
-                chunk = data.flatten()
-                pred = wake.predict(chunk)
-                score = max(pred.values()) if pred else 0.0
+                if wake_off:
+                    # fecha o stream de verdade: o node de captura some do
+                    # PipeWire (nenhum indicador de mic em uso enquanto ocioso)
+                    if stream is not None:
+                        stream.stop()
+                        stream.close()
+                        stream = None
+                    if not (PTT.is_set() or DICT.is_set()):
+                        time.sleep(0.12)
+                        continue
+                    stream = open_stream()
+                else:
+                    if stream is None:
+                        stream = open_stream()
+                        wake.reset()
+                    data, _ = stream.read(CHUNK)
+                    chunk = data.flatten()
+                    pred = wake.predict(chunk)
+                    score = max(pred.values()) if pred else 0.0
             except Exception as e:
                 print(f"[loop erro na leitura/wake: {e}] — sleep 1s e tenta de novo")
                 time.sleep(1)
@@ -1318,8 +1353,9 @@ def main() -> None:
     finally:
         claude_executor.shutdown(wait=False, cancel_futures=True)
         try:
-            stream.stop()
-            stream.close()
+            if stream is not None:
+                stream.stop()
+                stream.close()
         except Exception:
             pass
 

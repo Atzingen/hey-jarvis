@@ -21,7 +21,7 @@ Item {
     poller.dictating = lines.indexOf("DICTATING") >= 0
     var data
     try { data = JSON.parse(lines[0]) } catch (e) { return }
-    serviceState = data.alt === "on" ? "on" : data.alt === "paused" ? "paused" : "off"
+    serviceState = data.alt === "on" ? "on" : data.alt === "manual" ? "manual" : data.alt === "paused" ? "paused" : "off"
     // 2nd tooltip line of the CLI carries the useful detail ("desde <ts>", "volta em Xmin").
     var tip = String(data.tooltip || "").split("\\n")
     if (tip.length < 2) tip = String(data.tooltip || "").split("\n")
