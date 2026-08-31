@@ -194,6 +194,68 @@ Item {
     }
   }
 
+  // Switch do painel: estado ligado bem evidente — trilho preenchido com a cor
+  // de destaque, knob claro e um halo suave; desligado fica apagado.
+  component PanelSwitch: Item {
+    id: sw
+    property bool checked: false
+    property color accent: Color.accent
+    signal toggled()
+
+    readonly property int trackH: Style.space(22)
+    readonly property int trackW: Math.round(trackH * 1.9)
+    readonly property int knobSize: Math.round(trackH * 0.72)
+    readonly property int knobInset: Math.round((trackH - knobSize) / 2)
+
+    implicitWidth: trackW + Style.space(8)
+    implicitHeight: trackH + Style.space(8)
+
+    // halo (dois anéis de alpha decrescente — brilho sem shader)
+    Rectangle {
+      anchors.centerIn: parent
+      width: sw.trackW + Style.space(8); height: sw.trackH + Style.space(8)
+      radius: height / 2
+      color: Util.alpha(sw.accent, 0.14)
+      opacity: sw.checked ? 1.0 : 0.0
+      Behavior on opacity { NumberAnimation { duration: 160 } }
+    }
+    Rectangle {
+      anchors.centerIn: parent
+      width: sw.trackW + Style.space(4); height: sw.trackH + Style.space(4)
+      radius: height / 2
+      color: Util.alpha(sw.accent, 0.22)
+      opacity: sw.checked ? 1.0 : 0.0
+      Behavior on opacity { NumberAnimation { duration: 160 } }
+    }
+
+    Rectangle {
+      id: track
+      anchors.centerIn: parent
+      width: sw.trackW; height: sw.trackH
+      radius: height / 2
+      color: sw.checked ? Util.alpha(sw.accent, 0.85) : Util.alpha(panel.fg, 0.10)
+      border.width: 1
+      border.color: sw.checked ? Qt.lighter(sw.accent, 1.25) : Util.alpha(panel.fg, 0.35)
+      Behavior on color { ColorAnimation { duration: 160 } }
+      Behavior on border.color { ColorAnimation { duration: 160 } }
+
+      Rectangle {
+        width: sw.knobSize; height: sw.knobSize; radius: sw.knobSize / 2
+        anchors.verticalCenter: parent.verticalCenter
+        x: sw.checked ? track.width - width - sw.knobInset : sw.knobInset
+        color: sw.checked ? Qt.lighter(sw.accent, 1.6) : Qt.darker(panel.fg, 1.5)
+        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 160 } }
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      cursorShape: Qt.PointingHandCursor
+      onClicked: sw.toggled()
+    }
+  }
+
   // Keyboard key as a small bordered cap.
   component KeyCap: Rectangle {
     id: cap
@@ -405,9 +467,8 @@ Item {
               font.pixelSize: Style.font.caption
               font.letterSpacing: 1
             }
-            ToggleSwitch {
+            PanelSwitch {
               checked: panel.isOn
-              foreground: panel.fg
               accent: Color.accent
               onToggled: panel.run("jarvis toggle-notify", false)
             }
@@ -424,9 +485,8 @@ Item {
               font.pixelSize: Style.font.caption
               font.letterSpacing: 1
             }
-            ToggleSwitch {
+            PanelSwitch {
               checked: panel.wakeOn
-              foreground: panel.fg
               accent: Color.accent
               onToggled: if (panel.isOn) panel.run("jarvis wake toggle", false)
             }
