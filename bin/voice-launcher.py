@@ -19,7 +19,7 @@ Durante a fase busy (pensando/falando a resposta), falar por cima interrompe
 o Jarvis e a fala é capturada e encadeada na conversa (barge-in, com gate de
 energia pra ele não se auto-interromper ouvindo a própria voz na caixa).
 
-Uma janela persistente (ghostty float + jarvis-window.py) abre no wake e
+Uma janela persistente (alacritty float + jarvis-window.py) abre no wake e
 acompanha a conversa inteira: fase atual com countdown, últimas trocas e
 dicas de voz/tecla no rodapé. Tecla q/Esc na janela encerra a conversa.
 Trabalho que estoura o prazo (HANDOFF_SECONDS_*) não é morto: é entregue a
@@ -98,7 +98,7 @@ BARGE_HITS_TTS = _hits(CFG["barge_hits_tts"])
 BARGE_HITS_IDLE = _hits(CFG["barge_hits_idle"])
 BARGE_DEBUG = CFG["barge_debug"]
 
-# Janela persistente da conversa (ghostty float rodando jarvis-window.py).
+# Janela persistente da conversa (alacritty float rodando jarvis-window.py).
 WINDOW_ENABLED = CFG["window_enabled"]
 _RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
 STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
@@ -189,7 +189,7 @@ def tui_launch_cmd(cmd: list[str]) -> list[str]:
     omarchy-launch-tui -> janela flutuante com app-id org.omarchy.<app>."""
     if shutil.which("omarchy-launch-tui"):
         return ["omarchy-launch-tui"] + cmd
-    return ["ghostty", "-e"] + cmd
+    return ["alacritty", "-e"] + cmd
 
 
 def match_application(query: str) -> tuple[str, list[str], bool] | None:
@@ -335,7 +335,7 @@ def with_context(question: str, history: list[tuple[str, str]]) -> str:
 # --- janela persistente ----------------------------------------------
 
 class JarvisWindow:
-    """Janela persistente da conversa (ghostty float rodando jarvis-window.py).
+    """Janela persistente da conversa (alacritty float rodando jarvis-window.py).
 
     O launcher só escreve o estado em STATE_FILE; o viewer renderiza fase,
     countdown, trocas e dicas. Tecla q/Esc no viewer cria QUIT_FLAG (encerra
@@ -354,10 +354,10 @@ class JarvisWindow:
                       "exchanges": [], "lang": LANG}
         self._write()
         try:
-            launch_detached(["ghostty", "--class=TUI.float", "--title=Jarvis",
+            launch_detached(["alacritty", "--class", "TUI.float", "--title", "Jarvis",
                              "-e", "python3", str(VIEWER_SCRIPT)])
         except FileNotFoundError:
-            print("   [janela: ghostty não encontrado]")
+            print("   [janela: alacritty não encontrado]")
 
     def update(self, phase: str | None = None, **fields) -> None:
         if not self.enabled:
@@ -613,10 +613,10 @@ def open_handoff_terminal(handoff: dict) -> None:
         f'echo "  {T(LANG, "handoff_close")}"; read -n 1 -s -r'
     )
     try:
-        launch_detached(["ghostty", "--class=TUI.float", "--title=Jarvis — rascunho",
+        launch_detached(["alacritty", "--class", "TUI.float", "--title", "Jarvis — rascunho",
                          "-e", "bash", "-c", shell_cmd])
     except FileNotFoundError:
-        print("   [rascunho: ghostty não encontrado]")
+        print("   [rascunho: alacritty não encontrado]")
 
 
 # --- áudio -----------------------------------------------------------
@@ -894,7 +894,7 @@ def record_until_silence(
 def stt_terms() -> list[str]:
     """Vocabulário passado ao reconhecimento (hotwords/keywords): nomes que a
     transcrição costuma errar — o próprio Jarvis, apps e os projetos."""
-    base = ["Jarvis", "hey Jarvis", "btop", "Hyprland", "Ghostty", "Omarchy",
+    base = ["Jarvis", "hey Jarvis", "btop", "Hyprland", "Ghostty", "Alacritty", "Omarchy",
             "Codex", "Claude", "Docker", "systemd", "Python", "GitHub"]
     try:
         return base + list_projects()

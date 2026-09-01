@@ -42,7 +42,7 @@ STRINGS = {
         "intro": "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar "
                  "e abre a janela da conversa. Não há palavras-chave: o modelo decide.",
         "voice_rows": [
-            ("“abre o projeto X”", "layout dev: Ghostty 2×2 + VS Code + Chrome"),
+            ("“abre o projeto X”", "layout dev: terminal 2×2 + VS Code + Chrome"),
             ("“abre o btop / o Chrome”", "abre um app instalado"),
             ("“pense bem <pergunta>”", "modelo mais forte (Claude Fable)"),
             ("“quantos containers no Docker?”", "roda o comando e responde o resultado"),
@@ -87,7 +87,7 @@ STRINGS = {
         "intro": "Say “hey jarvis” and talk after the greeting — it listens until you stop "
                  "and opens the conversation window. No keywords: the model decides.",
         "voice_rows": [
-            ("“open project X”", "dev layout: Ghostty 2×2 + VS Code + Chrome"),
+            ("“open project X”", "dev layout: terminal 2×2 + VS Code + Chrome"),
             ("“open btop / Chrome”", "launches an installed app"),
             ("“think hard <question>”", "stronger model (Claude Fable)"),
             ("“how many Docker containers?”", "runs the command, answers with the result"),

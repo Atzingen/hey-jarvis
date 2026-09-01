@@ -1,7 +1,9 @@
 #!/bin/bash
 # dev-layout.sh <projeto>
-#   ws[1..5] livre  -> 4 ghostty (3 com claude, 1 bash) em 2x2 top-row alta
+#   ws[1..5] livre  -> 4 alacritty (3 com claude, 1 bash) em 2x2 top-row alta
 #   ws[6..9] livre  -> code em cima + chrome embaixo, ambos no projeto
+# TEMP(ghostty->alacritty 2026-09-01): ghostty 1.3.1 segfaulta com Claude Code
+# (ghostty-org/ghostty#11504); reverter quando a correção sair em release.
 
 set -e
 
@@ -28,7 +30,7 @@ ws_addrs() {
 import json,sys
 ws = $1
 print(' '.join(c['address'] for c in json.load(sys.stdin)
-               if c['workspace']['id']==ws and c['class']=='com.mitchellh.ghostty'))"
+               if c['workspace']['id']==ws and c['class']=='Alacritty'))"
 }
 
 new_addr() {
@@ -39,12 +41,12 @@ diff = a - b
 print(next(iter(diff)) if diff else '')"
 }
 
-launch_ghostty() {
+launch_term() {
     if [ "$1" = "1" ]; then
-        uwsm-app -- ghostty --working-directory="$PROJ_DIR" \
+        uwsm-app -- alacritty --working-directory "$PROJ_DIR" \
             -e "$SHELL" -c "claude --dangerously-skip-permissions; exec $SHELL" &
     else
-        uwsm-app -- ghostty --working-directory="$PROJ_DIR" &
+        uwsm-app -- alacritty --working-directory "$PROJ_DIR" &
     fi
 }
 
@@ -71,21 +73,21 @@ sleep 0.3
 
 B=$(ws_addrs $TERM_WS)
 
-launch_ghostty 1
+launch_term 1
 W1=$(wait_new_addr $TERM_WS "$B"); B="$B $W1"
 
-launch_ghostty 1
+launch_term 1
 W2=$(wait_new_addr $TERM_WS "$B"); B="$B $W2"
 
 # foca W1 por endereco (nao via movefocus — ignora mouse)
 hyprctl dispatch focuswindow "address:$W1"
 hyprctl dispatch layoutmsg "preselect d"
-launch_ghostty 1
+launch_term 1
 W3=$(wait_new_addr $TERM_WS "$B"); B="$B $W3"
 
 hyprctl dispatch focuswindow "address:$W2"
 hyprctl dispatch layoutmsg "preselect d"
-launch_ghostty 0
+launch_term 0
 W4=$(wait_new_addr $TERM_WS "$B")
 
 echo "   terminais: W1=$W1 W2=$W2 W3=$W3 W4=$W4"

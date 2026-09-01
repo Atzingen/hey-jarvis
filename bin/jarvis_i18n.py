@@ -259,7 +259,7 @@ ACTIONS_PROTOCOL = {
 ENVIRONMENT_NOTES = {
     "pt-BR": (
         "\n\nAMBIENTE. Você está no computador do usuário: Arch Linux / Omarchy 4 "
-        "(Hyprland com config Lua), terminal ghostty, sessão uwsm. Para pedidos "
+        "(Hyprland com config Lua), terminal alacritty, sessão uwsm. Para pedidos "
         "sobre a máquina ou o desktop que não têm marcador, execute você mesmo e "
         "confirme em uma frase. Receitas que funcionam aqui:\n"
         "- abrir um terminal: omarchy-launch-terminal (desacoplado, retorna na hora)\n"
@@ -272,7 +272,7 @@ ENVIRONMENT_NOTES = {
     ),
     "en": (
         "\n\nENVIRONMENT. You are on the user's computer: Arch Linux / Omarchy 4 "
-        "(Hyprland with Lua config), ghostty terminal, uwsm session. For requests "
+        "(Hyprland with Lua config), alacritty terminal, uwsm session. For requests "
         "about the machine or the desktop that have no marker, do it yourself and "
         "confirm in one sentence. Recipes that work here:\n"
         "- open a terminal: omarchy-launch-terminal (detached, returns immediately)\n"

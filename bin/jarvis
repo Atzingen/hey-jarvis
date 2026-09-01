@@ -199,9 +199,10 @@ launch_tui() {
     if [ -t 1 ]; then
         exec "$@"
     fi
-    if command -v ghostty >/dev/null 2>&1; then
-        local launch=(ghostty --class=TUI.float --title="$title"
-                      --window-width=110 --window-height=40 -e "$@")
+    # TEMP(ghostty->alacritty 2026-09-01): ghostty 1.3.1 segfaulta (ghostty#11504).
+    if command -v alacritty >/dev/null 2>&1; then
+        local launch=(alacritty --class TUI.float --title "$title"
+                      -o window.dimensions.columns=110 -o window.dimensions.lines=40 -e "$@")
         if command -v uwsm-app >/dev/null 2>&1; then exec uwsm-app -- "${launch[@]}"; fi
         exec "${launch[@]}"
     fi
