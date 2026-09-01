@@ -145,6 +145,10 @@ SETTINGS: list[Setting] = [
             "paste = copia e cola na janela ativa (Ctrl+V; Ctrl+Shift+V em terminais); "
             "type = digita o texto; clipboard = só copia (fica no topo do histórico).",
             group="Ditado", choices=["paste", "type", "clipboard"]),
+    Setting("dictation_duck", 0.5, "Abaixar a música ao ditar (fator)",
+            "Multiplica o volume do som enquanto o ditado por toggle grava e restaura ao parar "
+            "(0.5 = cai pela metade; 1 = não mexe). Só no atalho de toggle, não no push-to-talk.",
+            group="Ditado", min=0.0, max=1.0, step=0.05),
     Setting("dictation_polish", False, "Revisar o ditado (Ollama)",
             "Passa o texto por um modelo local só pra pontuar e tirar hesitações. Precisa do Ollama.",
             group="Ditado"),

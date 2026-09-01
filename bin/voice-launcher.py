@@ -1134,10 +1134,12 @@ def dictate_requested() -> bool:
     return DICT.is_set()
 
 
-def run_dictation(stream, stt, args) -> None:
+def run_dictation(stream, stt, args, duck: bool = False) -> None:
     """Grava até o comando de parar, transcreve, revisa (opcional) e cola na janela ativa."""
     window = JarvisWindow(enabled=CFG["dictation_window"])
     window.open(mode="dictation", phase="dictating")
+    # Abaixa a música enquanto grava (só no toggle) e restaura assim que parar de falar.
+    ducked_from = jarvis_dictate.duck_volume(CFG["dictation_duck"]) if duck and CFG["dictation_duck"] < 1.0 else None
     jarvis_dictate.set_recording(True)
     session = stt.begin(on_partial=lambda t: window.update(partial=t))
     levels: deque = deque(maxlen=120)
@@ -1169,6 +1171,7 @@ def run_dictation(stream, stt, args) -> None:
                 last_ui = now
     finally:
         jarvis_dictate.set_recording(False)
+        jarvis_dictate.restore_volume(ducked_from)
 
     if outcome == "cancel":
         session.close()
@@ -1310,7 +1313,7 @@ def main() -> None:
                 cmd = jarvis_dictate.take_command()
                 if cmd in ("start", "toggle"):
                     try:
-                        run_dictation(stream, stt, args)
+                        run_dictation(stream, stt, args, duck=(cmd == "toggle"))
                     except Exception as e:
                         print(f"[dict erro: {type(e).__name__}: {e}]")
                         jarvis_dictate.set_recording(False)

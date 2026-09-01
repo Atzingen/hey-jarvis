@@ -67,6 +67,43 @@ def level_of(chunk_i16: np.ndarray) -> float:
     return max(0.0, min(1.0, rms * 12.0))
 
 
+# --- ducking do volume -----------------------------------------------------------
+
+def duck_volume(factor: float) -> float | None:
+    """Abaixa o volume do sink default multiplicando por `factor` (ex: 0.5 = metade).
+
+    Devolve o volume original pra restaurar depois, ou None se não mexeu
+    (mudo, volume zero, wpctl indisponível) — nesse caso não há o que restaurar.
+    """
+    try:
+        out = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
+                             capture_output=True, text=True, timeout=2).stdout
+        if "[MUTED]" in out:
+            return None
+        vol = float(out.split()[1])
+    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        return None
+    if vol <= 0.01:
+        return None
+    try:
+        subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol * factor:.2f}"],
+                       check=True, timeout=2, **_QUIET)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return vol
+
+
+def restore_volume(original: float | None) -> None:
+    """Volta o sink default pro volume salvo por duck_volume()."""
+    if original is None:
+        return
+    try:
+        subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{original:.2f}"],
+                       timeout=2, **_QUIET)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 # --- polish (Ollama) -------------------------------------------------------------
 
 POLISH_PROMPT = {
