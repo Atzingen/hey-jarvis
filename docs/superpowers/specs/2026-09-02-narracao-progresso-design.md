@@ -29,7 +29,7 @@ sem nada disso (templates).
 
 | Valor | Quem gera a frase | Fallback |
 |---|---|---|
-| `auto` (padrão) | `local` se o Ollama responde e há GPU CUDA (mesma detecção do STT); senão `openai` se há chave; senão `templates` | conforme o modo resolvido |
+| `auto` (padrão) | Detecção automática no início de cada conversa, nada fixo: `local` se o Ollama responde em `127.0.0.1:11434`, o modelo configurado está na lista de `/api/tags` e há GPU CUDA (mesma detecção do STT, `cuda_available()`); senão `openai` se há chave; senão `templates`. O resultado e o motivo vão pro log `[narr]` e pra `python bin/jarvis_narrate.py status` | conforme o modo resolvido |
 | `local` | Ollama (`narration_local_model`, padrão `gemma3:4b`) | auto-narração → templates |
 | `openai` | Responses API (`narration_openai_model`, padrão `gpt-5.4-nano`; chave `openai_api_key`, a mesma do STT, ou `OPENAI_API_KEY`) | auto-narração → templates |
 | `self` | O modelo principal: o system prompt pede uma linha curta de progresso antes de cada ação; o launcher fala os eventos `text` | templates |
@@ -42,10 +42,14 @@ espontaneamente (o Claude costuma escrever uma linha entre tool calls); a
 instrução explícita no system prompt só entra no modo `self`, porque muda o
 comportamento (e o custo) do modelo principal.
 
-Demais configs (grupo novo "Narração" no `jarvis config`):
+Todas as configs ficam no `jarvis config` (grupo novo "Narração"), com label,
+ajuda, choices e limites como as demais, e também via `jarvis config set`:
 
-- `narration_interval_quick` = 8 s, `narration_interval_deep` = 15 s.
-- `narration_local_model` = `gemma3:4b`, `narration_openai_model` = `gpt-5.4-nano`.
+- `narration` (principal): `auto | local | openai | self | templates | off`.
+- `narration_interval_quick` = 8 s, `narration_interval_deep` = 15 s (avançado, 3 a 60 s).
+- `narration_local_model` = `gemma3:4b` (avançado, texto livre).
+- `narration_openai_model` = `gpt-5.4-nano` (avançado, choices sugeridas, valor livre).
+- A chave é a mesma `openai_api_key` já existente (ou `OPENAI_API_KEY`).
 
 ## Arquitetura
 
@@ -173,7 +177,7 @@ Templates (idioma do usuário), escolhidos pelo evento mais recente:
 
 ## Testes
 
-`tests/test_narrate.py` (pytest, sem áudio nem rede):
+`tests/test_narrate.py` (`unittest` da stdlib, roda com qualquer Python do projeto: `python -m unittest tests.test_narrate`; sem áudio nem rede):
 
 - templates: cada linha da tabela, nos dois idiomas.
 - guardas: saída multi-linha, com `<<`, com markdown, vazia, > 140 → reprovada.
