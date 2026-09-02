@@ -3,6 +3,7 @@
 
     take_command()             lê e consome o comando pedido pelo `jarvis dictate ...`
     polish(text, lang, model)  revisão leve via Ollama local (pontuação/hesitações), com guardas
+    ollama_generate(...)       uma geração no Ollama local; ollama_models() lista os instalados
     paste_text(text, mode)     wl-copy (vai pro topo do histórico) + Ctrl+V / Ctrl+Shift+V na janela ativa
     level_of(chunk)            nível 0..1 de um chunk int16, pro medidor da janela
 
@@ -28,6 +29,7 @@ CMD_FILE = RUNTIME_DIR / "jarvis-dictate.cmd"       # start | stop | toggle | ca
 STATE_FILE = RUNTIME_DIR / "jarvis-dictating"       # existe enquanto grava
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags"
 _QUIET = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -147,13 +149,28 @@ def _split_chunks(text: str) -> list[str]:
     return chunks or [text]
 
 
-def _ollama(prompt: str, system: str, model: str, timeout: float) -> str | None:
+def ollama_generate(prompt: str, system: str, model: str, timeout: float,
+                    keep_alive: str = "60s", num_predict: int | None = None) -> str | None:
+    """Uma geração no Ollama local (sem streaming). None em qualquer falha."""
+    options: dict = {"temperature": 0.1}
+    if num_predict is not None:
+        options["num_predict"] = num_predict
     body = json.dumps({"model": model, "system": system, "prompt": prompt, "stream": False,
-                       "keep_alive": "60s", "options": {"temperature": 0.1}}).encode()
+                       "keep_alive": keep_alive, "options": options}).encode()
     req = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return (json.loads(r.read().decode()).get("response") or "").strip()
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+
+
+def ollama_models(timeout: float = 0.8) -> list[str] | None:
+    """Modelos instalados no Ollama local; None se ele não responde."""
+    try:
+        with urllib.request.urlopen(OLLAMA_TAGS_URL, timeout=timeout) as r:
+            data = json.loads(r.read().decode())
+        return [m.get("name", "") for m in data.get("models", [])]
     except (urllib.error.URLError, TimeoutError, ValueError, OSError):
         return None
 
@@ -171,7 +188,7 @@ def polish(text: str, lang: str = "pt-BR", model: str = "gemma3:4b", budget_s: f
         if remaining < 2.0:
             out.append(chunk)
             continue
-        fixed = _ollama(chunk, system, model, timeout=min(12.0, remaining))
+        fixed = ollama_generate(chunk, system, model, timeout=min(12.0, remaining))
         if not fixed or not (MIN_RATIO <= len(fixed) / max(1, len(chunk)) <= MAX_RATIO):
             fixed = chunk
         out.append(fixed.strip().strip('"'))
