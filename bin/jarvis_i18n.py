@@ -85,6 +85,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "ev_tool": "executando",
         "ev_thinking": "pensando",
         "ev_text": "dizendo",
+        "ev_narr": "narrando",
+        # narração de progresso (templates)
+        "narr_read": "lendo um arquivo",
+        "narr_search": "procurando no código",
+        "narr_web": "consultando a internet",
+        "narr_command": "rodando um comando",
+        "narr_thinking": "pensando",
+        "narr_dry": "ainda pensando nisso",
         # tela de configuração
         "cfg_title": "Jarvis — configuração",
         "cfg_modified": "(modificado)",
@@ -172,6 +180,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "ev_tool": "running",
         "ev_thinking": "thinking",
         "ev_text": "saying",
+        "ev_narr": "narrating",
+        # progress narration (templates)
+        "narr_read": "reading a file",
+        "narr_search": "searching the code",
+        "narr_web": "checking the internet",
+        "narr_command": "running a command",
+        "narr_thinking": "thinking",
+        "narr_dry": "still thinking about it",
         "cfg_title": "Jarvis — settings",
         "cfg_modified": "(modified)",
         "cfg_main": "Main",
@@ -423,4 +439,46 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "dictation_max_seconds": ("Maximum dictation (s)", "Recording cap for a dictation without the stop key."),
     "dev_dir": ("Projects folder", "Where \"open <project>\" looks."),
     "layout_script": ("Layout script", "Run as <script> <project>."),
+}
+
+
+# --- narração de progresso ------------------------------------------------
+
+# Prompt do narrador (Ollama local / OpenAI): recebe a pergunta e os últimos
+# eventos do CLI, devolve UMA frase curta dizendo o que está sendo feito.
+NARRATOR_PROMPT = {
+    "pt-BR": (
+        "Você é o narrador de progresso de um assistente de voz, não o assistente. "
+        "Receberá a pergunta do usuário e as últimas ações do assistente (comandos, "
+        "raciocínio). Devolva UMA frase curta, de no máximo 12 palavras, em primeira "
+        "pessoa, em português do Brasil, dizendo o que está sendo feito agora "
+        "(ex.: 'Estou contando os containers do Docker.'). Nunca responda à "
+        "pergunta, nunca invente resultados, sem markdown, sem aspas, sem "
+        "explicações: só a frase."
+    ),
+    "en": (
+        "You are the progress narrator of a voice assistant, not the assistant. "
+        "You receive the user's question and the assistant's latest actions "
+        "(commands, reasoning). Return ONE short sentence, at most 12 words, in "
+        "first person, in English, saying what is being done right now "
+        "(e.g. 'I am counting the Docker containers.'). Never answer the "
+        "question, never invent results, no markdown, no quotes, no "
+        "explanations: just the sentence."
+    ),
+}
+
+# Modo `self`: o modelo principal narra o próprio progresso (anexado ao prompt).
+SELF_NARRATION_NOTES = {
+    "pt-BR": (
+        "\n\nPROGRESSO. Antes de cada comando ou tool call, escreva UMA linha curta "
+        "em português, em primeira pessoa, dizendo o que vai fazer (ex.: 'Vou "
+        "listar os containers.'). Essas linhas são faladas em voz alta enquanto "
+        "o usuário espera; mantenha-as com no máximo 12 palavras e sem markdown."
+    ),
+    "en": (
+        "\n\nPROGRESS. Before each command or tool call, write ONE short line in "
+        "English, first person, saying what you are about to do (e.g. 'Let me "
+        "list the containers.'). These lines are spoken aloud while the user "
+        "waits; keep them under 12 words and without markdown."
+    ),
 }

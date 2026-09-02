@@ -161,6 +161,12 @@ SETTINGS: list[Setting] = [
             "Modelo do Ollama usado na revisão do ditado.",
             group="Ditado"),
 
+    Setting("narration", "auto", "Narrar o progresso enquanto pensa",
+            "A cada N segundos o Jarvis fala o que o modelo está fazendo. auto = detecta "
+            "(Ollama+GPU → local; senão chave OpenAI → openai; senão templates); local = Ollama; "
+            "openai = API; self = o próprio modelo narra; templates = frases fixas; off = mudo.",
+            group="Narração", choices=["auto", "local", "openai", "self", "templates", "off"]),
+
     # --- avançado ---------------------------------------------------
     Setting("whisper_model", "auto", "Modelo Whisper (local)",
             "auto = large-v3-turbo em GPU, small em CPU. Maior = mais preciso e mais lento.",
@@ -195,6 +201,19 @@ SETTINGS: list[Setting] = [
     Setting("handoff_seconds_deep", 180, "Prazo do pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Conversa", min=30, max=1800, step=30),
+    Setting("narration_interval_quick", 8, "Narração — intervalo rápida (s)",
+            "Segundos de silêncio antes de narrar, na pergunta rápida.",
+            section="advanced", group="Narração", min=3, max=60, step=1),
+    Setting("narration_interval_deep", 15, "Narração — intervalo pense bem (s)",
+            "Idem, para o pense bem.",
+            section="advanced", group="Narração", min=3, max=60, step=1),
+    Setting("narration_local_model", "gemma3:4b", "Narração — modelo local (Ollama)",
+            "Modelo do Ollama que gera a frase de progresso.",
+            section="advanced", group="Narração"),
+    Setting("narration_openai_model", "gpt-5.4-nano", "Narração — modelo OpenAI",
+            "Modelo da Responses API usado quando a narração roda pela OpenAI (chave openai_api_key).",
+            section="advanced", group="Narração",
+            choices=["gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.6-luna"], free_choices=True),
     Setting("system_prompt", "", "Prompt de sistema",
             "Instruções de estilo enviadas ao modelo (edite no $EDITOR). Vazio = padrão do idioma.",
             section="advanced", group="Conversa", multiline=True),
