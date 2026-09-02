@@ -42,6 +42,24 @@ STRINGS: dict[str, dict[str, str]] = {
         "project_not_found": "Não achei o projeto {name}.",
         "app_not_found": "Não encontrei o aplicativo {name}.",
         "test_answer": "[test] resposta fake",
+        # autorização (system_access = ask)
+        "consent_needed": "Preciso da sua autorização, senhor. Veja a tela.",
+        "consent_title": "Jarvis pede autorização",
+        "consent_question": "você pediu:",
+        "consent_tool": "o modelo quer usar {tool}:",
+        "consent_command": "o modelo quer executar:",
+        "consent_cwd": "diretório:",
+        "consent_key_allow": "permitir",
+        "consent_key_allow_all": "permitir tudo nesta pergunta",
+        "consent_key_deny": "negar",
+        "consent_timeout": "sem resposta em {s}s → negado · Esc/q nega",
+        "consent_allow": "permitido",
+        "consent_allow_all": "permitido — tudo até o fim desta pergunta",
+        "consent_deny": "negado",
+        "consent_denied_spoken": "Sem autorização, senhor.",
+        "broker_ran": "executado com autorização: {cmd}",
+        "broker_denied": "negado pelo usuário: {cmd}",
+        "ph_consent": ("AUTORIZAÇÃO", "o modelo pede pra executar algo — decida na janela que abriu (y/a/n)"),
         # janela da conversa
         "you": "você",
         "empty": "(a conversa aparece aqui)",
@@ -114,6 +132,23 @@ STRINGS: dict[str, dict[str, str]] = {
         "project_not_found": "I couldn't find the project {name}.",
         "app_not_found": "I couldn't find the application {name}.",
         "test_answer": "[test] fake answer",
+        "consent_needed": "I need your authorization, sir. Please check the screen.",
+        "consent_title": "Jarvis asks for authorization",
+        "consent_question": "you asked:",
+        "consent_tool": "the model wants to use {tool}:",
+        "consent_command": "the model wants to run:",
+        "consent_cwd": "directory:",
+        "consent_key_allow": "allow",
+        "consent_key_allow_all": "allow everything for this question",
+        "consent_key_deny": "deny",
+        "consent_timeout": "no answer in {s}s → denied · Esc/q denies",
+        "consent_allow": "allowed",
+        "consent_allow_all": "allowed — everything until this question ends",
+        "consent_deny": "denied",
+        "consent_denied_spoken": "Not authorized, sir.",
+        "broker_ran": "ran with authorization: {cmd}",
+        "broker_denied": "denied by the user: {cmd}",
+        "ph_consent": ("AUTHORIZATION", "the model asks to run something — decide in the window that opened (y/a/n)"),
         "you": "you",
         "empty": "(the conversation shows up here)",
         "ph_listening": ("LISTENING", "go ahead, sir · ask to end whenever you like · q closes"),
@@ -286,6 +321,55 @@ ENVIRONMENT_NOTES = {
 }
 
 
+# Como o modelo pode tocar na máquina, por system_access × provedor. Vai depois
+# das AÇÕES (e das notas de AMBIENTE, quando há acesso) e prevalece sobre a
+# frase "tem acesso ao computador" do prompt de sistema.
+ACCESS_NOTES = {
+    "pt-BR": {
+        "ask-claude": (
+            "\n\nAUTORIZAÇÃO. Comandos só de leitura rodam direto. Qualquer coisa que altere "
+            "a máquina (escrever arquivo, instalar, abrir app, rede, docker que mude estado) "
+            "abre uma janela pro usuário autorizar; pode demorar alguns segundos. Se for "
+            "negado, não tente de outro jeito: diga em uma frase que não foi autorizado."
+        ),
+        "ask-codex": (
+            "\n\nAUTORIZAÇÃO. Você roda num sandbox só de leitura (sem escrita, sem rede, sem "
+            "socket do Docker). Para qualquer comando além disso, NÃO tente rodar: responda "
+            "com o marcador <<RODAR: comando shell exato>> (uma linha própria, no fim; até "
+            "3 por resposta) e uma frase curta dizendo o que vai fazer. O sistema mostra o "
+            "comando ao usuário, executa só se ele autorizar e te devolve a saída numa nova "
+            "rodada; então responda com o resultado. Se vier negado, não insista."
+        ),
+        "off": (
+            "\n\nSEM ACESSO. Neste modo você NÃO tem acesso à máquina do usuário: responda "
+            "só de conhecimento. Se a pergunta exigir olhar a máquina, diga em uma frase que "
+            "o acesso ao computador está desligado nas configurações do Jarvis."
+        ),
+    },
+    "en": {
+        "ask-claude": (
+            "\n\nAUTHORIZATION. Read-only commands run directly. Anything that changes the "
+            "machine (writing a file, installing, opening an app, network, docker that mutates "
+            "state) opens a window for the user to authorize; it may take a few seconds. If it "
+            "is denied, do not try another way: say in one sentence that it was not authorized."
+        ),
+        "ask-codex": (
+            "\n\nAUTHORIZATION. You run in a read-only sandbox (no writes, no network, no Docker "
+            "socket). For any command beyond that, do NOT try to run it: answer with the marker "
+            "<<RODAR: exact shell command>> (own line, at the end; up to 3 per answer) plus one "
+            "short sentence saying what you are about to do. The system shows the command to the "
+            "user, runs it only if authorized and hands you the output in a new round; then "
+            "answer with the result. If it comes back denied, do not insist."
+        ),
+        "off": (
+            "\n\nNO ACCESS. In this mode you do NOT have access to the user's machine: answer "
+            "from knowledge only. If the question requires looking at the machine, say in one "
+            "sentence that computer access is turned off in the Jarvis settings."
+        ),
+    },
+}
+
+
 # --- rótulos da tela de configuração em inglês (os em pt-BR ficam no schema) --
 
 SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
@@ -302,7 +386,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "end_silence_seconds": ("Silence that ends your turn (s)", "Continuous pause that marks the end of what you said. Raise it if it cuts you off."),
     "followup_seconds": ("Follow-up window (s)", "Time listening without the wake word after each answer."),
     "quick_provider": ("Fast-question provider", "codex = OpenAI Codex CLI (ChatGPT login); claude = Claude Code CLI."),
-    "system_access": ("Computer access", "Lets the model run commands on the machine (Docker, files, processes) without sandbox or approvals. Off = knowledge-only answers."),
+    "system_access": ("Computer access", "ask = the model runs sandboxed and every action that changes something (command, file, network) opens a window showing the exact command for you to authorize; full = no sandbox, no confirmation (--dangerously-*), only if you trust everything said near the mic; off = knowledge-only answers."),
     "codex_model": ("Codex model", "Empty uses the Codex CLI default. Only with the codex provider."),
     "codex_effort": ("Codex effort", "model_reasoning_effort for fast questions."),
     "codex_fast": ("Codex fast mode", "service_tier=fast: priority processing, faster answers (uses more of the plan). Off = default tier."),

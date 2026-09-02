@@ -37,7 +37,7 @@ Item {
     id: probeProc
     command: ["bash", "-c",
       "command -v jarvis >/dev/null || { echo missing; exit 0; }; echo installed; " +
-      "for k in language stt_provider quick_provider deep_model; do printf '%s=%s\\n' \"$k\" \"$(jarvis config get \"$k\" 2>/dev/null)\"; done"]
+      "for k in language stt_provider quick_provider deep_model system_access; do printf '%s=%s\\n' \"$k\" \"$(jarvis config get \"$k\" 2>/dev/null)\"; done"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

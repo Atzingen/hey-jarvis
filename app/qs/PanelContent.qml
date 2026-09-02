@@ -14,7 +14,7 @@ Item {
   property bool dictating: false
   property bool installed: true
   property string lang: "en"
-  property var config: ({})             // language, stt_provider, quick_provider, deep_model
+  property var config: ({})             // language, stt_provider, quick_provider, deep_model, system_access
   property string pluginDir: ""         // onde está o install.sh (só usado pelo botão Instalar)
   property string fontFamily: Style.font.family
 
@@ -51,7 +51,7 @@ Item {
     keyWake: "liga/desliga só a escuta “hey jarvis”",
     statusDictating: "Gravando ditado…",
     notInstalled: "Não instalado — clique em Instalar para configurar o serviço de voz",
-    chipLang: "IDIOMA", chipStt: "STT", chipQuick: "RÁPIDO", chipDeep: "PENSE BEM",
+    chipLang: "IDIOMA", chipStt: "STT", chipQuick: "RÁPIDO", chipDeep: "PENSE BEM", chipAccess: "ACESSO",
     voiceTitle: "CONVERSA POR VOZ",
     intro: "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar e abre a janela da conversa. Não há palavras-chave: o modelo decide.",
     rows: [
@@ -88,7 +88,7 @@ Item {
     keyWake: "toggles just the wake-word listening",
     statusDictating: "Recording dictation…",
     notInstalled: "Not installed — click Install to set up the voice service",
-    chipLang: "LANGUAGE", chipStt: "STT", chipQuick: "QUICK", chipDeep: "THINK HARD",
+    chipLang: "LANGUAGE", chipStt: "STT", chipQuick: "QUICK", chipDeep: "THINK HARD", chipAccess: "ACCESS",
     voiceTitle: "VOICE CONVERSATION",
     intro: "Say “hey jarvis” and talk after the greeting — it listens until you stop and opens the conversation window. No keywords: the model decides.",
     rows: [
@@ -513,6 +513,9 @@ Item {
       Chip { label: panel.str.chipStt;   value: panel.config.stt_provider || "";    tint: panel.dictColor }
       Chip { label: panel.str.chipQuick; value: panel.config.quick_provider || "";  tint: panel.voiceColor }
       Chip { label: panel.str.chipDeep;  value: panel.config.deep_model || "";      tint: panel.keysColor }
+      // machine access mode: "full" is the only one without a consent step, so it stands out
+      Chip { label: panel.str.chipAccess; value: panel.config.system_access || "";
+             tint: panel.config.system_access === "full" ? Color.urgent : panel.fg }
     }
 
     // ---- Voice conversation guide.

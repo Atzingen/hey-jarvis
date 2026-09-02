@@ -48,6 +48,7 @@ from faster_whisper.vad import get_vad_model
 from openwakeword.model import Model as WakeModel
 
 import jarvis_config  # mesmo diretório (~/.local/bin)
+import jarvis_consent
 import jarvis_dictate
 import jarvis_events
 import jarvis_i18n
@@ -105,6 +106,18 @@ STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
 QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 WAKE_OFF_FILE = _RUNTIME_DIR / "jarvis-wake-off"  # existe = sem escuta da wake word (só atalhos)
 VIEWER_SCRIPT = Path(__file__).resolve().parent / "jarvis-window.py"
+
+# Acesso do modelo à máquina: "ask" (default) roda o CLI sem bypass e cada ação
+# que altera algo passa por jarvis_consent (janela com o comando exato);
+# "full" = --dangerously-* como antes; "off" = sem tools / sandbox só leitura.
+SYSTEM_ACCESS = CFG["system_access"]
+CONSENT_TIMEOUT = 90  # s até negar sozinho (CLAUDE_CODE_APPROVAL_TIMEOUT_MS fica acima disso)
+CONSENT_MCP = Path(__file__).resolve().parent / "jarvis_consent_mcp.py"
+# cwd do CLI em "ask": pasta vazia própria, pra leitura de arquivos fora dela
+# também passar pela autorização (o Claude Code lê livre dentro do cwd).
+ASK_WORKDIR = Path.home() / ".local/share/jarvis/workdir"
+BROKER_MAX_ROUNDS = 2       # rodadas <<RODAR>> → saída → nova resposta, por pergunta
+BROKER_CMD_TIMEOUT = 60     # s por comando autorizado
 
 # Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá).
 HANDOFF_SECONDS_QUICK = CFG["handoff_seconds_quick"]
@@ -175,13 +188,27 @@ def launch_detached(cmd: list[str]) -> None:
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def scoped(cmd: list[str]) -> list[str]:
+def scoped(cmd: list[str], unit: str | None = None) -> list[str]:
     """Prefixo pra rodar `cmd` num scope transiente próprio (fora do cgroup do
     serviço) mantendo o pid real como filho direto — systemd-run --scope faz
-    exec no comando, então proc.pid/kill continuam válidos."""
+    exec no comando, então proc.pid/kill continuam válidos. Com `unit`, o scope
+    tem nome fixo e `stop_scope(unit)` mata tudo que ele contém."""
     if shutil.which("systemd-run"):
-        return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--"] + cmd
+        extra = [f"--unit={unit}"] if unit else []
+        return ["systemd-run", "--user", "--scope", "--quiet", "--collect", *extra, "--"] + cmd
     return cmd
+
+
+def stop_scope(unit: str | None, proc: subprocess.Popen) -> None:
+    """Cancela um trabalho do modelo inteiro: o CLI, o que ele lançou (bash, o
+    servidor de consentimento) e qualquer autorização pendente."""
+    jarvis_consent.cancel_all()
+    if unit and shutil.which("systemctl"):
+        subprocess.run(["systemctl", "--user", "stop", f"{unit}.scope"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+    if proc.poll() is None:
+        proc.kill()
+    proc.wait()
 
 
 def tui_launch_cmd(cmd: list[str]) -> list[str]:
@@ -292,16 +319,24 @@ def parse_command(text: str):
 
 # --- protocolo de ações (o modelo decide, o launcher executa) ---------------
 
-ACTION_RE = re.compile(r"<<\s*(FIM|DORMIR|ABRIR_PROJETO|ABRIR_APP)\s*(?::\s*([^>]*?))?\s*>>", re.I)
+# argumento até o primeiro ">>" (um comando de <<RODAR>> pode conter ">" de redirecionamento)
+ACTION_RE = re.compile(r"<<\s*(FIM|DORMIR|ABRIR_PROJETO|ABRIR_APP|RODAR)\s*(?::\s*(.*?))?\s*>>", re.I)
 
 
-def action_protocol(system_access: bool) -> str:
-    """Trecho anexado ao prompt de sistema com as ações que o launcher executa
-    e o resumo do ambiente pra ações livres (só com acesso ao sistema)."""
+def action_protocol(access: str, provider: str) -> str:
+    """Trecho anexado ao prompt de sistema: as ações que o launcher executa, o
+    resumo do ambiente (quando o modelo pode agir na máquina) e como funciona a
+    autorização no modo `ask` — que difere por provedor: o Claude Code pede
+    permissão por tool (servidor MCP); o Codex fica em sandbox e propõe
+    comandos com <<RODAR>>, que o launcher executa só com consentimento."""
     projects = ", ".join(list_projects()) or "(none)"
     text = jarvis_i18n.ACTIONS_PROTOCOL[LANG].format(projects=projects)
-    if system_access:
+    if access in ("full", "ask"):
         text += jarvis_i18n.ENVIRONMENT_NOTES[LANG]
+    if access == "ask":
+        text += jarvis_i18n.ACCESS_NOTES[LANG][f"ask-{provider}"]
+    elif access == "off":
+        text += jarvis_i18n.ACCESS_NOTES[LANG]["off"]
     return text
 
 
@@ -416,15 +451,26 @@ def model_label(deep: bool) -> str:
     return f"claude {CFG['claude_quick_model']}/{CFG['claude_quick_effort']}"
 
 
-def _build_ask_call(question: str, deep: bool, ans: Path) -> tuple[list[str], str]:
-    """Monta o comando do CLI. Retorna (cmd, provider).
+def _build_ask_call(question: str, deep: bool, ans: Path,
+                    spoken_question: str = "") -> tuple[list[str], str, dict]:
+    """Monta o comando do CLI. Retorna (cmd, provider, kwargs extras do Popen).
 
     Os dois CLIs rodam em modo JSON por linha no stdout (eventos: comandos
     executados, raciocínio, mensagens) — é isso que alimenta os "pensamentos"
-    na janela. codex ainda escreve a resposta final em `ans` via -o."""
-    access = CFG["system_access"]
-    system = CLAUDE_SYSTEM + action_protocol(access)
+    na janela. codex ainda escreve a resposta final em `ans` via -o.
+
+    system_access:
+      full — Claude --dangerously-skip-permissions / Codex --dangerously-bypass-…
+      ask  — Claude em --permission-mode default (sobrescreve o defaultMode das
+             settings do usuário) com --permission-prompt-tool apontando pro
+             servidor MCP de consentimento; Codex em sandbox read-only, e propõe
+             comandos por <<RODAR>> (broker com consentimento no launcher).
+      off  — Claude sem tools; Codex em sandbox read-only sem protocolo RODAR.
+    """
+    access = SYSTEM_ACCESS
+    popen: dict = {}
     if deep or QUICK_PROVIDER == "claude":
+        system = CLAUDE_SYSTEM + action_protocol(access, "claude")
         model = CFG["deep_model"] if deep else CFG["claude_quick_model"]
         effort = CFG["deep_effort"] if deep else CFG["claude_quick_effort"]
         cmd = ["claude", "-p",
@@ -432,13 +478,29 @@ def _build_ask_call(question: str, deep: bool, ans: Path) -> tuple[list[str], st
                "--effort", effort,
                "--output-format", "stream-json", "--verbose",
                "--append-system-prompt", system]
-        if access:
+        if access == "full":
             cmd += ["--dangerously-skip-permissions"]   # roda comandos sem confirmar
+        elif access == "ask":
+            mcp = {"mcpServers": {"jarvis": {"type": "stdio", "command": "python3",
+                                             "args": [str(CONSENT_MCP)]}}}
+            cmd += ["--permission-mode", "default",
+                    "--permission-prompt-tool", "mcp__jarvis__approve",
+                    "--mcp-config", json.dumps(mcp),
+                    "--strict-mcp-config"]
+            ASK_WORKDIR.mkdir(parents=True, exist_ok=True)
+            popen["cwd"] = str(ASK_WORKDIR)
+            popen["env"] = {**os.environ,
+                            "CLAUDE_CODE_APPROVAL_TIMEOUT_MS": str((CONSENT_TIMEOUT + 30) * 1000),
+                            "JARVIS_LANG": LANG,
+                            "JARVIS_QUESTION": spoken_question,
+                            "JARVIS_CWD": str(ASK_WORKDIR),
+                            "JARVIS_CONSENT_TIMEOUT": str(CONSENT_TIMEOUT)}
         else:
             cmd += ["--tools", ""]                        # sem tool use, resposta pura
         cmd += [question]
-        return cmd, "claude"
+        return cmd, "claude", popen
     # codex escreve a resposta via -o (stdout traz eventos do agente)
+    system = CLAUDE_SYSTEM + action_protocol(access, "codex")
     prompt = f"{system}\n\n{'User said' if LANG == 'en' else 'Fala do usuário'}: {question}"
     cmd = ["codex", "exec",
            "--skip-git-repo-check",
@@ -446,14 +508,16 @@ def _build_ask_call(question: str, deep: bool, ans: Path) -> tuple[list[str], st
            "--json",
            "-c", f"model_reasoning_effort={CFG['codex_effort']}",
            "-c", f"service_tier={'fast' if CFG['codex_fast'] else 'default'}"]
-    if access:
+    if access == "full":
         cmd += ["--dangerously-bypass-approvals-and-sandbox"]
     else:
-        cmd += ["--sandbox", "read-only"]
+        # sandbox do próprio Codex (sem escrita, rede ou socket do Docker);
+        # never = o que o sandbox bloqueia falha e volta pro modelo, sem prompt
+        cmd += ["--sandbox", "read-only", "-c", "approval_policy=never"]
     if CFG["codex_model"]:
         cmd += ["-m", CFG["codex_model"]]
     cmd += ["-o", str(ans), prompt]
-    return cmd, "codex"
+    return cmd, "codex", popen
 
 
 def run_action(kind: str, arg: str, args, window) -> tuple[str, bool]:
@@ -498,15 +562,16 @@ def run_action(kind: str, arg: str, args, window) -> tuple[str, bool]:
 
 
 def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
-              on_status=None):
+              on_status=None, spoken_question: str = ""):
     """Roda o CLI do modelo; eventos em streaming vão pra `on_status(texto)`.
 
     Retorna (resposta, None) quando conclui dentro do prazo;
     ("", handoff) quando estourou HANDOFF_SECONDS_* — o processo SEGUE
     rodando e handoff tem proc/answer_file/events_file/provider/label;
-    ("", None) quando cancelado.
+    ("", None) quando cancelado (o scope inteiro do CLI é parado).
     """
     label = model_label(deep)
+    unit = f"jarvis-model-{os.getpid()}-{int(time.time() * 1000) % 10**8}"
     with tempfile.NamedTemporaryFile("w", prefix="jarvis-ans-", suffix=".txt", delete=False) as f:
         ans = Path(f.name)
     with tempfile.NamedTemporaryFile("w", prefix="jarvis-ev-", suffix=".jsonl", delete=False) as f:
@@ -514,7 +579,7 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
     with tempfile.NamedTemporaryFile("w", prefix="jarvis-err-", suffix=".txt", delete=False) as f:
         err = Path(f.name)
 
-    cmd, provider = _build_ask_call(question, deep, ans)
+    cmd, provider, popen_kwargs = _build_ask_call(question, deep, ans, spoken_question)
 
     def cleanup():
         for p in (ans, ev, err):
@@ -526,9 +591,11 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
     try:
         out_f = open(ev, "w")
         err_f = open(err, "w")
-        # scope próprio: um restart do Jarvis não mata um trabalho longo em voo.
+        # scope próprio (nomeado): um restart do Jarvis não mata um trabalho longo
+        # em voo, e cancelar para o scope inteiro (CLI + filhos).
         # stdin fechado: o codex fica esperando entrada se herdar um stdin aberto.
-        proc = subprocess.Popen(scoped(cmd), stdin=subprocess.DEVNULL, stdout=out_f, stderr=err_f)
+        proc = subprocess.Popen(scoped(cmd, unit), stdin=subprocess.DEVNULL,
+                                stdout=out_f, stderr=err_f, **popen_kwargs)
         out_f.close()
         err_f.close()
     except Exception as e:
@@ -576,8 +643,7 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
                     return (out, None)
                 return (f"Sem resposta. {emsg}" if emsg else "Sem resposta.", None)
             if cancel is not None and cancel.is_set():
-                proc.kill()
-                proc.wait()
+                stop_scope(unit, proc)
                 cleanup()
                 return ("", None)
             if time.monotonic() > deadline:
@@ -586,6 +652,70 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
             time.sleep(0.2)
     finally:
         stop_tail.set()
+
+
+def run_brokered(cmd: str, spoken_question: str, window, cancel: threading.Event,
+                 preapproved: bool) -> tuple[str, bool]:
+    """Broker do modo `ask`: mostra o comando exato ao usuário e só executa se ele
+    autorizar. Retorna (relato pro modelo, allow_all escolhido)."""
+    decision = "allow" if preapproved else jarvis_consent.ask(
+        jarvis_consent.new_request("command", "bash", {"command": cmd}, cmd,
+                                   question=spoken_question, lang=LANG),
+        timeout=CONSENT_TIMEOUT, should_cancel=cancel.is_set)
+    if not decision.startswith("allow"):
+        window.add_exchange(T(LANG, "action"), T(LANG, "broker_denied", cmd=cmd), T(LANG, "cmd_label"))
+        print(f"[ask]  RODAR negado: {cmd}")
+        return (f"$ {cmd}\n→ {'DENIED by the user' if LANG == 'en' else 'NEGADO pelo usuário'}", False)
+    window.add_exchange(T(LANG, "action"), T(LANG, "broker_ran", cmd=cmd), T(LANG, "cmd_label"))
+    print(f"[ask]  RODAR autorizado: {cmd}")
+    try:
+        r = subprocess.run(scoped(["bash", "-c", cmd]), stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=BROKER_CMD_TIMEOUT,
+                           cwd=str(Path.home()))
+        out = (r.stdout + ("\n" + r.stderr if r.stderr else "")).strip()
+        if len(out) > 6000:
+            out = out[:6000] + "\n…"
+        return (f"$ {cmd}\n→ exit {r.returncode}\n{out}", decision == "allow_all")
+    except subprocess.TimeoutExpired:
+        return (f"$ {cmd}\n→ timeout ({BROKER_CMD_TIMEOUT}s)", decision == "allow_all")
+    except OSError as e:
+        return (f"$ {cmd}\n→ {e}", decision == "allow_all")
+
+
+def ask_with_broker(question_ctx: str, deep: bool, cancel: threading.Event, on_status,
+                    spoken_question: str, window):
+    """ask_model + rodadas do broker <<RODAR>>: cada comando proposto passa pelo
+    consentimento, a saída volta pro modelo e ele responde de novo. Mesmo
+    contrato de retorno do ask_model."""
+    resposta, handoff = ask_model(question_ctx, deep, cancel, on_status, spoken_question)
+    allow_all = False
+    for _ in range(BROKER_MAX_ROUNDS):
+        if handoff is not None or cancel.is_set():
+            break
+        clean, actions = parse_actions(resposta)
+        cmds = [arg for kind, arg in actions if kind == "RODAR" and arg]
+        if not cmds:
+            break
+        reports = []
+        for cmd in cmds[:3]:
+            if cancel.is_set():
+                break
+            report, chose_all = run_brokered(cmd, spoken_question, window, cancel, allow_all)
+            allow_all = allow_all or chose_all
+            reports.append(report)
+        if cancel.is_set():
+            break
+        window.update(phase="thinking")
+        followup = ("Output of the commands you proposed (run only with the user's authorization):\n"
+                    if LANG == "en" else
+                    "Saída dos comandos que você propôs (executados só com autorização do usuário):\n")
+        followup += "\n\n".join(reports)
+        followup += ("\n\nNow answer the user with the result (no new <<RODAR>> unless essential)."
+                     if LANG == "en" else
+                     "\n\nAgora responda ao usuário com o resultado (sem novo <<RODAR>>, salvo se essencial).")
+        resposta, handoff = ask_model(f"{question_ctx}\n\n{clean}\n\n{followup}", deep, cancel,
+                                      on_status, spoken_question)
+    return resposta, handoff
 
 
 def open_handoff_terminal(handoff: dict) -> None:
@@ -1013,7 +1143,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 thoughts.append(status)
                 window.update(thoughts=thoughts[-4:])
 
-            fut = claude_executor.submit(ask_model, question_ctx, deep, cancel, on_status)
+            fut = claude_executor.submit(ask_with_broker, question_ctx, deep, cancel, on_status,
+                                         question, window)
 
             # a pergunta entra na janela já na transcrição; a resposta preenche depois
             window.add_exchange(question, "…", label)
@@ -1033,6 +1164,7 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 chime(880, 1320, ms=100, vol=0.15)
                 interrupted = listener.fired
 
+            consent_seen: str | None = None  # id do pedido de autorização já anunciado
             while not interrupted and not fut.done():
                 if listener.fired:
                     interrupted = True
@@ -1041,9 +1173,21 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                     if quit_requested():
                         consume_quit()
                     cancel.set()
+                    jarvis_consent.cancel_all()
                     listener.stop()
                     print("[conv] encerrada durante a espera (tecla na janela ou ditado)")
                     return
+                # modo ask: o modelo pede autorização → avisa por voz e marca a fase
+                pend = jarvis_consent.pending()
+                if pend is not None and pend.get("id") != consent_seen:
+                    consent_seen = pend.get("id")
+                    print(f"[ask]  autorização pendente: {str(pend.get('summary', ''))[:120]}")
+                    window.update(phase="consent", detail=label)
+                    if tts(T(LANG, "consent_needed"), listener):
+                        interrupted = True
+                        break
+                elif pend is None and consent_seen is not None and window.state.get("phase") == "consent":
+                    window.update(phase="thinking", detail=label)
                 time.sleep(0.1)
 
             resposta = ""
@@ -1094,7 +1238,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             listener.stop()
 
             if interrupted:
-                cancel.set()  # mata o claude/codex em voo (não afeta handoff já entregue)
+                cancel.set()  # para o scope do claude/codex em voo (não afeta handoff já entregue)
+                jarvis_consent.cancel_all()
                 if not resposta and handoff is None:
                     window.set_last_answer(T(LANG, "interrupted"))
                 if listener.speech_chunks is not None:

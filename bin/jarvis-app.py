@@ -36,7 +36,7 @@ STRINGS = {
         "status_manual": "Ativo — só atalhos (“hey jarvis” desligado, mic fechado)",
         "not_installed": "Serviço não instalado — rode install.sh",
         "chips": [("IDIOMA", "language"), ("STT", "stt_provider"),
-                  ("RÁPIDO", "quick_provider"), ("PENSE BEM", "deep_model")],
+                  ("RÁPIDO", "quick_provider"), ("PENSE BEM", "deep_model"), ("ACESSO", "system_access")],
         "voice_title": "CONVERSA POR VOZ",
         "voice_meta": "“hey jarvis”",
         "intro": "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar "
@@ -81,7 +81,7 @@ STRINGS = {
         "status_manual": "Active — hotkeys only (“hey jarvis” off, mic closed)",
         "not_installed": "Voice service not installed — run install.sh",
         "chips": [("LANGUAGE", "language"), ("STT", "stt_provider"),
-                  ("QUICK", "quick_provider"), ("THINK HARD", "deep_model")],
+                  ("QUICK", "quick_provider"), ("THINK HARD", "deep_model"), ("ACCESS", "system_access")],
         "voice_title": "VOICE CONVERSATION",
         "voice_meta": "“hey jarvis”",
         "intro": "Say “hey jarvis” and talk after the greeting — it listens until you stop "
@@ -343,7 +343,7 @@ class App:
         # chips
         y = 3
         pos = x0
-        chip_tints = [0, self.C_DICT, self.C_ACCENT, self.C_KEYS]
+        chip_tints = [0, self.C_DICT, self.C_ACCENT, self.C_KEYS, 0]
         for (label, key), tint in zip(self.t["chips"], chip_tints):
             value = str(self.cfg.get(key, ""))
             pos = self.put(y, pos, f" {label} ", curses.color_pair(self.C_DIM))

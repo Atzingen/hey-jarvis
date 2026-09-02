@@ -25,7 +25,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 JARVIS = str(Path(__file__).resolve().parent / "jarvis")
 DICTATING_FILE = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "jarvis-dictating"
-CONFIG_KEYS = ("language", "stt_provider", "quick_provider", "deep_model")
+CONFIG_KEYS = ("language", "stt_provider", "quick_provider", "deep_model", "system_access")
 
 
 def app_dir(argv: list[str]) -> Path:

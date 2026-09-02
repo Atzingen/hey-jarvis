@@ -23,7 +23,8 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
-         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis-window.py jarvis-app.py jarvis-panel.py dev-layout)
+         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis-window.py jarvis-app.py jarvis-panel.py
+         jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py dev-layout)
 
 if [[ ${1:-} == "--uninstall" ]]; then
   say "Stopping and disabling voice-launcher.service"
@@ -32,7 +33,8 @@ if [[ ${1:-} == "--uninstall" ]]; then
   say "Removing scripts from $BIN_DIR"
   for f in "${SCRIPTS[@]}"; do rm -f "$BIN_DIR/$f"; done
   rm -f "$HOME/.local/share/applications/jarvis.desktop"
-  rm -rf "$HOME/.local/share/jarvis/app"
+  rm -rf "$HOME/.local/share/jarvis/app" "$HOME/.local/share/jarvis/workdir"
+  rm -rf "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/jarvis-consent"
   [[ -d $VENV ]] && { say "Removing $VENV"; rm -rf "$VENV"; }
   rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/jarvis-state.json "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/jarvis-quit /tmp/jarvis-state.json /tmp/jarvis-quit
   if [[ ${2:-} == "--purge" ]]; then

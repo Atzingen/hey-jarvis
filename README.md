@@ -75,7 +75,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 | **Conversation, not commands** | After every answer a 20 s follow-up window opens; just keep talking. Previous exchanges go to the model as context. |
 | **Barge-in** | Talk over Jarvis while it thinks or speaks: it stops, listens, and chains what you said. An energy gate keeps it from interrupting itself through the speakers. |
 | **The model decides** | No keyword parsing. The model receives an *action protocol* (open project, open app, sleep, end conversation) and emits markers the launcher executes; anything else about the machine it does itself. |
-| **Machine access** | Codex runs without sandbox / Claude with permissions skipped, so answers about your system come from real commands. Toggleable. |
+| **Machine access, with your consent** | Answers about your system come from real commands — but by default (`system_access = "ask"`) the model runs sandboxed and every action that changes something opens a window showing the **exact command** for you to allow or deny. `full` (no sandbox, no prompts) and `off` (knowledge-only) are opt-in. |
 | **Two model tiers** | Fast path: Codex (low effort, fast tier). Say **"think hard …"** (*"pense bem …"*) for Claude Fable / high effort. |
 | **Live window** | A floating window shows the phase (listening / recording / thinking / answering / your turn, with countdown), the conversation with speaker labels, live speech-to-text, and what the model is doing while you wait. |
 | **Long tasks don't die** | If a model call exceeds its deadline it is handed to a separate scratch terminal that keeps running and shows the answer. |
@@ -234,7 +234,7 @@ Everything is configurable, three ways:
 | `end_silence_seconds` | `1.2` | continuous silence that ends your turn — raise it if it cuts you off |
 | `followup_seconds` | `20.0` | listening window after each answer, no wake word needed |
 | `quick_provider` | `codex` | fast path: `codex` (Codex CLI) or `claude` (Claude Code CLI) |
-| `system_access` | `true` | let the model run commands on the machine (no sandbox / no approvals); `false` = knowledge-only |
+| `system_access` | `ask` | `ask` = sandboxed, each consequential action needs your OK in a window showing the exact command; `full` = no sandbox / no approvals (`--dangerously-*`); `off` = knowledge-only. See [Models and machine access](#models-and-machine-access) |
 | `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default) and reasoning effort |
 | `codex_fast` | `true` | Codex fast mode (`service_tier=fast`) |
 | `claude_quick_model` / `claude_quick_effort` | `sonnet` / `low` | fast path when `quick_provider = "claude"` |
@@ -316,7 +316,21 @@ The API session is opened the moment Jarvis starts listening, so the handshake o
 
 - **Fast path** — `quick_provider`: Codex CLI (`codex exec --json --ephemeral`, effort `codex_effort`, `service_tier=fast` when `codex_fast`) or Claude Code (`claude -p --output-format stream-json`).
 - **"Think hard"** — say *"think hard …"* / *"pense bem …"*: always Claude Code with `deep_model` / `deep_effort`.
-- **`system_access`** (default on) — Codex runs with `--dangerously-bypass-approvals-and-sandbox`, Claude with `--dangerously-skip-permissions`. The model is told it is on your computer and must answer with *results*, not commands. It also gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `systemd-run --user … -- <app>` to launch without blocking, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`). Turn it off for knowledge-only answers (`--sandbox read-only` / `--tools ""`).
+- **`system_access`** — how much the model may touch the machine. The model is told it is on your computer and must answer with *results*, not commands, and gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `systemd-run --user … -- <app>` to launch without blocking, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`).
+
+  | Mode | Claude Code | Codex CLI |
+  |---|---|---|
+  | **`ask`** (default) | `claude -p --permission-mode default --permission-prompt-tool mcp__jarvis__approve`: no bypass. Read-only tools and read-only commands (`ls`, `cat`, `docker ps`…) run directly; **everything else** (a command that writes, a file edit, network, launching an app) is routed to `bin/jarvis_consent_mcp.py`, which opens the **authorization window** with the exact tool input. The CLI runs in an empty working directory (`~/.local/share/jarvis/workdir`) so reading files elsewhere also asks. | `codex exec --sandbox read-only -c approval_policy=never`: Codex's own sandbox (no writes, no network, no Docker socket). For anything beyond that the model must *propose* `<<RODAR: exact shell command>>`; Jarvis shows it in the authorization window, runs it only if you allow, and hands the output back for the spoken answer (at most 2 rounds, 3 commands each). |
+  | `full` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
+  | `off` | `--tools ""` (no tool use) | `--sandbox read-only`, no `<<RODAR>>` protocol |
+
+  The **authorization window** (`bin/jarvis-consent.py`, a floating terminal) shows what you asked, the exact command or tool input, the directory, and three keys: `y` allow once, `a` allow everything until this question is answered, `n`/Esc deny. No answer within 90 s = denied; talking over Jarvis or closing the conversation denies and closes any pending request. Jarvis says *"I need your authorization, sir"* when a request opens, and the conversation window switches to the **AUTHORIZATION** phase. `allow everything` lives only in the process of that one question — nothing is ever remembered.
+
+  `full` is the 2.1 behaviour: the voice transcript (and anything the model reads) can drive machine actions with no confirmation. Enable it only if you trust everything that is said near the microphone: `jarvis config set system_access full`. Existing configs with `system_access = true/false` are read as `full`/`off`.
+
+  The mode is a choice field in the settings screen (`jarvis config`, or the Settings button on the bar panel) — no command needed — and the current value is shown as the **ACCESS** chip on the bar panel and in `jarvis app`.
+
+  ![Settings screen — Computer access](docs/screenshots/settings-system-access.png)
 - Both CLIs run in **streaming JSON mode**; `bin/jarvis_events.py` turns their events (commands run, reasoning, messages) into the live activity lines in the window and in the scratch terminal.
 - Every subprocess Jarvis spawns — apps, windows, the model CLI — is launched in its own systemd scope (`uwsm-app` / `systemd-run --scope`), outside the service cgroup. Restarting `voice-launcher.service` never kills what it opened.
 
@@ -370,6 +384,7 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
                     │  conversation loop (voice-launcher.py)              │
                     │   greeting (Piper) → VAD capture → STT session      │
                     │   → model (Codex/Claude, streaming JSON)            │
+                    │     ask mode: consent window per action             │
                     │   → actions (markers) → TTS → follow-up window      │
                     │  BargeInListener: wake word or speech over TTS      │
                     └───┬──────────────┬──────────────┬──────────────────┘
@@ -382,6 +397,8 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
 - One thread reads the microphone at a time. The wake loop hands the stream to the conversation; during the busy phase the `BargeInListener` owns it.
 - Barge-in gate: the TTS bleed level is calibrated on the first frames of each utterance and only ever updated from frames *below* the gate, so it never learns from your voice.
 - The window is a plain file watcher: the launcher writes state, the viewer renders. No IPC to break.
+- Consent works the same way (`bin/jarvis_consent.py`): a request is a JSON file in `$XDG_RUNTIME_DIR/jarvis-consent/`, the authorization window writes the decision next to it. For Claude the requester is `jarvis_consent_mcp.py` (a 100-line stdio MCP server that Claude Code uses as its permission prompt tool); for Codex it is the launcher's `<<RODAR>>` broker.
+- Every model call runs in a named systemd scope (`jarvis-model-*.scope`). Cancelling a question stops the whole scope — the CLI, the commands it spawned, the consent server — and denies any open request.
 - Config is a schema (`bin/jarvis_config.py: SETTINGS`) with defaults, labels, help, choices and limits — the TUI, the CLI and the TOML writer are all generated from it.
 
 ---
@@ -405,6 +422,9 @@ hey-jarvis/
 │   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
 │   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
+│   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
+│   ├── jarvis-consent.py       authorization window: exact command, y / a / n
+│   ├── jarvis_consent_mcp.py   stdio MCP server = Claude Code's permission prompt tool (ask mode)
 │   ├── jarvis-window.py        conversation window viewer
 │   ├── jarvis-panel.py         `jarvis app` via PySide6 (same QML, for non-Omarchy distros)
 │   ├── jarvis-app.py           `jarvis app` fallback: the panel as a terminal (curses) screen
@@ -443,7 +463,8 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | It doesn't stop when I talk over it | lower `barge_min_rms`; check `[barge]` lines in `jarvis log` for your speech level |
 | `openai indisponível … fallback local` in the log | key, credits (`credit_balance_exhausted`) or network — answers still come from local whisper |
 | Whisper on CPU although I have a GPU | `pip install -r requirements-gpu.txt` in the env; `jarvis log` shows `whisper …/cuda` |
-| Answers say "I can't access…" | `system_access` is off, or the CLI isn't logged in |
+| Answers say "I can't access…" / "not authorized" | `system_access` is `off`, you denied (or let time out) the authorization window, or the CLI isn't logged in |
+| An "authorization" window pops up | that's `system_access = "ask"` (default): the model wants to run what the window shows — `y` allows, `n` denies. Set `full` to stop being asked (see [Models and machine access](#models-and-machine-access)) |
 | Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
 
 ---
@@ -451,8 +472,8 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 ## Security model
 
 What runs where, what `install.sh` writes, which network endpoints are ever
-contacted, and how to turn the model's machine access off — one page, written
-for reviewers: [SECURITY.md](SECURITY.md).
+contacted, and how the model's machine access is gated (consent by default,
+`full` opt-in) — one page, written for reviewers: [SECURITY.md](SECURITY.md).
 
 ## License
 

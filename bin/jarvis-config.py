@@ -106,8 +106,19 @@ class App:
         scr.addstr(0, max(len(title) + len(marker) + 2, width - len(path)), path[: w - 1], curses.A_DIM)
         scr.hline(1, 0, curses.ACS_HLINE, width)
 
+        # rodapé: help do item (até 4 linhas — cresce com o texto) + atalhos
+        row = self.rows[self.cursor]
+        if row.kind == "setting":
+            s = row.setting
+            extra = f"  {T(self.lang, 'cfg_default')}: {s.default!r}" if not s.multiline else ""
+            help_lines = textwrap.wrap(jc.text_for(s, self.lang)[1] + extra, width - 2)[:4]
+        elif row.setting == "advanced":
+            help_lines = [T(self.lang, "cfg_expand")]
+        else:
+            help_lines = [""]
+
         top = 2
-        footer_h = 6
+        footer_h = 4 + len(help_lines)  # hline + help + 2 linhas de atalhos + status
         avail = h - top - footer_h
         if self.cursor < self.scroll:
             self.scroll = self.cursor
@@ -139,27 +150,18 @@ class App:
                 scr.addstr(y, 2 + label_w, val[: width - label_w - 3], attr)
             y += 1
 
-        # rodapé: help do item + atalhos
         fy = h - footer_h
         scr.hline(fy, 0, curses.ACS_HLINE, width)
-        row = self.rows[self.cursor]
-        if row.kind == "setting":
-            s = row.setting
-            extra = f"  {T(self.lang, 'cfg_default')}: {s.default!r}" if not s.multiline else ""
-            help_lines = textwrap.wrap(jc.text_for(s, self.lang)[1] + extra, width - 2)[:2]
-        elif row.setting == "advanced":
-            help_lines = [T(self.lang, "cfg_expand")]
-        else:
-            help_lines = [""]
         for i, line in enumerate(help_lines):
             scr.addstr(fy + 1 + i, 1, line[: width - 1], curses.A_DIM)
+        ky = fy + 1 + len(help_lines)
         keys1 = T(self.lang, "cfg_keys1")
         keys2 = T(self.lang, "cfg_keys2")
-        scr.addstr(fy + 3, 1, keys1[: width - 1], curses.color_pair(1) | curses.A_BOLD)
-        scr.addstr(fy + 4, 1, keys2[: width - 1], curses.color_pair(1))
+        scr.addstr(ky, 1, keys1[: width - 1], curses.color_pair(1) | curses.A_BOLD)
+        scr.addstr(ky + 1, 1, keys2[: width - 1], curses.color_pair(1))
         if self.status:
             color = curses.color_pair(4) if self.status.startswith(("erro", "error")) else curses.color_pair(3)
-            scr.addstr(fy + 5, 1, self.status[: width - 1], color)
+            scr.addstr(ky + 2, 1, self.status[: width - 1], color)
         scr.refresh()
 
     # --- edição ---------------------------------------------------------

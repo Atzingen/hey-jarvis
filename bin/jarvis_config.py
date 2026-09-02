@@ -32,6 +32,9 @@ VOICES_DIR = Path.home() / ".local/share/piper-voices"
 WAKE_WORDS = ["hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"]
 CLAUDE_MODELS = ["fable", "opus", "sonnet", "haiku"]
 EFFORTS = ["low", "medium", "high"]
+SYSTEM_ACCESS_MODES = ["ask", "full", "off"]
+# system_access era booleano até a 2.1 (true = full, false = off)
+LEGACY_SYSTEM_ACCESS = {True: "full", False: "off", "true": "full", "false": "off"}
 
 def available_voices() -> list[str]:
     return ["auto"] + sorted(p.stem for p in VOICES_DIR.glob("*.onnx"))
@@ -97,10 +100,12 @@ SETTINGS: list[Setting] = [
     Setting("quick_provider", "codex", "Provedor das perguntas rápidas",
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
-    Setting("system_access", True, "Acesso ao computador",
-            "Deixa o modelo executar comandos na máquina (Docker, arquivos, processos) "
-            "sem sandbox nem confirmação. Desligado = só responde de conhecimento.",
-            group="Modelos"),
+    Setting("system_access", "ask", "Acesso ao computador",
+            "ask = o modelo roda em sandbox e cada ação que altera algo (comando, arquivo, rede) "
+            "abre uma janela mostrando o comando exato pra você autorizar; full = sem sandbox e "
+            "sem confirmação (--dangerously-*), só se você confia no que fala perto do mic; "
+            "off = só responde de conhecimento.",
+            group="Modelos", choices=SYSTEM_ACCESS_MODES),
     Setting("codex_model", "", "Modelo do Codex",
             "Vazio usa o default do Codex CLI (ex.: gpt-5.4). Só vale com provedor codex.",
             group="Modelos"),
@@ -254,6 +259,9 @@ def defaults() -> dict:
 def _coerce(setting: Setting, value):
     """Converte valor vindo de TOML/CLI pro tipo do default; ValueError se inválido."""
     t = setting.type
+    if setting.key == "system_access":
+        key = value if isinstance(value, bool) else str(value).strip().lower()
+        value = LEGACY_SYSTEM_ACCESS.get(key, value)
     if t is bool:
         if isinstance(value, bool):
             return value
