@@ -51,6 +51,7 @@ import jarvis_config  # mesmo diretório (~/.local/bin)
 import jarvis_consent
 import jarvis_dictate
 import jarvis_events
+import jarvis_narrate
 import jarvis_i18n
 import jarvis_stt
 from jarvis_i18n import T
@@ -122,6 +123,12 @@ BROKER_CMD_TIMEOUT = 60     # s por comando autorizado
 # Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá).
 HANDOFF_SECONDS_QUICK = CFG["handoff_seconds_quick"]
 HANDOFF_SECONDS_DEEP = CFG["handoff_seconds_deep"]
+
+# Narração de progresso: a cada N s sem fala, uma frase curta do que o modelo
+# está fazendo (jarvis_narrate). "auto" é resolvido no início de cada conversa.
+NARRATION_MODE = CFG["narration"]
+NARRATION_INTERVAL_QUICK = CFG["narration_interval_quick"]
+NARRATION_INTERVAL_DEEP = CFG["narration_interval_deep"]
 
 # Prompt de sistema compartilhado pelos dois provedores (vazio = padrão do idioma).
 CLAUDE_SYSTEM = CFG["system_prompt"] or jarvis_i18n.SYSTEM_PROMPT[LANG]
@@ -337,6 +344,8 @@ def action_protocol(access: str, provider: str) -> str:
         text += jarvis_i18n.ACCESS_NOTES[LANG][f"ask-{provider}"]
     elif access == "off":
         text += jarvis_i18n.ACCESS_NOTES[LANG]["off"]
+    if NARRATION_MODE == "self":
+        text += jarvis_i18n.SELF_NARRATION_NOTES[LANG]
     return text
 
 
@@ -562,8 +571,9 @@ def run_action(kind: str, arg: str, args, window) -> tuple[str, bool]:
 
 
 def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
-              on_status=None, spoken_question: str = ""):
-    """Roda o CLI do modelo; eventos em streaming vão pra `on_status(texto)`.
+              on_status=None, spoken_question: str = "", on_event=None):
+    """Roda o CLI do modelo; eventos em streaming vão pra `on_status(texto)`
+    (rótulo pronto pra janela) e `on_event(kind, texto)` (evento cru, narração).
 
     Retorna (resposta, None) quando conclui dentro do prazo;
     ("", handoff) quando estourou HANDOFF_SECONDS_* — o processo SEGUE
@@ -613,7 +623,11 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
                     for line in f:
                         pos += len(line.encode())
                         parsed = jarvis_events.parse_line(provider, line)
-                        if parsed and on_status is not None:
+                        if not parsed:
+                            continue
+                        if on_event is not None:
+                            on_event(*parsed)
+                        if on_status is not None:
                             status = jarvis_events.status_label(*parsed, lang=LANG)
                             if status:
                                 on_status(status)
@@ -621,7 +635,7 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
                 pass
             stop_tail.wait(0.3)
 
-    if on_status is not None:
+    if on_status is not None or on_event is not None:
         threading.Thread(target=tail_events, daemon=True, name="events-tail").start()
 
     def final_text() -> str:
@@ -683,11 +697,11 @@ def run_brokered(cmd: str, spoken_question: str, window, cancel: threading.Event
 
 
 def ask_with_broker(question_ctx: str, deep: bool, cancel: threading.Event, on_status,
-                    spoken_question: str, window):
+                    spoken_question: str, window, on_event=None):
     """ask_model + rodadas do broker <<RODAR>>: cada comando proposto passa pelo
     consentimento, a saída volta pro modelo e ele responde de novo. Mesmo
     contrato de retorno do ask_model."""
-    resposta, handoff = ask_model(question_ctx, deep, cancel, on_status, spoken_question)
+    resposta, handoff = ask_model(question_ctx, deep, cancel, on_status, spoken_question, on_event)
     allow_all = False
     for _ in range(BROKER_MAX_ROUNDS):
         if handoff is not None or cancel.is_set():
@@ -714,7 +728,7 @@ def ask_with_broker(question_ctx: str, deep: bool, cancel: threading.Event, on_s
                      if LANG == "en" else
                      "\n\nAgora responda ao usuário com o resultado (sem novo <<RODAR>>, salvo se essencial).")
         resposta, handoff = ask_model(f"{question_ctx}\n\n{clean}\n\n{followup}", deep, cancel,
-                                      on_status, spoken_question)
+                                      on_status, spoken_question, on_event)
     return resposta, handoff
 
 
@@ -882,8 +896,10 @@ class BargeInListener:
             print(f"   [listener erro: {e}]")
 
 
-def tts(text: str, listener: "BargeInListener | None" = None) -> bool:
-    """Fala texto via piper -> paplay. Retorna True se interrompido pelo listener."""
+def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) -> bool:
+    """Fala texto via piper -> paplay. Retorna True se interrompido pelo listener.
+    `stop_when()` verdadeiro corta a fala sem contar como interrupção (narração
+    de progresso quando a resposta chega)."""
     wav = "/tmp/voice-tts.wav"
     try:
         subprocess.run(
@@ -902,17 +918,29 @@ def tts(text: str, listener: "BargeInListener | None" = None) -> bool:
     except FileNotFoundError:
         return False
 
-    if listener is None:
+    def cut() -> None:
+        proc.terminate()
         try:
-            proc.wait(timeout=30)
+            proc.wait(timeout=0.5)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+    if listener is None:
+        deadline = time.monotonic() + 30
+        while proc.poll() is None:
+            if (stop_when is not None and stop_when()) or time.monotonic() > deadline:
+                cut()
+                break
+            time.sleep(0.05)
         return False
 
     listener.tts_playing = True
     try:
         deadline = time.monotonic() + 60  # hard cap: TTS nunca deveria passar disso
         while proc.poll() is None:
+            if stop_when is not None and stop_when():
+                cut()
+                return False
             if listener.fired:
                 proc.terminate()
                 try:
@@ -1049,6 +1077,11 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
         tts(GREETING)
         flush_stream(stream)
 
+        narr_mode, narr_why = jarvis_narrate.resolve_mode(CFG)
+        print(f"[narr] modo={narr_mode} ({narr_why})")
+        if narr_mode == "local":
+            jarvis_narrate.warm_up(CFG)
+
         history: list[tuple[str, str]] = []
         followup = False
         pending_audio: np.ndarray | None = None  # fala capturada por barge-in
@@ -1138,13 +1171,17 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             question_ctx = with_context(question, history)
             cancel = threading.Event()
             thoughts: list[str] = []
+            narrator = jarvis_narrate.Narrator(
+                narr_mode, LANG,
+                NARRATION_INTERVAL_DEEP if deep else NARRATION_INTERVAL_QUICK, question,
+                generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG))
 
             def on_status(status: str) -> None:
                 thoughts.append(status)
                 window.update(thoughts=thoughts[-4:])
 
             fut = claude_executor.submit(ask_with_broker, question_ctx, deep, cancel, on_status,
-                                         question, window)
+                                         question, window, narrator.feed)
 
             # a pergunta entra na janela já na transcrição; a resposta preenche depois
             window.add_exchange(question, "…", label)
@@ -1163,6 +1200,7 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             else:
                 chime(880, 1320, ms=100, vol=0.15)
                 interrupted = listener.fired
+            narrator.spoke()
 
             consent_seen: str | None = None  # id do pedido de autorização já anunciado
             while not interrupted and not fut.done():
@@ -1186,9 +1224,22 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                     if tts(T(LANG, "consent_needed"), listener):
                         interrupted = True
                         break
+                    narrator.spoke()
                 elif pend is None and consent_seen is not None and window.state.get("phase") == "consent":
                     window.update(phase="thinking", detail=label)
+                elif pend is None:
+                    # narração de progresso: uma frase curta do que o modelo está fazendo
+                    phrase = narrator.poll()
+                    if phrase and not fut.done():
+                        print(f"[narr] ▶ {phrase}")
+                        thoughts.append(f"{T(LANG, 'ev_narr')}: {phrase}")
+                        window.update(thoughts=thoughts[-4:])
+                        if tts(phrase, listener, stop_when=fut.done):
+                            interrupted = True
+                            break
+                        narrator.spoke()
                 time.sleep(0.1)
+            narrator.close()
 
             resposta = ""
             handoff = None

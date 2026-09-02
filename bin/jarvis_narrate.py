@@ -133,6 +133,10 @@ class Narrator:
         self._started_real = 0.0
 
     def feed(self, kind: str, text: str) -> None:
+        if kind == "result":
+            # resposta final emitida: o CLI ainda leva 1-2 s pra sair; não narrar mais
+            self._closed = True
+            return
         text = " ".join(str(text).split())[:MAX_EVENT_CHARS]
         with self._lock:
             self._events.append((kind, text))

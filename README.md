@@ -78,6 +78,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 | **Machine access, with your consent** | Answers about your system come from real commands — but by default (`system_access = "ask"`) the model runs sandboxed and every action that changes something opens a window showing the **exact command** for you to allow or deny. `full` (no sandbox, no prompts) and `off` (knowledge-only) are opt-in. |
 | **Two model tiers** | Fast path: Codex (low effort, fast tier). Say **"think hard …"** (*"pense bem …"*) for Claude Fable / high effort. |
 | **Live window** | A floating window shows the phase (listening / recording / thinking / answering / your turn, with countdown), the conversation with speaker labels, live speech-to-text, and what the model is doing while you wait. |
+| **Never silent while it works** | Every few seconds without speech, Jarvis says one short sentence about what the model is doing right now (*"I'm counting the Docker containers."*). A small local model (Ollama) or the OpenAI API writes it from the CLI's live events; the model itself or fixed phrases are the fallbacks. |
 | **Long tasks don't die** | If a model call exceeds its deadline it is handed to a separate scratch terminal that keeps running and shows the answer. |
 | **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU) or OpenAI Realtime (`gpt-live-transcribe`) with live provisional text. Automatic fallback. |
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
@@ -124,6 +125,8 @@ Things you can say (any phrasing works — these are examples):
 | **"pause"** / **"fim"** (single word) | the only two local hard commands: mute / end |
 
 Data-heavy answers (weather for the week, rankings) are spoken as a summary; the full detail — after a `---` line in the model's reply — is shown only in the window.
+
+While the model works you are not left in silence: after `narration_interval_quick` seconds (8; 15 for "think hard") without anything spoken, Jarvis says one short first-person sentence about what is going on, built from the CLI's streaming events (commands run, reasoning). Who writes the sentence depends on `narration`: `auto` (default) picks a local Ollama model when Ollama answers, the configured model is installed and there is a CUDA GPU, else the OpenAI API when a key is set, else fixed phrases ("reading a file", "running a command", "still thinking about it"). `self` asks the main model to write its own progress lines instead. Each sentence is only spoken when there is something new, never repeats the previous one, is cut the moment the answer arrives, and can be talked over like any other speech. The log shows every line as `[narr] ▶ …`.
 
 ---
 
@@ -246,6 +249,7 @@ Everything is configurable, three ways:
 | `dictation_window` | `true` | live transcript + audio meter while dictating |
 | `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
 | `dictation_polish` / `dictation_polish_model` | `false` / `gemma3:4b` | optional Ollama pass for punctuation/hesitations |
+| `narration` | `auto` | progress narration while the model works: `auto` (Ollama+GPU → `local`; else key → `openai`; else `templates`), `local`, `openai`, `self` (the main model narrates), `templates`, `off` |
 
 ### Advanced settings
 
@@ -260,6 +264,9 @@ Everything is configurable, three ways:
 | `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
 | `max_history_exchanges` | `4` | previous exchanges sent as context |
 | `handoff_seconds_quick` / `_deep` | `45` / `180` | after this the model call moves to a scratch terminal (it keeps running) |
+| `narration_interval_quick` / `_deep` | `8` / `15` | seconds of silence before a progress sentence (3–60) |
+| `narration_local_model` | `gemma3:4b` | Ollama model that writes the sentence (`narration = local`/`auto`) |
+| `narration_openai_model` | `gpt-5.4-nano` | Responses API model for `narration = openai` (uses `openai_api_key`) |
 | `system_prompt` | `""` | style instructions; empty = language default (edit in `$EDITOR`) |
 | `barge_min_rms` | `0.012` | energy floor for your speech to count as an interruption |
 | `tts_bleed_factor` | `1.5` | speech must exceed N× the TTS bleed measured on the mic |
@@ -332,6 +339,7 @@ The API session is opened the moment Jarvis starts listening, so the handshake o
 
   ![Settings screen — Computer access](docs/screenshots/settings-system-access.png)
 - Both CLIs run in **streaming JSON mode**; `bin/jarvis_events.py` turns their events (commands run, reasoning, messages) into the live activity lines in the window and in the scratch terminal.
+- The same events feed `bin/jarvis_narrate.py`, the progress narration: the sentence comes from Ollama (`POST /api/generate`, `keep_alive 5m`, warmed up when the conversation starts) or the OpenAI Responses API, with a 3–4 s budget in a background thread; on timeout or a bad output (more than one line, over 140 characters, a marker, markdown) it falls back to the model's own last progress line and then to a fixed phrase. `python bin/jarvis_narrate.py status` shows what `auto` resolves to on this machine; `replay <events.jsonl> <codex|claude> [mode]` replays a recorded event file and prints what would be narrated, to tune prompt and cadence.
 - Every subprocess Jarvis spawns — apps, windows, the model CLI — is launched in its own systemd scope (`uwsm-app` / `systemd-run --scope`), outside the service cgroup. Restarting `voice-launcher.service` never kills what it opened.
 
 ---
@@ -421,6 +429,7 @@ hey-jarvis/
 │   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
 │   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
+│   ├── jarvis_narrate.py       progress narration while the model works (Ollama / OpenAI / self / templates)
 │   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
 │   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
 │   ├── jarvis-consent.py       authorization window: exact command, y / a / n
@@ -434,6 +443,7 @@ hey-jarvis/
 │   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
 │   ├── jarvis.desktop          desktop entry template (Jarvis in the app launcher)
 │   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
+├── tests/                      unit tests: `python -m unittest tests.test_narrate`
 ├── docs/                       screenshots, bar-active-accent hook
 ├── requirements.txt            Python deps
 ├── requirements-gpu.txt        optional cuBLAS/cuDNN wheels for CUDA whisper
@@ -465,6 +475,8 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | Whisper on CPU although I have a GPU | `pip install -r requirements-gpu.txt` in the env; `jarvis log` shows `whisper …/cuda` |
 | Answers say "I can't access…" / "not authorized" | `system_access` is `off`, you denied (or let time out) the authorization window, or the CLI isn't logged in |
 | An "authorization" window pops up | that's `system_access = "ask"` (default): the model wants to run what the window shows — `y` allows, `n` denies. Set `full` to stop being asked (see [Models and machine access](#models-and-machine-access)) |
+| Narration is silent, or only says "running a command" | `python ~/.local/bin/jarvis_narrate.py status` shows what `narration = auto` resolved to; `[narr]` lines in `jarvis log` show generation time and failures (Ollama down or model missing → `ollama pull gemma3:4b`; OpenAI `HTTP 429` = no credits). After two failures in a row the backend is off for the rest of the conversation |
+| Narration talks too much / too little | `narration_interval_quick` / `_deep` (seconds), or `narration = off` |
 | Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
 
 ---

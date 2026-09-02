@@ -178,6 +178,12 @@ class NarratorTiming(unittest.TestCase):
         self.clock.advance(9)
         self.assertIsNone(self.n.poll())  # mesmo template de novo: pula
 
+    def test_result_event_closes_narration(self):
+        self.n.feed("text", "Há 12 containers rodando, o maior é o celery.")
+        self.n.feed("result", "")
+        self.clock.advance(9)
+        self.assertIsNone(self.n.poll())
+
     def test_off_mode_never_speaks(self):
         n = narr.Narrator("off", "pt-BR", 8.0, "q", generate=None, clock=self.clock)
         n.feed("tool", "ls")
