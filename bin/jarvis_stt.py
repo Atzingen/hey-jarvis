@@ -111,8 +111,25 @@ class LocalWhisper:
         self.label = f"whisper {model}/{device}"
 
     def transcribe(self, audio_f32: np.ndarray) -> str:
+        # condition_on_previous_text=False: o prompt de cada janela de 30 s fica só
+        # com as hotwords (+4 tokens fixos). Com o contexto das janelas anteriores
+        # ligado, o faster-whisper (1.2.1) deixa hotwords (223) + contexto (223) + 4
+        # passar dos 448 do modelo e o ctranslate2 falha com "The maximum decoding
+        # length must be > 0" — acontecia em ditados longos (> ~60 s de fala).
+        # Sem o contexto também não há loops de repetição em áudio longo.
+        try:
+            return self._run(audio_f32, self.hotwords)
+        except (ValueError, RuntimeError) as e:
+            # prompt estourado aparece como ValueError ("maximum decoding length")
+            # ou RuntimeError ("No position encodings … >= 448"). Última linha de
+            # defesa: nunca perder a fala por causa do prompt.
+            log(f"transcrição falhou ({str(e)[:70]}) — repetindo sem hotwords")
+            return self._run(audio_f32, None)
+
+    def _run(self, audio_f32: np.ndarray, hotwords: str | None) -> str:
         segments, _ = self.model.transcribe(
-            audio_f32, language=self.language, beam_size=1, vad_filter=True, hotwords=self.hotwords,
+            audio_f32, language=self.language, beam_size=1, vad_filter=True, hotwords=hotwords,
+            condition_on_previous_text=False,
         )
         return " ".join(s.text for s in segments).strip()
 
