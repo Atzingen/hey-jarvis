@@ -141,7 +141,7 @@ omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable
 This installs the bar widget. Hover the icon → **Install** runs `install.sh` in a terminal, which sets up the voice service:
 
 1. system packages if missing (`portaudio`, `pipewire-pulse`, a terminal);
-2. a Python environment — reuses a conda env named `voice` if you have one, otherwise a venv at `~/.local/share/jarvis/venv` — with `requirements.txt` (+ CUDA wheels when an NVIDIA GPU is detected);
+2. a dedicated Python venv at `~/.local/share/jarvis/venv` with `requirements.lock` (complete transitive set, sha256-pinned, `pip --require-hashes --no-deps`; + CUDA wheels from `requirements-gpu.lock` when an NVIDIA GPU is detected);
 3. Piper voices for en-US and pt-BR into `~/.local/share/piper-voices`;
 4. the scripts into `~/.local/bin`;
 5. the `voice-launcher.service` user unit, enabled and started.
@@ -158,12 +158,12 @@ After a `git pull`, `bash install.sh --update` re-copies the scripts and restart
 ### Uninstall
 
 ```bash
-bash install.sh --uninstall            # stops/disables the service, removes scripts, unit and the venv it created
+bash install.sh --uninstall            # stops the service and model scopes, removes scripts, unit and ~/.local/share/jarvis
 bash install.sh --uninstall --purge    # also removes ~/.config/jarvis (settings, profiles) and the Piper voices
 omarchy plugin remove atzingen.jarvis  # removes the bar widget
 ```
 
-Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis`, `~/.local/share/piper-voices`, `~/.config/jarvis`, `~/.local/share/applications/jarvis.desktop` and `~/.config/systemd/user/voice-launcher.service`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
+Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis` (venv, panel app, Whisper weights, the model's working directory), `~/.local/share/piper-voices`, `~/.config/jarvis`, `~/.local/share/applications/jarvis.desktop`, `~/.config/systemd/user/voice-launcher.service` and, at runtime, `$XDG_RUNTIME_DIR`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
 
 You also need the model CLIs you want to use: [Codex CLI](https://github.com/openai/codex) (`codex login`) for the fast path and/or [Claude Code](https://docs.claude.com/en/docs/claude-code) for "think hard" (or set `quick_provider = "claude"` to use Claude for everything).
 
@@ -323,17 +323,18 @@ The API session is opened the moment Jarvis starts listening, so the handshake o
 
 - **Fast path** — `quick_provider`: Codex CLI (`codex exec --json --ephemeral`, effort `codex_effort`, `service_tier=fast` when `codex_fast`) or Claude Code (`claude -p --output-format stream-json`).
 - **"Think hard"** — say *"think hard …"* / *"pense bem …"*: always Claude Code with `deep_model` / `deep_effort`.
-- **`system_access`** — how much the model may touch the machine. The model is told it is on your computer and must answer with *results*, not commands, and gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `systemd-run --user … -- <app>` to launch without blocking, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`).
+- **`system_access`** — how much the model may touch the machine. The model is told it is on your computer and must answer with *results*, not commands, and gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`, the `<<ABRIR_APP>>` marker for apps).
 
   | Mode | Claude Code | Codex CLI |
   |---|---|---|
-  | **`ask`** (default) | `claude -p --permission-mode default --permission-prompt-tool mcp__jarvis__approve`: no bypass. Read-only tools and read-only commands (`ls`, `cat`, `docker ps`…) run directly; **everything else** (a command that writes, a file edit, network, launching an app) is routed to `bin/jarvis_consent_mcp.py`, which opens the **authorization window** with the exact tool input. The CLI runs in an empty working directory (`~/.local/share/jarvis/workdir`) so reading files elsewhere also asks. | `codex exec --sandbox read-only -c approval_policy=never`: Codex's own sandbox (no writes, no network, no Docker socket). For anything beyond that the model must *propose* `<<RODAR: exact shell command>>`; Jarvis shows it in the authorization window, runs it only if you allow, and hands the output back for the spoken answer (at most 2 rounds, 3 commands each). |
-  | `full` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
-  | `off` | `--tools ""` (no tool use) | `--sandbox read-only`, no `<<RODAR>>` protocol |
+  | **`ask`** (default) | `claude -p --restricted --tools "" --strict-mcp-config --permission-mode manual --no-session-persistence`: **no built-in tools at all** (no Bash, no Read/Write), none of your `~/.claude` settings, hooks or plugins, no bypass. | `codex exec --ignore-user-config --ignore-rules --sandbox read-only --disable shell_tool --disable unified_exec …`: no shell tool, none of your `~/.codex` config or MCP servers, no sub-agents, Codex's sandbox underneath. |
+  | | Both get exactly **one tool**: `run(command)` from `bin/jarvis_consent_mcp.py`. Every call — reading a file included — opens the **authorization window** with the exact command line; it runs only after `y`, as `bash -c` in `~/.local/share/jarvis/workdir` with a minimal environment (no API keys), 60 s timeout, output capped at 64 KB, inside the model's own systemd scope. | |
+  | `full` | `--dangerously-skip-permissions` (your own Claude Code, your own settings) | `--dangerously-bypass-approvals-and-sandbox` |
+  | `off` | same restricted invocation, without the `run` tool | same, without the `run` tool |
 
-  The **authorization window** (`bin/jarvis-consent.py`, a floating terminal) shows what you asked, the exact command or tool input, the directory, and three keys: `y` allow once, `a` allow everything until this question is answered, `n`/Esc deny. No answer within 90 s = denied; talking over Jarvis or closing the conversation denies and closes any pending request. Jarvis says *"I need your authorization, sir"* when a request opens, and the conversation window switches to the **AUTHORIZATION** phase. `allow everything` lives only in the process of that one question — nothing is ever remembered.
+  The **authorization window** (`bin/jarvis-consent.py`, a floating terminal) shows what you asked, the complete command (scroll with `j`/`k` when it doesn't fit — `y` only works once you've seen the end), the directory, and three keys: **`y`** allow once (Enter does *not* allow), `a` allow everything until this question is answered, `n`/Esc deny. No answer within 90 s = denied; talking over Jarvis or closing the conversation denies and closes any pending request. Jarvis says *"I need your authorization, sir"* when a request opens, and the conversation window switches to the **AUTHORIZATION** phase. `allow everything` is a short-lived grant for that one model call — revoked when the answer arrives, on cancel, on hand-off and at service start; nothing is ever remembered. Desktop actions (`<<ABRIR_APP>>`, `<<ABRIR_PROJETO>>`, `<<DORMIR>>`, `<<FIM>>`) only count as whole trailing lines of the answer, apps come only from installed desktop entries, and suspend only fires if *you* said sleep/suspend. Full details in [SECURITY.md](SECURITY.md#model-machine-access-system_access).
 
-  `full` is the 2.1 behaviour: the voice transcript (and anything the model reads) can drive machine actions with no confirmation. Enable it only if you trust everything that is said near the microphone: `jarvis config set system_access full`. Existing configs with `system_access = true/false` are read as `full`/`off`.
+  `full` is the 2.1 behaviour: the voice transcript (and anything the model reads) can drive machine actions with no confirmation. Enable it only if you trust everything that is said near the microphone: `jarvis config set system_access full`. Existing configs with `system_access = true/false` are read as `ask`/`off` (no silent bypass after an update). `full` is also the only mode in which the `dev-layout` terminals start `claude --dangerously-skip-permissions` (`DEV_LAYOUT_CLAUDE_ARGS`); otherwise they start plain `claude`.
 
   The mode is a choice field in the settings screen (`jarvis config`, or the Settings button on the bar panel) — no command needed — and the current value is shown as the **ACCESS** chip on the bar panel and in `jarvis app`.
 
@@ -405,7 +406,7 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
 - One thread reads the microphone at a time. The wake loop hands the stream to the conversation; during the busy phase the `BargeInListener` owns it.
 - Barge-in gate: the TTS bleed level is calibrated on the first frames of each utterance and only ever updated from frames *below* the gate, so it never learns from your voice.
 - The window is a plain file watcher: the launcher writes state, the viewer renders. No IPC to break.
-- Consent works the same way (`bin/jarvis_consent.py`): a request is a JSON file in `$XDG_RUNTIME_DIR/jarvis-consent/`, the authorization window writes the decision next to it. For Claude the requester is `jarvis_consent_mcp.py` (a 100-line stdio MCP server that Claude Code uses as its permission prompt tool); for Codex it is the launcher's `<<RODAR>>` broker.
+- Consent works the same way (`bin/jarvis_consent.py`): a request is a JSON file in `$XDG_RUNTIME_DIR/jarvis-consent/`, the authorization window writes the decision next to it. The requester is always `jarvis_consent_mcp.py` (a stdio MCP server whose only tool, `run`, is the only tool the model has in `ask` mode — for Claude Code and for Codex alike); it also executes the command after `y`.
 - Every model call runs in a named systemd scope (`jarvis-model-*.scope`). Cancelling a question stops the whole scope — the CLI, the commands it spawned, the consent server — and denies any open request.
 - Config is a schema (`bin/jarvis_config.py: SETTINGS`) with defaults, labels, help, choices and limits — the TUI, the CLI and the TOML writer are all generated from it.
 
@@ -421,7 +422,7 @@ hey-jarvis/
 │                               StatusPoller.qml, shell.qml (quickshell), main.qml (PySide6), qs shims
 ├── install.sh                  idempotent installer (env, voices, scripts, service)
 ├── bin/
-│   ├── voice-launcher          wrapper (venv or conda env `voice`)
+│   ├── voice-launcher          wrapper (runs voice-launcher.py in the plugin's venv)
 │   ├── voice-launcher.py       main loop: wake → capture → STT → model → actions → TTS
 │   ├── jarvis                  CLI: on/off/pause/status/app/log/config
 │   ├── jarvis_config.py        settings schema, defaults, TOML, profiles, CLI
@@ -433,11 +434,11 @@ hey-jarvis/
 │   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
 │   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
 │   ├── jarvis-consent.py       authorization window: exact command, y / a / n
-│   ├── jarvis_consent_mcp.py   stdio MCP server = Claude Code's permission prompt tool (ask mode)
+│   ├── jarvis_consent_mcp.py   stdio MCP server: the `run` tool (the model's only tool in ask mode)
 │   ├── jarvis-window.py        conversation window viewer
 │   ├── jarvis-panel.py         `jarvis app` via PySide6 (same QML, for non-Omarchy distros)
 │   ├── jarvis-app.py           `jarvis app` fallback: the panel as a terminal (curses) screen
-│   └── dev-layout              Hyprland dev layout (2×2 Ghostty + VS Code + Chrome)
+│   └── dev-layout              Hyprland dev layout (2×2 terminals + VS Code + browser)
 ├── systemd/voice-launcher.service
 ├── integrations/
 │   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
@@ -445,8 +446,10 @@ hey-jarvis/
 │   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
 ├── tests/                      unit tests: `python -m unittest tests.test_narrate`
 ├── docs/                       screenshots, bar-active-accent hook
-├── requirements.txt            Python deps
-├── requirements-gpu.txt        optional cuBLAS/cuDNN wheels for CUDA whisper
+├── requirements.txt            direct Python deps (input for the lock)
+├── requirements.lock           full transitive set with sha256 hashes (what install.sh installs)
+├── requirements-gpu.txt/.lock  optional cuBLAS/cuDNN wheels for CUDA whisper
+├── requirements-overrides.txt  uv override used when regenerating the locks
 └── LICENSE                     MIT
 ```
 
@@ -459,7 +462,7 @@ hey-jarvis/
 - Codex CLI and/or Claude Code CLI, logged in.
 - Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription.
 
-Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets…). Tested with Python 3.11.
+Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets…); `install.sh` installs the hash-locked `requirements.lock`. Tested with Python 3.11 and 3.14. To bump a dependency, edit `requirements*.txt` and regenerate: `uv pip compile --universal --generate-hashes --python-version 3.11 --no-header --override requirements-overrides.txt -o requirements.lock requirements.txt` (same for `-gpu`).
 
 ---
 
@@ -472,7 +475,7 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | It interrupts itself while speaking | raise `tts_bleed_factor` / `barge_min_rms`; `barge_debug` prints the measured levels in the log |
 | It doesn't stop when I talk over it | lower `barge_min_rms`; check `[barge]` lines in `jarvis log` for your speech level |
 | `openai indisponível … fallback local` in the log | key, credits (`credit_balance_exhausted`) or network — answers still come from local whisper |
-| Whisper on CPU although I have a GPU | `pip install -r requirements-gpu.txt` in the env; `jarvis log` shows `whisper …/cuda` |
+| Whisper on CPU although I have a GPU | `pip install --require-hashes --no-deps -r requirements-gpu.lock` in the env; `jarvis log` shows `whisper …/cuda` |
 | Answers say "I can't access…" / "not authorized" | `system_access` is `off`, you denied (or let time out) the authorization window, or the CLI isn't logged in |
 | An "authorization" window pops up | that's `system_access = "ask"` (default): the model wants to run what the window shows — `y` allows, `n` denies. Set `full` to stop being asked (see [Models and machine access](#models-and-machine-access)) |
 | Narration is silent, or only says "running a command" | `python ~/.local/bin/jarvis_narrate.py status` shows what `narration = auto` resolved to; `[narr]` lines in `jarvis log` show generation time and failures (Ollama down or model missing → `ollama pull gemma3:4b`; OpenAI `HTTP 429` = no credits). After two failures in a row the backend is off for the rest of the conversation |

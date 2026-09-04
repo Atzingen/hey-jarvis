@@ -26,13 +26,15 @@ def _short(text: str, n: int = 110) -> str:
 
 
 def _tool_summary(name: str, inp: dict) -> str:
+    """O que a tool vai fazer de fato (comando/caminho) antes da descrição que
+    o modelo escreveu — a descrição pode dizer outra coisa."""
     if not isinstance(inp, dict):
         return name
-    if inp.get("description"):
-        return f"{inp['description']}"
     for key in ("command", "cmd", "pattern", "file_path", "path", "query", "url"):
         if inp.get(key):
             return f"{name}: {inp[key]}"
+    if inp.get("description"):
+        return f"{inp['description']}"
     return name
 
 
@@ -124,11 +126,20 @@ def final_answer(provider: str, path: Path, fallback_text: str = "") -> str:
 
 
 def follow(path: str, provider: str, pid: int, answer_file: str | None = None,
-           lang: str = "pt-BR") -> None:
-    """Acompanha o arquivo de eventos até o processo `pid` terminar."""
+           lang: str = "pt-BR", question_file: str | None = None,
+           cleanup: list[str] | None = None) -> None:
+    """Acompanha o arquivo de eventos até o processo `pid` terminar. Tudo que
+    vem do modelo passa por safe_text (nada vira controle do terminal); ao
+    final apaga os arquivos da chamada (`cleanup`, mais os próprios)."""
     from jarvis_i18n import T
+    from jarvis_consent import safe_text
     p = Path(path)
     pos = 0
+    if question_file and Path(question_file).exists():
+        print(f"  {T(lang, 'handoff_question')}")
+        for line in safe_text(Path(question_file).read_text(), keep_newlines=True).splitlines():
+            print("    " + line)
+        print()
     print(f"  {T(lang, 'handoff_running')}\n")
     while True:
         try:
@@ -140,7 +151,7 @@ def follow(path: str, provider: str, pid: int, answer_file: str | None = None,
                     if parsed:
                         label = status_label(*parsed, lang=lang)
                         if label:
-                            print("  ·", label, flush=True)
+                            print("  ·", safe_text(label), flush=True)
         except FileNotFoundError:
             pass
         try:
@@ -154,9 +165,12 @@ def follow(path: str, provider: str, pid: int, answer_file: str | None = None,
     if not final:
         final = final_answer(provider, p)
     print(f"\n  {T(lang, 'handoff_answer')}\n")
-    for para in final.splitlines():
+    for para in safe_text(final, keep_newlines=True).splitlines():
         print("    " + para)
     print()
+    for f in [path, answer_file, question_file] + list(cleanup or []):
+        if f and f != "-":
+            Path(f).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
@@ -164,7 +178,9 @@ if __name__ == "__main__":
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         follow(sys.argv[2], sys.argv[3], int(sys.argv[4]),
                sys.argv[5] if len(sys.argv) > 5 else None,
-               sys.argv[6] if len(sys.argv) > 6 else "pt-BR")
+               sys.argv[6] if len(sys.argv) > 6 else "pt-BR",
+               sys.argv[7] if len(sys.argv) > 7 and sys.argv[7] != "-" else None,
+               sys.argv[8:])
     else:
         print(__doc__)
         sys.exit(2)

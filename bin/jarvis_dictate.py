@@ -225,7 +225,9 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False) -> str:
     time.sleep(0.3)  # deixa o usuário soltar Ctrl/Shift do atalho antes de colar
     try:
         if mode == "type":
-            subprocess.run(["wtype", "--", text], check=True, timeout=30, **_QUIET)
+            # uma quebra de linha digitada num terminal é um Enter: vira espaço
+            typed = " ".join(text.replace("\r", "\n").split("\n"))
+            subprocess.run(["wtype", "--", typed], check=True, timeout=30, **_QUIET)
             return "typed"
         if active_window_is_terminal():
             subprocess.run(["wtype", "-M", "ctrl", "-M", "shift", "v", "-m", "shift", "-m", "ctrl"], check=True, timeout=5, **_QUIET)

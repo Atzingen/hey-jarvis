@@ -1,18 +1,19 @@
 #!/usr/bin/python3
-"""Servidor MCP (stdio) que faz o Claude Code pedir permissão ao usuário.
+"""Servidor MCP (stdio) com a ÚNICA tool que o modelo tem no modo `ask`: `run`.
 
-O launcher roda `claude -p --permission-mode default --permission-prompt-tool
-mcp__jarvis__approve --mcp-config <este servidor>`: toda tool que o Claude
-Code não auto-aprova (Bash que não é read-only, escrita de arquivo, rede…)
-vira uma chamada a `approve` aqui, com o nome da tool e o input exato. A
-janela jarvis-consent.py mostra isso ao usuário; a resposta volta como
-{"behavior": "allow", "updatedInput": ...} ou {"behavior": "deny", ...}.
+O launcher roda o Claude Code com `--restricted --tools "" --strict-mcp-config
+--mcp-config <este servidor>` e o Codex com a shell desligada + este servidor:
+nenhum dos dois tem tool própria de execução, leitura ou escrita. Tudo que o
+modelo quiser fazer na máquina vira `run(command)`:
 
-"allow_all" na janela libera o resto DESTA chamada do modelo (este processo
-vive só enquanto o `claude -p` da pergunta vive) e nunca é gravado.
+  1. o comando exato aparece na janela jarvis-consent.py;
+  2. só depois de `y` (ou de um "permitir o resto desta pergunta" ainda válido)
+     ele roda — `bash -c`, no workdir do plugin, ambiente mínimo, saída limitada;
+  3. a saída (ou "negado") volta ao modelo como texto.
 
 Só stdlib: JSON-RPC 2.0, uma mensagem por linha, como o transporte stdio do MCP.
-Contexto pela env: JARVIS_LANG, JARVIS_QUESTION, JARVIS_CONSENT_TIMEOUT, JARVIS_CWD.
+Contexto pela env JARVIS_CTX = caminho de um JSON com {lang, question, call_id,
+timeout} escrito pelo launcher (evita escapar a pergunta na linha de comando).
 """
 
 from __future__ import annotations
@@ -25,19 +26,36 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import jarvis_consent  # noqa: E402
 
-LANG = os.environ.get("JARVIS_LANG", "en")
-QUESTION = os.environ.get("JARVIS_QUESTION", "")
-CWD = os.environ.get("JARVIS_CWD", str(Path.home()))
-TIMEOUT = float(os.environ.get("JARVIS_CONSENT_TIMEOUT", jarvis_consent.DEFAULT_TIMEOUT))
+
+def _load_ctx() -> dict:
+    path = os.environ.get("JARVIS_CTX", "")
+    try:
+        return json.loads(Path(path).read_text()) if path else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+CTX = _load_ctx()
+LANG = CTX.get("lang", "en")
+QUESTION = str(CTX.get("question", ""))
+CALL_ID = str(CTX.get("call_id", ""))
+TIMEOUT = float(CTX.get("timeout", jarvis_consent.DEFAULT_TIMEOUT))
 
 TOOL = {
-    "name": "approve",
-    "description": "Asks the Jarvis user, on screen, whether a tool call may run. "
-                   "Used only as Claude Code's permission prompt tool.",
-    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": True},
+    "name": "run",
+    "description": (
+        "Run one shell command on the user's machine. The exact command is shown to the "
+        "user in an authorization window and only runs after they approve it (this can "
+        "take some seconds). Returns the exit code and the combined output, or a denial. "
+        "If denied, do not retry it or try another way: tell the user it was not authorized."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {"command": {"type": "string", "description": "Exact bash command line."}},
+        "required": ["command"],
+        "additionalProperties": False,
+    },
 }
-
-allow_all = False
 
 
 def log(msg: str) -> None:
@@ -57,30 +75,28 @@ def reply_error(req_id, code: int, message: str) -> None:
     send({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
 
 
-def decide(args: dict) -> dict:
-    """Pergunta ao usuário e devolve o payload que o Claude Code espera."""
-    global allow_all
-    tool = str(args.get("tool_name") or args.get("toolName") or "tool")
-    tool_input = args.get("input")
-    if not isinstance(tool_input, dict):
-        tool_input = {}
-    if allow_all:
-        log(f"allow_all → {tool}")
-        return {"behavior": "allow", "updatedInput": tool_input}
-
-    summary = jarvis_consent.describe_tool(tool, tool_input)
-    req = jarvis_consent.new_request("claude-tool", tool, tool_input, summary,
-                                     question=QUESTION, lang=LANG, cwd=CWD)
-    log(f"asking user: {tool} :: {summary[:120]}")
-    decision = jarvis_consent.ask(req, timeout=TIMEOUT)
-    log(f"decision: {decision}")
-    if decision == "allow_all":
-        allow_all = True
-    if decision.startswith("allow"):
-        return {"behavior": "allow", "updatedInput": tool_input}
-    return {"behavior": "deny",
-            "message": "The user did not authorize this action on screen. Do not retry it; "
-                       "answer without it and say the action was not authorized."}
+def run_tool(args: dict) -> str:
+    """Consentimento → execução → texto pro modelo."""
+    cmd = args.get("command")
+    if not isinstance(cmd, str) or not cmd.strip():
+        return "error: 'command' must be a non-empty string"
+    if jarvis_consent.has_grant(CALL_ID):
+        decision = "allow"
+        log(f"grant → {cmd[:120]!r}")
+    else:
+        req = jarvis_consent.new_request("command", "bash", {"command": cmd}, cmd,
+                                         question=QUESTION, lang=LANG)
+        log(f"asking user: {cmd[:120]!r}")
+        decision = jarvis_consent.ask(req, timeout=TIMEOUT)
+        log(f"decision: {decision}")
+        if decision == "allow_all" and CALL_ID:
+            jarvis_consent.grant_allow_all(CALL_ID)
+    if not decision.startswith("allow"):
+        return (f"$ {cmd}\n→ DENIED: the user did not authorize this command on screen. "
+                "Do not retry it; answer without it and say the action was not authorized.")
+    rc, out = jarvis_consent.execute_brokered(cmd)
+    log(f"ran (exit {rc}): {cmd[:120]!r}")
+    return f"$ {cmd}\n→ exit {rc}\n{out}".rstrip() + "\n"
 
 
 def handle(msg: dict) -> None:
@@ -92,9 +108,9 @@ def handle(msg: dict) -> None:
         reply(req_id, {
             "protocolVersion": params.get("protocolVersion", "2025-06-18"),
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "jarvis", "version": "1.0"},
+            "serverInfo": {"name": "jarvis", "version": "2.0"},
         })
-    elif method == "notifications/initialized" or method.startswith("notifications/"):
+    elif method.startswith("notifications/"):
         return
     elif method == "ping":
         reply(req_id, {})
@@ -104,8 +120,8 @@ def handle(msg: dict) -> None:
         if params.get("name") != TOOL["name"]:
             reply_error(req_id, -32602, f"unknown tool {params.get('name')!r}")
             return
-        result = decide(params.get("arguments") or {})
-        reply(req_id, {"content": [{"type": "text", "text": json.dumps(result)}]})
+        text = run_tool(params.get("arguments") or {})
+        reply(req_id, {"content": [{"type": "text", "text": text}]})
     elif req_id is not None:
         reply_error(req_id, -32601, f"method not found: {method}")
 

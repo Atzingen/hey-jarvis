@@ -14,6 +14,7 @@ import curses
 import os
 import shutil
 import subprocess
+import tempfile
 import sys
 import textwrap
 from pathlib import Path
@@ -233,8 +234,11 @@ class App:
 
     def edit_in_editor(self, s) -> None:
         editor = os.environ.get("EDITOR") or shutil.which("nvim") or shutil.which("nano") or "vi"
-        tmp = Path(f"/tmp/jarvis-{s.key}.txt")
-        tmp.write_text(str(self.cfg[s.key]))
+        runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+        fd, name = tempfile.mkstemp(prefix=f"jarvis-{s.key}-", suffix=".txt", dir=str(runtime))
+        tmp = Path(name)
+        with os.fdopen(fd, "w") as f:
+            f.write(str(self.cfg[s.key]))
         curses.endwin()
         subprocess.run([editor, str(tmp)])
         self.scr.refresh()

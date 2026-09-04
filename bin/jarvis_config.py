@@ -33,8 +33,9 @@ WAKE_WORDS = ["hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"]
 CLAUDE_MODELS = ["fable", "opus", "sonnet", "haiku"]
 EFFORTS = ["low", "medium", "high"]
 SYSTEM_ACCESS_MODES = ["ask", "full", "off"]
-# system_access era booleano até a 2.1 (true = full, false = off)
-LEGACY_SYSTEM_ACCESS = {True: "full", False: "off", "true": "full", "false": "off"}
+# system_access era booleano até a 2.1. `true` (acesso total, --dangerously-*)
+# vira `ask`: o modo sem confirmação exige opt-in explícito nesta versão.
+LEGACY_SYSTEM_ACCESS = {True: "ask", False: "off", "true": "ask", "false": "off"}
 
 def available_voices() -> list[str]:
     return ["auto"] + sorted(p.stem for p in VOICES_DIR.glob("*.onnx"))
@@ -101,10 +102,10 @@ SETTINGS: list[Setting] = [
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
     Setting("system_access", "ask", "Acesso ao computador",
-            "ask = o modelo roda em sandbox e cada ação que altera algo (comando, arquivo, rede) "
-            "abre uma janela mostrando o comando exato pra você autorizar; full = sem sandbox e "
-            "sem confirmação (--dangerously-*), só se você confia no que fala perto do mic; "
-            "off = só responde de conhecimento.",
+            "ask = o modelo não tem shell nem acesso a arquivos: cada comando que ele quiser "
+            "rodar (até ler um arquivo) aparece numa janela pra você autorizar; full = sem "
+            "sandbox e sem confirmação (--dangerously-*), só se você confia no que fala perto "
+            "do mic; off = só responde de conhecimento.",
             group="Modelos", choices=SYSTEM_ACCESS_MODES),
     Setting("codex_model", "", "Modelo do Codex",
             "Vazio usa o default do Codex CLI (ex.: gpt-5.4). Só vale com provedor codex.",
@@ -240,6 +241,10 @@ SETTINGS: list[Setting] = [
             section="advanced", group="Interrupção (barge-in)", min=0.0, max=0.5, step=0.05),
     Setting("barge_debug", True, "Log de calibração do barge-in",
             "Escreve níveis rms/gate/vad no journal a cada segundo na fase busy.",
+            section="advanced", group="Interrupção (barge-in)"),
+    Setting("log_transcripts", False, "Transcrições no log",
+            "Escreve o texto do que você falou, ditou e da resposta no journal (jarvis log). "
+            "Desligado, o log traz só tamanhos e tempos.",
             section="advanced", group="Interrupção (barge-in)"),
 
     Setting("dictation_max_seconds", 600, "Duração máxima do ditado (s)",
@@ -385,9 +390,13 @@ def list_profiles() -> list[str]:
 
 def save_profile(name: str, cfg: dict) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name.strip()) or "perfil"
-    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILES_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(PROFILES_DIR, 0o700)
     path = PROFILES_DIR / f"{safe}.toml"
-    path.write_text(dump_toml(cfg, only_changed=False))
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(dump_toml(cfg, only_changed=False))
+    os.chmod(tmp, 0o600)  # o perfil leva a config inteira, chave de API inclusive
+    tmp.replace(path)
     return path
 
 

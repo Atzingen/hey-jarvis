@@ -14,6 +14,14 @@ RestartSec=5
 # journalctl --user -u voice-launcher -f
 StandardOutput=journal
 StandardError=journal
+# Arquivos que o serviço cria (estado, temporários das chamadas ao modelo)
+# nascem 0600; apps lançados pelo Jarvis voltam ao umask padrão (launch_detached).
+UMask=0077
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+# Sem telemetria do hub; os pesos do Whisper vêm de revisão fixa (jarvis_stt).
+Environment=HF_HUB_DISABLE_TELEMETRY=1
 
 [Install]
 WantedBy=graphical-session.target

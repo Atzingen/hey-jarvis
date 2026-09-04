@@ -34,6 +34,32 @@ import numpy as np
 
 SAMPLE_RATE = 16000
 OPENAI_RATE = 24000
+
+# Pesos do Whisper: baixados do Hugging Face na primeira execução, sempre de
+# uma revisão FIXA (commit) — o hub verifica cada arquivo contra o sha256 do
+# commit — e para um diretório próprio do Jarvis (removido por --uninstall --purge).
+# Consultado em 2026-09-04 (`https://huggingface.co/api/models/<repo>` → sha).
+WHISPER_REVISIONS = {
+    "tiny": "d90ca5fe260221311c53c58e660288d3deb8d356",
+    "base": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+    "small": "536b0662742c02347bc0e980a01041f333bce120",
+    "medium": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+    "large-v3": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+    "large-v3-turbo": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+    "turbo": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+}
+WHISPER_DIR = os.path.expanduser("~/.local/share/jarvis/models/whisper")
+
+
+def whisper_kwargs(model: str) -> dict:
+    """Argumentos de download do WhisperModel: revisão pinada quando é um dos
+    modelos conhecidos (um caminho local passa direto, sem download)."""
+    if os.path.isdir(model):
+        return {}
+    kw = {"download_root": WHISPER_DIR}
+    if model in WHISPER_REVISIONS:
+        kw["revision"] = WHISPER_REVISIONS[model]
+    return kw
 OPENAI_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
 
 PartialCallback = Callable[[str], None]
@@ -98,12 +124,14 @@ class LocalWhisper:
         self.hotwords = ", ".join(terms) if terms else None
         try:
             compute = "float16" if device == "cuda" else "int8"
-            self.model = WhisperModel(model, device=device, compute_type=compute)
+            self.model = WhisperModel(model, device=device, compute_type=compute,
+                                      **whisper_kwargs(model))
         except Exception as e:
             if device == "cuda":
                 log(f"CUDA falhou ({str(e)[:80]}); usando CPU")
                 device, model = "cpu", ("small" if model.startswith("large") else model)
-                self.model = WhisperModel(model, device="cpu", compute_type="int8")
+                self.model = WhisperModel(model, device="cpu", compute_type="int8",
+                                          **whisper_kwargs(model))
             else:
                 raise
         self.device = device

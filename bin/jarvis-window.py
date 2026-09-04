@@ -22,6 +22,7 @@ STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
 QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jarvis_consent import safe_text  # noqa: E402
 from jarvis_i18n import T  # noqa: E402
 
 # fase -> cor ANSI; badge e dica vêm do i18n (chave ph_<fase>)
@@ -39,8 +40,10 @@ def load_state() -> dict | None:
 
 
 def _wrap(text: str, width: int) -> list[str]:
+    """Quebra texto vindo do modelo / da transcrição: antes passa por safe_text,
+    então nenhum caractere de controle chega ao terminal."""
     out: list[str] = []
-    for para in (text or "").splitlines() or [""]:
+    for para in safe_text(text or "", keep_newlines=True).splitlines() or [""]:
         out += textwrap.wrap(para, width) or [""]
     return out
 
@@ -60,7 +63,7 @@ def render(state: dict) -> str:
     if deadline:
         badge = f"{name}  {int(max(0, deadline - time.time()))}s"
 
-    detail = state.get("detail") or ""
+    detail = safe_text(state.get("detail") or "")
     title = " Jarvis" + (f"  \x1b[90m{detail}\x1b[0m" if detail else "")
     title_len = 7 + (len(detail) + 2 if detail else 0)
     pad = max(1, width - title_len - len(badge) - 4)
@@ -95,7 +98,7 @@ def render(state: dict) -> str:
         b = [f"\x1b[1;96m▌ {you}\x1b[0m"]
         b += ["  \x1b[96m" + line + "\x1b[0m" for line in _wrap(ex.get("q", ""), width - 4)]
         b.append("")
-        label = ex.get("label", "")
+        label = safe_text(ex.get("label", ""))
         b.append(f"\x1b[1;93m▌ Jarvis\x1b[0m" + (f"  \x1b[90m{label}\x1b[0m" if label else ""))
         b += ["  " + line for line in _wrap(ex.get("a", ""), width - 4)]
         b.append("")
@@ -113,7 +116,7 @@ def render(state: dict) -> str:
     activity: list[str] = []
     if phase in ("thinking", "handoff") and thoughts:
         for line in thoughts[-activity_h:]:
-            activity.append("  \x1b[90m⋯ " + line[: width - 6] + "\x1b[0m")
+            activity.append("  \x1b[90m⋯ " + safe_text(line)[: width - 6] + "\x1b[0m")
     activity = activity[-activity_h:]
     while len(activity) < activity_h:
         activity.insert(0, "")

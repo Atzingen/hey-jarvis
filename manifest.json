@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "atzingen.jarvis",
   "name": "Jarvis",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "author": "Gustavo von Atzingen",
-  "description": "Local-first voice assistant for Omarchy: wake word, natural conversation, barge-in, Codex/Claude answers with machine access gated by per-action consent (sandboxed by default), live conversation window, dictation (speech-to-text into the active window). Bar widget with status, dictation controls and settings.",
+  "description": "Local-first voice assistant for Omarchy: wake word, natural conversation, barge-in, Codex/Claude answers with machine access gated by per-command consent (the model has no tools of its own by default), live conversation window, dictation (speech-to-text into the active window). Bar widget with status, dictation controls and settings.",
   "homepage": "https://github.com/Atzingen/hey-jarvis",
   "kinds": [
     "bar-widget"

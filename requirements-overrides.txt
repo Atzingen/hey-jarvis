@@ -1,0 +1,5 @@
+# Used by `uv pip compile --override` when regenerating requirements.lock.
+# openwakeword declares tflite-runtime on Linux, but it only ships wheels for
+# Python <= 3.11 and Jarvis loads the wake-word model through onnxruntime.
+# Dropping it keeps the lock installable on the system Python of current Arch.
+tflite-runtime ; python_version < '0'

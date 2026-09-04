@@ -52,13 +52,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "consent_key_allow": "permitir",
         "consent_key_allow_all": "permitir tudo nesta pergunta",
         "consent_key_deny": "negar",
-        "consent_timeout": "sem resposta em {s}s → negado · Esc/q nega",
+        "consent_timeout": "sem resposta em {s}s → negado · só o y permite (Enter não) · Esc/q nega",
+        "consent_scroll": "[j/k/espaço] role até o fim para poder permitir (+{more} linhas)",
         "consent_allow": "permitido",
         "consent_allow_all": "permitido — tudo até o fim desta pergunta",
         "consent_deny": "negado",
         "consent_denied_spoken": "Sem autorização, senhor.",
-        "broker_ran": "executado com autorização: {cmd}",
-        "broker_denied": "negado pelo usuário: {cmd}",
+        "access_unavailable": "O acesso ao computador está indisponível: o {cli} instalado é antigo demais para o modo seguro. Respondo só com o que sei.",
         "ph_consent": ("AUTORIZAÇÃO", "o modelo pede pra executar algo — decida na janela que abriu (y/a/n)"),
         # janela da conversa
         "you": "você",
@@ -149,13 +149,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "consent_key_allow": "allow",
         "consent_key_allow_all": "allow everything for this question",
         "consent_key_deny": "deny",
-        "consent_timeout": "no answer in {s}s → denied · Esc/q denies",
+        "consent_timeout": "no answer in {s}s → denied · only y allows (not Enter) · Esc/q denies",
+        "consent_scroll": "[j/k/space] scroll to the end to be able to allow (+{more} lines)",
         "consent_allow": "allowed",
         "consent_allow_all": "allowed — everything until this question ends",
         "consent_deny": "denied",
         "consent_denied_spoken": "Not authorized, sir.",
-        "broker_ran": "ran with authorization: {cmd}",
-        "broker_denied": "denied by the user: {cmd}",
+        "access_unavailable": "Computer access is unavailable: the installed {cli} is too old for the safe mode. I'll answer from knowledge only.",
         "ph_consent": ("AUTHORIZATION", "the model asks to run something — decide in the window that opened (y/a/n)"),
         "you": "you",
         "empty": "(the conversation shows up here)",
@@ -314,8 +314,7 @@ ENVIRONMENT_NOTES = {
         "sobre a máquina ou o desktop que não têm marcador, execute você mesmo e "
         "confirme em uma frase. Receitas que funcionam aqui:\n"
         "- abrir um terminal: omarchy-launch-terminal (desacoplado, retorna na hora)\n"
-        "- abrir qualquer app sem travar seu shell: systemd-run --user --collect "
-        "--slice=app-graphical.slice -- <comando>\n"
+        "- abrir um aplicativo: use o marcador <<ABRIR_APP: nome>>, não um comando\n"
         "- ir para o workspace N: hyprctl dispatch 'hl.dsp.focus({{ workspace = \"N\" }})'\n"
         "- executar algo pelo compositor: hyprctl dispatch 'hl.dsp.exec_cmd(\"<comando>\")'\n"
         "- listar janelas: hyprctl clients -j; workspace atual: hyprctl activeworkspace -j\n"
@@ -327,8 +326,7 @@ ENVIRONMENT_NOTES = {
         "about the machine or the desktop that have no marker, do it yourself and "
         "confirm in one sentence. Recipes that work here:\n"
         "- open a terminal: omarchy-launch-terminal (detached, returns immediately)\n"
-        "- open any app without blocking your shell: systemd-run --user --collect "
-        "--slice=app-graphical.slice -- <command>\n"
+        "- open an application: use the <<ABRIR_APP: name>> marker, not a command\n"
         "- go to workspace N: hyprctl dispatch 'hl.dsp.focus({{ workspace = \"N\" }})'\n"
         "- run something through the compositor: hyprctl dispatch 'hl.dsp.exec_cmd(\"<command>\")'\n"
         "- list windows: hyprctl clients -j; current workspace: hyprctl activeworkspace -j\n"
@@ -342,19 +340,14 @@ ENVIRONMENT_NOTES = {
 # frase "tem acesso ao computador" do prompt de sistema.
 ACCESS_NOTES = {
     "pt-BR": {
-        "ask-claude": (
-            "\n\nAUTORIZAÇÃO. Comandos só de leitura rodam direto. Qualquer coisa que altere "
-            "a máquina (escrever arquivo, instalar, abrir app, rede, docker que mude estado) "
-            "abre uma janela pro usuário autorizar; pode demorar alguns segundos. Se for "
+        "ask": (
+            "\n\nAUTORIZAÇÃO. Você não tem shell nem acesso a arquivos próprios: a ÚNICA forma "
+            "de fazer qualquer coisa na máquina (ler um arquivo, listar, instalar, escrever, "
+            "rede) é a tool `run`, com um comando bash exato — não existe apply_patch nem "
+            "editor: pra escrever um arquivo, use `run` com cat/heredoc. Cada chamada mostra o comando "
+            "ao usuário numa janela e só roda se ele autorizar; pode demorar alguns segundos. "
+            "Use poucos comandos, completos e legíveis (o usuário vai ler cada um). Se vier "
             "negado, não tente de outro jeito: diga em uma frase que não foi autorizado."
-        ),
-        "ask-codex": (
-            "\n\nAUTORIZAÇÃO. Você roda num sandbox só de leitura (sem escrita, sem rede, sem "
-            "socket do Docker). Para qualquer comando além disso, NÃO tente rodar: responda "
-            "com o marcador <<RODAR: comando shell exato>> (uma linha própria, no fim; até "
-            "3 por resposta) e uma frase curta dizendo o que vai fazer. O sistema mostra o "
-            "comando ao usuário, executa só se ele autorizar e te devolve a saída numa nova "
-            "rodada; então responda com o resultado. Se vier negado, não insista."
         ),
         "off": (
             "\n\nSEM ACESSO. Neste modo você NÃO tem acesso à máquina do usuário: responda "
@@ -363,19 +356,14 @@ ACCESS_NOTES = {
         ),
     },
     "en": {
-        "ask-claude": (
-            "\n\nAUTHORIZATION. Read-only commands run directly. Anything that changes the "
-            "machine (writing a file, installing, opening an app, network, docker that mutates "
-            "state) opens a window for the user to authorize; it may take a few seconds. If it "
-            "is denied, do not try another way: say in one sentence that it was not authorized."
-        ),
-        "ask-codex": (
-            "\n\nAUTHORIZATION. You run in a read-only sandbox (no writes, no network, no Docker "
-            "socket). For any command beyond that, do NOT try to run it: answer with the marker "
-            "<<RODAR: exact shell command>> (own line, at the end; up to 3 per answer) plus one "
-            "short sentence saying what you are about to do. The system shows the command to the "
-            "user, runs it only if authorized and hands you the output in a new round; then "
-            "answer with the result. If it comes back denied, do not insist."
+        "ask": (
+            "\n\nAUTHORIZATION. You have no shell and no file tools of your own: the ONLY way "
+            "to do anything on the machine (read a file, list, install, write, network) is the "
+            "`run` tool with an exact bash command — there is no apply_patch or editor tool: to "
+            "write a file, use `run` with cat/heredoc. Each call shows the command to the user in "
+            "a window and runs only if they authorize it; it may take a few seconds. Use few, "
+            "complete, readable commands (the user reads every one). If it comes back denied, "
+            "do not try another way: say in one sentence that it was not authorized."
         ),
         "off": (
             "\n\nNO ACCESS. In this mode you do NOT have access to the user's machine: answer "
@@ -402,7 +390,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "end_silence_seconds": ("Silence that ends your turn (s)", "Continuous pause that marks the end of what you said. Raise it if it cuts you off."),
     "followup_seconds": ("Follow-up window (s)", "Time listening without the wake word after each answer."),
     "quick_provider": ("Fast-question provider", "codex = OpenAI Codex CLI (ChatGPT login); claude = Claude Code CLI."),
-    "system_access": ("Computer access", "ask = the model runs sandboxed and every action that changes something (command, file, network) opens a window showing the exact command for you to authorize; full = no sandbox, no confirmation (--dangerously-*), only if you trust everything said near the mic; off = knowledge-only answers."),
+    "system_access": ("Computer access", "ask = the model has no shell and no file access of its own: every command it wants to run (even reading a file) shows up in a window for you to authorize; full = no sandbox, no confirmation (--dangerously-*), only if you trust everything said near the mic; off = knowledge-only answers."),
     "codex_model": ("Codex model", "Empty uses the Codex CLI default. Only with the codex provider."),
     "codex_effort": ("Codex effort", "model_reasoning_effort for fast questions."),
     "codex_fast": ("Codex fast mode", "service_tier=fast: priority processing, faster answers (uses more of the plan). Off = default tier."),
@@ -432,6 +420,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "barge_hits_idle": ("Barge-in while thinking (N/M)", "Same, while Jarvis only thinks (no TTS)."),
     "interrupt_threshold_boost": ("Wake word during answer (+)", "Added to the sensitivity to reduce false positives from the TTS itself."),
     "barge_debug": ("Barge-in calibration log", "Writes rms/gate/vad levels to the journal every second during the busy phase."),
+    "log_transcripts": ("Transcripts in the log", "Writes what you said, dictated and the answer text to the journal (jarvis log). Off, the log only has sizes and timings."),
     "dictation_window": ("Dictation window", "Shows the live transcript and the audio meter while you dictate."),
     "dictation_output": ("Dictation output", "paste = copy and paste into the active window (Ctrl+V; Ctrl+Shift+V in terminals); type = type the text; clipboard = copy only (top of the history)."),
     "dictation_polish": ("Polish dictation (Ollama)", "Runs the text through a local model only to punctuate and drop hesitations. Needs Ollama."),

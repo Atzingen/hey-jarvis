@@ -499,7 +499,7 @@ Item {
           bordered: true
           foreground: panel.fg
           fontFamily: panel.fontFamily
-          onClicked: panel.run("xdg-terminal-exec bash " + panel.pluginDir + "/install.sh", true)
+          onClicked: panel.run("xdg-terminal-exec bash '" + panel.pluginDir.replace(/'/g, "'\\''") + "/install.sh'", true)
         }
       }
     }
