@@ -143,6 +143,10 @@ SETTINGS: list[Setting] = [
     Setting("window_enabled", True, "Janela da conversa",
             "Janela flutuante com fase, countdown, trocas e dicas.",
             group="Interface"),
+    Setting("picoh", "auto", "Robô Picoh",
+            "auto = se um Picoh (robô da Ohbot) estiver no USB ele vira o rosto do Jarvis: cor da "
+            "base por fase, boca no ritmo da voz, olhos; off = não procura o robô.",
+            group="Interface", choices=["auto", "off"]),
 
     Setting("dictation_window", True, "Janela do ditado",
             "Mostra a transcrição ao vivo e o medidor de áudio enquanto você dita.",
@@ -252,6 +256,10 @@ SETTINGS: list[Setting] = [
             section="advanced", group="Sistema", min=30, max=3600, step=30),
     Setting("dev_dir", "~/Desktop/dev", "Pasta dos projetos",
             "Onde \"abrir <projeto>\" procura.",
+            section="advanced", group="Sistema"),
+    Setting("picoh_port", "", "Porta serial do Picoh",
+            "Vazio = procura em todas as portas seriais USB pelo handshake. Fixe (ex.: /dev/ttyACM0) "
+            "se houver outras placas seriais que não devem ser sondadas.",
             section="advanced", group="Sistema"),
     Setting("layout_script", "~/.local/bin/dev-layout", "Script de layout",
             "Executado como <script> <projeto>.",

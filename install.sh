@@ -46,7 +46,7 @@ fetch_verified() {
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
          jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis_narrate.py jarvis-window.py jarvis-app.py jarvis-panel.py
-         jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py dev-layout)
+         jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py jarvis_picoh.py dev-layout)
 
 if [[ ${1:-} == "--uninstall" ]]; then
   say "Stopping and disabling voice-launcher.service"
@@ -63,6 +63,7 @@ if [[ ${1:-} == "--uninstall" ]]; then
   rm -rf "$SHARE"
   rm -rf "$RUNTIME/jarvis-consent" "$RUNTIME/jarvis-model"
   rm -f "$RUNTIME"/jarvis-state.json "$RUNTIME"/jarvis-state.tmp "$RUNTIME"/jarvis-quit \
+        "$RUNTIME"/jarvis-tts.json "$RUNTIME"/jarvis-tts.tmp \
         "$RUNTIME"/jarvis-wake-off "$RUNTIME"/jarvis-dictating "$RUNTIME"/jarvis-dictate.cmd \
         "$RUNTIME"/jarvis-meeting-paused "$RUNTIME"/jarvis-resume-at
   if [[ ${2:-} == "--purge" ]]; then
@@ -170,6 +171,20 @@ for f in "${SCRIPTS[@]}"; do
   install -Dm755 "$HERE/bin/$f" "$BIN_DIR/$f"
 done
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH — the bar widget and keybindings need it." ;; esac
+
+# --- 4b. Picoh robot (optional) -------------------------------------------------
+# Serial access without root: the udev rule tags Pico (2e8a) and CH340 (1a86)
+# serial devices for the logged-in user. Needs root once; only a hint without sudo.
+RULE="/etc/udev/rules.d/60-jarvis-picoh.rules"
+if ! cmp -s "$HERE/integrations/60-jarvis-picoh.rules" "$RULE" 2>/dev/null; then
+  if sudo -n true 2>/dev/null; then
+    say "Installing the udev rule for the Picoh robot ($RULE)"
+    sudo install -Dm644 "$HERE/integrations/60-jarvis-picoh.rules" "$RULE"
+    sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty || true
+  else
+    warn "Picoh robot (optional): for serial access run: sudo install -Dm644 $HERE/integrations/60-jarvis-picoh.rules $RULE && sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty"
+  fi
+fi
 
 # --- 5. systemd user service ---------------------------------------------------
 say "Installing voice-launcher.service"

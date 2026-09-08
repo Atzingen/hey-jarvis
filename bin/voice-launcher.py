@@ -52,6 +52,7 @@ import jarvis_consent
 import jarvis_dictate
 import jarvis_events
 import jarvis_narrate
+import jarvis_picoh
 import jarvis_i18n
 import jarvis_stt
 from jarvis_i18n import T
@@ -102,6 +103,8 @@ BARGE_DEBUG = CFG["barge_debug"]
 
 # Janela persistente da conversa (alacritty float rodando jarvis-window.py).
 WINDOW_ENABLED = CFG["window_enabled"]
+PICOH_ENABLED = CFG["picoh"] != "off"   # robô Picoh como rosto (daemon jarvis_picoh.py)
+PICOH_PORT = CFG["picoh_port"]
 _RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
 STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
 QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
@@ -984,6 +987,8 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
     except FileNotFoundError:
         wav_path.unlink(missing_ok=True)
         return False
+    if PICOH_ENABLED:
+        jarvis_picoh.publish_tts(wav_path)   # boca do robô segue o volume da fala
     threading.Thread(target=_unlink_after, args=(proc, wav_path), daemon=True).start()
 
     def cut() -> None:
@@ -1032,6 +1037,7 @@ def _unlink_after(proc: subprocess.Popen, path: Path) -> None:
     except subprocess.TimeoutExpired:
         pass
     path.unlink(missing_ok=True)
+    jarvis_picoh.clear_tts()   # fala acabou (ou foi cortada): boca fecha
 
 
 def flush_stream(stream: sd.InputStream, chunks: int = 5) -> None:
@@ -1523,6 +1529,8 @@ def main() -> None:
     print(f">> modo: {'TEST (dry-run)' if args.test else 'REAL'}")
     signal.signal(signal.SIGUSR1, _on_sigusr1)
     signal.signal(signal.SIGUSR2, _on_sigusr2)
+    picoh_daemon = jarvis_picoh.spawn_daemon(PICOH_PORT) if PICOH_ENABLED else None
+    print(f">> picoh: {'daemon iniciado (procura o robô nas portas USB)' if picoh_daemon else 'off'}")
     jarvis_dictate.set_recording(False)
     jarvis_consent.revoke_grants()   # nenhum "permitir o resto" sobrevive a um restart
     jarvis_consent.cancel_all()
@@ -1635,6 +1643,8 @@ def main() -> None:
         print("\n>> bye")
     finally:
         claude_executor.shutdown(wait=False, cancel_futures=True)
+        if picoh_daemon is not None:
+            picoh_daemon.terminate()
         try:
             if stream is not None:
                 stream.stop()

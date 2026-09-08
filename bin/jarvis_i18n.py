@@ -402,6 +402,10 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "voice_length_scale": ("Voice speed", ">1 slower and more formal; <1 faster."),
     "greeting": ("Greeting", "Sentence spoken when the wake word fires. Empty = default for the language."),
     "window_enabled": ("Conversation window", "Floating window with phase, countdown, exchanges and hints."),
+    "picoh": ("Picoh robot", "auto = when a Picoh (the Ohbot robot) is on USB it becomes Jarvis's face: base "
+              "colour per phase, mouth in sync with the voice, eyes; off = never look for it."),
+    "picoh_port": ("Picoh serial port", "Empty = probe every USB serial port with the handshake. Pin it "
+                   "(e.g. /dev/ttyACM0) when other serial boards must not be probed."),
     "whisper_model": ("Whisper model (local)", "auto = large-v3-turbo on GPU, small on CPU. Bigger = more accurate and slower."),
     "whisper_device": ("Whisper device", "auto detects CUDA; force cpu if the GPU is busy."),
     "openai_stt_model": ("OpenAI model (realtime)", "gpt-live-transcribe = streaming with deltas (recommended); gpt-realtime-whisper = alternative."),
