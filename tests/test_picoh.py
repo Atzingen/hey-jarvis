@@ -156,7 +156,7 @@ class Choreography(unittest.TestCase):
 
     def test_phase_colours(self):
         self.face.tick({"phase": "listening"}, None, 1000.0)
-        self.assertIn("l00,0,200,64\n", self.link.sent)          # verde (quantizado em 8)
+        self.assertIn("l00,0,224,64\n", self.link.sent)          # verde (quantizado em 8)
         self.link.sent.clear()
         self.face.tick({"phase": "thinking"}, None, 1000.0)
         self.assertTrue(any(m.startswith("l00,") for m in self.link.sent))
@@ -181,6 +181,17 @@ class Choreography(unittest.TestCase):
         self.link.sent.clear()
         self.face.tick({"phase": "thinking"}, None, 1000.5)
         self.assertEqual(self._cmds("m05"), [])                   # já fechado: nada a enviar
+
+    def test_conversation_phases_are_all_distinct(self):
+        conv = ["listening", "recording", "transcribing", "thinking", "consent",
+                "speaking", "followup", "handoff"]
+        shapes = [picoh.LOOKS[p]["shape"] for p in conv]
+        colours = [picoh.LOOKS[p]["colour"] for p in conv]
+        self.assertEqual(len(set(shapes)), len(conv))
+        self.assertEqual(len(set(colours)), len(conv))
+        self.assertNotIn(picoh.IDLE["shape"], shapes)
+        for shape in shapes:
+            self.assertIn(shape, picoh.EYE_SHAPES)
 
     def test_flash_phase_falls_back_to_idle(self):
         self.face.tick({"phase": "pasted"}, None, 1000.0)

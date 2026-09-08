@@ -309,15 +309,16 @@ CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybin
 
 | Phase | Base colour | Eyes / head |
 |---|---|---|
-| listening / your turn | green | large eyes, head slightly up |
-| recording | green, pulsing fast | attentive |
-| transcribing | cyan | — |
+| listening (waiting for you) | green | large eyes, head slightly up |
+| recording (you are talking) | lime, pulsing fast | fully open eyes, attentive |
+| transcribing | cyan | square eyes |
 | thinking | amber, breathing | small pupils wandering up-left/up-right |
-| asking for consent | red, blinking | square eyes |
-| answering | blue-white | **mouth opens with the voice** (bottom lip follows the volume envelope of the Piper audio, 20 Hz), small nods on loud syllables |
+| asking for consent | red, blinking | angry eyes |
+| answering | blue-violet | heart eyes, **mouth opens with the voice** (bottom lip follows the volume envelope of the Piper audio, 20 Hz), small nods on loud syllables |
+| your turn again (follow-up) | teal | glasses |
 | handed off to a terminal | purple, breathing | sunglasses |
-| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | — |
-| idle | off, dim eyes | occasional blink |
+| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | large eyes |
+| idle | off, dim round eyes | occasional blink |
 
 The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. Nothing in the service depends on it.
 
