@@ -37,6 +37,7 @@ import json
 import math
 import os
 import random
+import signal
 import subprocess
 import sys
 import time
@@ -478,7 +479,20 @@ def connect(port: str | None, fake: bool) -> tuple[Picoh | None, str]:
     return Picoh(SerialLink(found)), found
 
 
+def ignore_launcher_signals() -> None:
+    """O push-to-talk e o ditado chegam como `systemctl --user kill -s SIGUSR1|2`,
+    que por padrão (--kill-whom=all) atinge todo o cgroup da unidade — inclusive
+    este daemon, que morreria em silêncio no primeiro atalho. Os sinais são do
+    launcher; aqui são ignorados."""
+    for sig in (signal.SIGUSR1, signal.SIGUSR2):
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except (ValueError, OSError):
+            pass
+
+
 def run(port: str | None = None, fake: bool = False, parent: int | None = None) -> None:
+    ignore_launcher_signals()
     picoh: Picoh | None = None
     where = ""
     seen: list[str] = []

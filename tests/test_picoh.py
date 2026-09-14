@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+import signal
 import struct
 import sys
 import tempfile
@@ -139,6 +140,18 @@ class PortDiscovery(unittest.TestCase):
                          "/dev/ttyACM1")
         self.assertEqual(asked, ["/dev/ttyUSB0", "/dev/ttyACM1"])
         self.assertIsNone(picoh.find_port([], check))
+
+
+class LauncherSignals(unittest.TestCase):
+    def test_usr1_usr2_ignored(self):
+        before = {s: signal.getsignal(s) for s in (signal.SIGUSR1, signal.SIGUSR2)}
+        try:
+            picoh.ignore_launcher_signals()
+            for s in (signal.SIGUSR1, signal.SIGUSR2):
+                self.assertIs(signal.getsignal(s), signal.SIG_IGN)
+        finally:
+            for s, handler in before.items():
+                signal.signal(s, handler)
 
 
 class Choreography(unittest.TestCase):

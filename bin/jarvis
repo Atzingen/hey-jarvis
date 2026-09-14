@@ -190,7 +190,8 @@ cmd_dictate() {
         return 1
     fi
     echo "$action" > "$rt/jarvis-dictate.cmd"
-    systemctl --user kill -s SIGUSR2 "$UNIT"
+    # --kill-whom=main: o sinal é do launcher, não dos filhos (daemon do Picoh, etc.)
+    systemctl --user kill --kill-whom=main -s SIGUSR2 "$UNIT"
 }
 
 launch_tui() {
