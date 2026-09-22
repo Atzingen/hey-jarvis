@@ -6,8 +6,9 @@ import qs.Commons
 //   - PySide6 (conversation-main.qml, janela comum em qualquer Linux).
 // Recebe o estado por propriedades (o JSON de jarvis-state.json e o envelope de
 // jarvis-tts.json) e só pede uma coisa de volta: encerrar (quitRequested).
-// À esquerda o avatar do Jarvis com o anel que pulsa com a voz; à direita a
-// conversa em balões (ou, no ditado, a transcrição ao vivo e o waveform).
+// À esquerda o mascote do Jarvis (assets/robot.png) dentro do anel que pulsa com
+// a voz; à direita a conversa em balões (ou, no ditado, a transcrição ao vivo e
+// o waveform).
 Item {
   id: panel
 
@@ -15,7 +16,6 @@ Item {
   property var tts: null              // jarvis-tts.json (envelope da fala) ou null
   property string themeRaw: ""        // colors.toml do tema do Omarchy (opcional)
   property string fontFamily: Style.font.family
-  property string robotStyle: "square"
 
   signal quitRequested()
 
@@ -134,21 +134,23 @@ Item {
       y: Style.space(34)
 
       VoiceRing {
+        id: ring
         anchors.fill: parent
         level: panel.ringLevel
         mode: panel.ringMode
         color: panel.phaseColor
       }
-      RobotFace {
-        width: parent.width * 0.56; height: width
+      // o mascote: cresce um pouco com a voz, balança devagar enquanto pensa
+      Image {
+        id: robot
+        source: Qt.resolvedUrl("assets/robot.png")
+        width: parent.width * 0.58; height: width
         anchors.centerIn: parent
-        style: panel.robotStyle
-        accent: panel.accent
-        urgent: panel.urgent
-        shell: panel.raised
-        visor: Qt.darker(panel.background, 1.25)
-        level: panel.ringMode === "speak" ? meter.level : 0
-        phase: panel.phase
+        fillMode: Image.PreserveAspectFit
+        smooth: true; mipmap: true
+        scale: 1 + 0.06 * panel.ringLevel
+        rotation: panel.ringMode === "spin" ? 3 * Math.sin(ring.t * 1.6) : 0
+        Behavior on rotation { enabled: panel.ringMode !== "spin"; NumberAnimation { duration: 300 } }
       }
     }
 

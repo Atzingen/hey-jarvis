@@ -35,7 +35,7 @@ omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable   # the bar w
 
 Then say **"hey jarvis"** and ask for something. Add the [keybindings](#keybindings) for push-to-talk and dictation, and you are done. The panel also opens as a standalone window — search for **Jarvis** in your launcher or run `jarvis app` (works outside Omarchy too).
 
-![Jarvis conversation window](docs/screenshots/window-en.png)
+![Jarvis conversation window](docs/screenshots/window-graphic.png)
 
 ---
 
@@ -202,17 +202,20 @@ Outside the Omarchy shell there is no theme to follow, so the standalone window 
 
 ## The conversation window
 
-![Conversation window (pt-BR)](docs/screenshots/window-pt.png)
+![Conversation window (pt-BR)](docs/screenshots/window-graphic.png)
 
-A floating terminal opens the moment a conversation starts and stays until it ends:
+![Dictation in the same window](docs/screenshots/window-dictation.png)
 
+A window opens the moment a conversation starts and stays until it ends. With `window_style = auto` (the default) it is the **graphic window**: quickshell renders it on Omarchy (a layer-shell surface at the top of the focused monitor, in the colours of the current theme — no Hyprland rule needed), PySide6 renders the same QML anywhere else, and where neither exists the **terminal viewer** (alacritty + `jarvis-window.py`) takes over. `window_style = graphic` or `terminal` forces one.
+
+- **Jarvis's face** on the left (`app/qs/assets/robot.png`, which swells a little with the voice and sways while the model works) inside a **ring of radial bars** that rises with what Jarvis is saying (the same speech envelope that moves the Picoh's mouth), breathes while listening, spins while thinking and pulses in the urgent colour while waiting for an authorization;
 - **badge** with the current phase — LISTENING / RECORDING / TRANSCRIBING / THINKING / ANSWERING / YOUR TURN (with a countdown) / IN TERMINAL;
-- the **conversation** as separate blocks per speaker (`▌ you` / `▌ Jarvis` with the model label), most recent at the bottom;
+- the **conversation** as bubbles per speaker (yours on the right, Jarvis's with the model label), most recent at the bottom;
 - while recording with the OpenAI backend, **your words appear as you speak** (provisional text);
-- a fixed **activity strip** at the bottom: what the model is doing right now (`running: docker ps …`, `thinking: …`), so waiting never feels dead;
+- an **activity strip** at the bottom: what the model is doing right now (`running: docker ps …`, `thinking: …`), so waiting never feels dead;
 - **hints** for the phase (talk over me, ask to end, `q` closes).
 
-`q` or `Esc` in the window ends the conversation.
+The terminal viewer shows the same information as text blocks. In both, `q` or `Esc` (or the `✕`) ends the conversation, and the dictation window is the same window in dictation mode (live transcript + waveform).
 
 ---
 
@@ -248,6 +251,7 @@ Everything is configurable, three ways:
 | `voice_length_scale` | `1.15` | speech speed (>1 slower) |
 | `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
 | `window_enabled` | `true` | the conversation window |
+| `window_style` | `auto` | `auto` = graphic (quickshell, else PySide6) with the face and the voice ring, terminal where there is no Qt; `graphic`; `terminal` |
 | `picoh` | `auto` | Picoh robot as the face: `auto` looks for it on USB, `off` never does |
 | `dictation_window` | `true` | live transcript + audio meter while dictating |
 | `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
@@ -468,7 +472,8 @@ hey-jarvis/
 │   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
 │   ├── jarvis-consent.py       authorization window: exact command, y / a / n
 │   ├── jarvis_consent_mcp.py   stdio MCP server: the `run` tool (the model's only tool in ask mode)
-│   ├── jarvis-window.py        conversation window viewer
+│   ├── jarvis-window.py        conversation window: terminal viewer
+│   ├── jarvis-conversation.py  conversation window via PySide6 (same QML as the quickshell one, for non-Omarchy distros)
 │   ├── jarvis-panel.py         `jarvis app` via PySide6 (same QML, for non-Omarchy distros)
 │   ├── jarvis-app.py           `jarvis app` fallback: the panel as a terminal (curses) screen
 │   └── dev-layout              Hyprland dev layout (2×2 terminals + VS Code + browser)

@@ -1,0 +1,17 @@
+PROMPT DE GERAÇÃO (Codex nativo image_gen)
+
+Use case: logo-brand
+Asset type: avatar PNG para a janela de conversa do assistente de voz Jarvis no desktop Linux.
+Gere exatamente UMA imagem, quadrada, 1024 × 1024 pixels, PNG RGBA com canal alpha e fundo verdadeiramente transparente. A área vazia deve ter alpha zero; não desenhe um padrão quadriculado para simular transparência.
+Subject: cabeça de robô amigável em vista frontal, sem corpo, somente cabeça e pescoço curto. Cabeça em quadrado arredondado cinza-grafite escuro. Dois olhos redondos grandes brilhando em azul-índigo #8f96ee, com leve brilho ao redor dos olhos. Uma pequena antena central no topo com uma bolinha luminosa. Boca em linha fina neutra.
+Style/medium: ilustração flat/vetorial limpa, formas geométricas simples, contornos nítidos, sem foto-realismo.
+Composition/framing: composição centralizada, simétrica, cabeça, antena e pescoço inteiros dentro do quadro, conjunto ocupando aproximadamente 80% do quadro.
+Constraints: fundo transparente real; sem corpo; sem texto, letras, logotipos, marca-d'água, cenário, moldura ou placa de fundo. Não escrever o nome Jarvis.
+
+PROMPT DE REFINAMENTO EFETIVO (Codex nativo image_gen)
+Imagem de referência: /home/gustavo/.codex/generated_images/01a0c9a5-b01d-7120-8281-f200fac87b1c/exec-37849b6b-2e0b-4b8c-baad-ae8617610f68.png
+
+Edite esta mesma imagem para cumprir o briefing do avatar Jarvis. Entregue UM único PNG RGBA final com exatamente 1024 × 1024 pixels e fundo genuinamente transparente, com alpha zero nas áreas vazias.
+A correção principal é tornar o desenho uma ilustração estritamente flat/vetorial limpa: cores sólidas, formas geométricas simples, sem superfícies metálicas, reflexos, bevel, profundidade ou sombreamento volumétrico. Cabeça em quadrado arredondado cinza-grafite escuro. Dois olhos redondos grandes de preenchimento azul-índigo #8f96ee, com somente um leve brilho local. Uma antena PEQUENA no topo, com bolinha luminosa PEQUENA. Boca em linha fina neutra. Somente cabeça e pescoço curto, sem corpo. Preserve a vista frontal amigável, simetria, centralização e transparência real.
+O conjunto completo deve ocupar aproximadamente 80% da largura e da altura do quadro, com margens transparentes claras. Sem texto, letras, logotipos ou marca-d'água. Não desenhe quadriculado. Dimensões finais obrigatórias: 1024 × 1024 pixels.
+
