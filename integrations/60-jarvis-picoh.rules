@@ -1,0 +1,4 @@
+# Jarvis + Picoh (Ohbot): serial access for the logged-in user, no uucp/dialout group needed.
+# Raspberry Pi Pico (native USB CDC) and CH340 USB-serial bridges.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", TAG+="uaccess"

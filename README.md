@@ -52,6 +52,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 - [The conversation window](#the-conversation-window)
 - [Settings](#settings) · [Main](#main-settings) · [Advanced](#advanced-settings) · [Profiles](#profiles)
 - [Dictation](#dictation)
+- [The Picoh robot](#the-picoh-robot)
 - [Speech-to-text: local or OpenAI](#speech-to-text-local-or-openai)
 - [Models and machine access](#models-and-machine-access)
 - [Language](#language)
@@ -84,6 +85,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
 | **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
 | **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
+| **A face, if you want one** | Plug in a [Picoh](https://www.ohbot.co.uk/picoh.html) (the Ohbot robot head) and it becomes Jarvis's face: base colour per phase (green listening, amber thinking, red asking for consent, blue answering), mouth moving in sync with the voice, eyes that wander while the model works. Auto-detected on USB, nothing to configure — and entirely optional: without the robot nothing changes. |
 | **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, a tooltip on hover and a panel in cards on click — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
 
 ---
@@ -246,6 +248,7 @@ Everything is configurable, three ways:
 | `voice_length_scale` | `1.15` | speech speed (>1 slower) |
 | `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
 | `window_enabled` | `true` | the conversation window |
+| `picoh` | `auto` | Picoh robot as the face: `auto` looks for it on USB, `off` never does |
 | `dictation_window` | `true` | live transcript + audio meter while dictating |
 | `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
 | `dictation_polish` / `dictation_polish_model` | `false` / `gemma3:4b` | optional Ollama pass for punctuation/hesitations |
@@ -277,6 +280,7 @@ Everything is configurable, three ways:
 | `dictation_max_seconds` | `600` | recording cap for a dictation |
 | `dev_dir` | `~/Desktop/dev` | where "open project X" looks |
 | `layout_script` | `~/.local/bin/dev-layout` | run as `<script> <project>` |
+| `picoh_port` | `""` | serial port of the Picoh (`""` = probe every USB serial port with the handshake) |
 
 ### Profiles
 
@@ -296,6 +300,32 @@ Jarvis doubles as a speech-to-text tool for any window — the same microphone, 
 Settings (`jarvis config` → Dictation): `dictation_output` = `paste` / `type` (types the text with `wtype`) / `clipboard` (copy only); `dictation_polish` (off by default) runs the transcript through a local Ollama model (`dictation_polish_model`, default `gemma3:4b`) that only fixes punctuation and removes hesitations — it never rewrites, and falls back to the raw text if the output looks wrong or Ollama is unavailable; `dictation_window` shows/hides the window; `dictation_max_seconds` (advanced) caps a recording.
 
 CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybindings call (`integrations/hypr-bindings.lua`). Requires `wl-clipboard` and `wtype`.
+
+---
+
+## The Picoh robot
+
+[Picoh](https://www.ohbot.co.uk/picoh.html) is a small robot head (Raspberry Pi Pico inside, USB serial) with a motorised mouth and head, LED-matrix eyes and an RGB base. With `picoh = auto` (the default) Jarvis looks for it on every USB serial port with the same handshake the official library uses (`v` → `v2`) and, when found, drives it as its face:
+
+| Phase | Base colour | Eyes / head |
+|---|---|---|
+| listening (waiting for you) | green | large eyes, head slightly up |
+| recording (you are talking) | lime, pulsing fast | fully open eyes, attentive |
+| transcribing | cyan | square eyes |
+| thinking | amber, breathing | small pupils wandering up-left/up-right |
+| asking for consent | red, blinking | angry eyes |
+| answering | blue-violet | heart eyes, **mouth opens with the voice** (bottom lip follows the volume envelope of the Piper audio, 20 Hz), small nods on loud syllables |
+| your turn again (follow-up) | teal | glasses |
+| handed off to a terminal | purple, breathing | sunglasses |
+| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | large eyes |
+| idle | off, dim round eyes | occasional blink |
+
+The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. Nothing in the service depends on it.
+
+- `jarvis picoh probe` — which serial ports exist and whether one answered as a Picoh.
+- `jarvis picoh demo` — walks through the phases on the robot (`jarvis picoh fake` prints the serial commands instead, no robot needed).
+- `jarvis picoh reset` — lights off, eyes default, motors released.
+- Serial access without root: `install.sh` installs `integrations/60-jarvis-picoh.rules` (udev `uaccess` for Pico and CH340 boards) when `sudo` is available, otherwise it prints the command. Other serial boards on the machine are probed once (a board with auto-reset on DTR will reboot at that moment); pin `picoh_port` in the advanced settings to avoid that.
 
 ---
 
@@ -365,6 +395,7 @@ Custom `greeting`, `voice` or `system_prompt` values override the language defau
 | `jarvis log` | `journalctl --user -u voice-launcher -f` |
 | `jarvis config` | settings screen (floating terminal) |
 | `jarvis config show \| get \| set \| reset \| path` | scriptable settings |
+| `jarvis picoh probe \| demo \| reset \| fake` | the Picoh robot: find it, walk through the phases, rest position, demo without a robot |
 
 Runtime overrides: `voice-launcher --test` (dry run: no layouts, no suspend), `--stt local|openai|auto`, `--whisper-model <size>`, `--wake-threshold 0.6`.
 
@@ -400,7 +431,8 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
                         ▼              ▼              ▼
                  jarvis_stt.py   jarvis_events.py  $XDG_RUNTIME_DIR/jarvis-state.json ─► jarvis-window.py
                  local whisper   CLI events →                                (floating viewer)
-                 or OpenAI RT    activity lines
+                 or OpenAI RT    activity lines                     + jarvis-tts.json ─► jarvis_picoh.py
+                                                                    (speech envelope)    (Picoh robot face)
 ```
 
 - One thread reads the microphone at a time. The wake loop hands the stream to the conversation; during the busy phase the `BargeInListener` owns it.
@@ -431,6 +463,7 @@ hey-jarvis/
 │   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
 │   ├── jarvis_narrate.py       progress narration while the model works (Ollama / OpenAI / self / templates)
+│   ├── jarvis_picoh.py         Picoh robot daemon: phase → colour/eyes/head, speech envelope → mouth
 │   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
 │   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
 │   ├── jarvis-consent.py       authorization window: exact command, y / a / n
@@ -443,6 +476,7 @@ hey-jarvis/
 ├── integrations/
 │   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
 │   ├── jarvis.desktop          desktop entry template (Jarvis in the app launcher)
+│   ├── 60-jarvis-picoh.rules   udev rule: serial access to the Picoh without root
 │   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
 ├── tests/                      unit tests: `python -m unittest tests.test_narrate`
 ├── docs/                       screenshots, bar-active-accent hook
@@ -460,9 +494,9 @@ hey-jarvis/
 - Arch Linux with Hyprland — developed on Omarchy 4 (the bar widget needs the Omarchy shell; the voice service works on any Hyprland).
 - Python 3.11+, PipeWire, PortAudio, `wl-clipboard` + `wtype` (dictation paste), a terminal (`ghostty` by default), a microphone.
 - Codex CLI and/or Claude Code CLI, logged in.
-- Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription.
+- Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription; a Picoh robot on USB.
 
-Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets…); `install.sh` installs the hash-locked `requirements.lock`. Tested with Python 3.11 and 3.14. To bump a dependency, edit `requirements*.txt` and regenerate: `uv pip compile --universal --generate-hashes --python-version 3.11 --no-header --override requirements-overrides.txt -o requirements.lock requirements.txt` (same for `-gpu`).
+Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets, pyserial…); `install.sh` installs the hash-locked `requirements.lock`. Tested with Python 3.11 and 3.14. To bump a dependency, edit `requirements*.txt` and regenerate: `uv pip compile --universal --generate-hashes --python-version 3.11 --no-header --override requirements-overrides.txt -o requirements.lock requirements.txt` (same for `-gpu`).
 
 ---
 
@@ -473,6 +507,7 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | Nothing happens on "hey jarvis" | `jarvis log` — is the service running? `wake_threshold` too high? default mic device (`pactl info`)? |
 | It cuts me off mid-sentence | raise `end_silence_seconds` (1.5–2.0) |
 | It interrupts itself while speaking | raise `tts_bleed_factor` / `barge_min_rms`; `barge_debug` prints the measured levels in the log |
+| The Picoh robot does nothing | `jarvis picoh probe` — no port listed: cable/driver; port listed but no answer: not a Picoh (or `picoh_port` pinned to the wrong one); `[picoh]` lines in `jarvis log`; permission denied: install the udev rule (see [The Picoh robot](#the-picoh-robot)) or re-plug the robot |
 | It doesn't stop when I talk over it | lower `barge_min_rms`; check `[barge]` lines in `jarvis log` for your speech level |
 | `openai indisponível … fallback local` in the log | key, credits (`credit_balance_exhausted`) or network — answers still come from local whisper |
 | Whisper on CPU although I have a GPU | `pip install --require-hashes --no-deps -r requirements-gpu.lock` in the env; `jarvis log` shows `whisper …/cuda` |

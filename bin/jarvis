@@ -12,6 +12,7 @@
 #   jarvis app                # tela principal (status, guia, ditado, ações) em terminal flutuante
 #   jarvis config             # tela de configuração (terminal flutuante)
 #   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
+#   jarvis picoh [probe|demo|reset|fake]   # robô Picoh: procura, percorre as fases, repouso
 #
 #   jarvis pause-meeting         # (uso interno do watcher de reunião)
 #   jarvis resume-from-meeting   # (uso interno do watcher de reunião)
@@ -189,7 +190,8 @@ cmd_dictate() {
         return 1
     fi
     echo "$action" > "$rt/jarvis-dictate.cmd"
-    systemctl --user kill -s SIGUSR2 "$UNIT"
+    # --kill-whom=main: o sinal é do launcher, não dos filhos (daemon do Picoh, etc.)
+    systemctl --user kill --kill-whom=main -s SIGUSR2 "$UNIT"
 }
 
 launch_tui() {
@@ -252,6 +254,27 @@ cmd_config() {
     exec python3 "$bindir/jarvis_config.py" "$@"
 }
 
+env_python() {
+    # o interpretador do Jarvis: venv do install.sh; senão o conda `voice`; senão python3
+    local venv="$HOME/.local/share/jarvis/venv/bin/python"
+    if [ -x "$venv" ]; then echo "$venv"; return; fi
+    if [ -x "$HOME/miniconda3/envs/voice/bin/python" ]; then echo "$HOME/miniconda3/envs/voice/bin/python"; return; fi
+    echo python3
+}
+
+cmd_picoh() {
+    # probe = procura o robô | demo = percorre as fases | reset = repouso | fake = demo sem robô
+    local action="${1:-probe}" bindir
+    bindir="$(dirname "$(readlink -f "$0")")"
+    case "$action" in
+        probe) exec "$(env_python)" "$bindir/jarvis_picoh.py" --probe ;;
+        demo)  exec "$(env_python)" "$bindir/jarvis_picoh.py" --demo ;;
+        reset) exec "$(env_python)" "$bindir/jarvis_picoh.py" --reset ;;
+        fake)  exec "$(env_python)" "$bindir/jarvis_picoh.py" --demo --fake ;;
+        *) echo "uso: jarvis picoh probe|demo|reset|fake" >&2; return 2 ;;
+    esac
+}
+
 case "${1:-}" in
     on)                   cmd_on ;;
     off)                  cmd_off ;;
@@ -268,8 +291,9 @@ case "${1:-}" in
     config)               shift; cmd_config "$@" ;;
     wake)                 cmd_wake "${2:-toggle}" ;;
     dictate)              cmd_dictate "${2:-toggle}" ;;
+    picoh)                cmd_picoh "${2:-probe}" ;;
     *)
-        sed -n '2,13p' "$0" | sed 's/^# \?//'
+        sed -n '2,14p' "$0" | sed 's/^# \?//'
         exit 2
         ;;
 esac
