@@ -9,7 +9,7 @@ detects, and states exactly what is written, executed, and contacted.
 
 | Component | Process | Started by |
 |---|---|---|
-| Bar widget + hover panel (`BarWidget.qml`, `app/qs/`) | inside the Omarchy shell (quickshell) | the shell, when the plugin is enabled |
+| Bar widget + panel (`BarWidget.qml`, `app/qs/`) | inside the Omarchy shell (quickshell) | the shell, when the plugin is enabled |
 | Voice service (`voice-launcher.py`) | `voice-launcher.service`, a **user** systemd unit | `install.sh` (opt-in — see below) |
 | Conversation / dictation window, settings screen, `jarvis app` | floating terminal or window | the user (hotkey, click, or CLI) |
 

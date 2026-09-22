@@ -15,6 +15,12 @@ Item {
   property var config: ({})
 
   function probeNow() { if (!probeProc.running) probeProc.running = true }
+  function refreshStatus() { if (poller.installed && !statusProc.running) statusProc.running = true }
+  // Right after an action (toggle, pause…): re-read the state as soon as
+  // systemd had time to apply it, instead of waiting for the next 2 s tick.
+  function refreshSoon() { refreshTimer.restart() }
+
+  Timer { id: refreshTimer; interval: 600; onTriggered: poller.refreshStatus() }
 
   function applyStatus(raw) {
     var lines = String(raw).trim().split("\n")
@@ -68,7 +74,7 @@ Item {
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: if (poller.installed && !statusProc.running) statusProc.running = true
+    onTriggered: poller.refreshStatus()
   }
 
   // Config rarely changes: probe on start, then every 30 s (and on demand).

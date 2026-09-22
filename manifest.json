@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Jarvis",
-    "description": "Voice assistant status (on / paused / off / recording) with a hover panel in cards: voice guide, dictation (speech-to-text) start/stop, keybindings, on/off, pause, logs, settings.",
+    "description": "Voice assistant status (on / paused / off / recording) with a tooltip on hover and a click-to-open panel in cards: voice guide, dictation (speech-to-text) start/stop, keybindings, on/off, pause, logs, settings.",
     "category": "System",
     "defaultSection": "center",
     "allowMultiple": false

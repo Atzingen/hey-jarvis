@@ -23,14 +23,14 @@ There are **no keywords to memorize**. Everything you say goes to a model that a
 | **Feels like a conversation** | It listens until you stop talking, keeps the context of the last exchanges, opens a follow-up window after every answer and lets you **talk over it** to interrupt. |
 | **Actually does things** | Opens projects and apps, suspends the machine, runs commands and reads their output. Two model tiers: fast (Codex) for everyday questions, "think hard" (Claude Fable) when it matters. |
 | **Dictation everywhere** | The same microphone and Whisper model double as a system-wide speech-to-text: toggle or push-to-talk, live transcript, optional local polish for punctuation. |
-| **At home in Omarchy — and beyond** | A brain icon in your bar with a hover panel (voice guide, keybindings, one-click controls) that follows your theme and language. The exact same panel also opens as a standalone window (`jarvis app`, or "Jarvis" in the launcher) on any Linux. |
+| **At home in Omarchy — and beyond** | A brain icon in your bar with a click-to-open panel (voice guide, keybindings, one-click controls) that follows your theme and language. The exact same panel also opens as a standalone window (`jarvis app`, or "Jarvis" in the launcher) on any Linux. |
 | **Yours to tune** | `jarvis config` — a terminal settings screen with profiles, or a scriptable CLI. Wake word, silence timing, models, voices, STT backend: everything is a key in one `config.toml`. |
 
 ## Try it in two minutes
 
 ```bash
 omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable   # the bar widget
-# hover the icon → Install (sets up the voice service), or: bash install.sh
+# click the icon → Install (sets up the voice service), or: bash install.sh
 ```
 
 Then say **"hey jarvis"** and ask for something. Add the [keybindings](#keybindings) for push-to-talk and dictation, and you are done. The panel also opens as a standalone window — search for **Jarvis** in your launcher or run `jarvis app` (works outside Omarchy too).
@@ -84,7 +84,7 @@ Everything below is the detailed documentation: how a conversation flows, every 
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
 | **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
 | **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
-| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, hover panel in cards — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
+| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, a tooltip on hover and a panel in cards on click — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
 
 ---
 
@@ -138,7 +138,7 @@ While the model works you are not left in silence: after `narration_interval_qui
 omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable
 ```
 
-This installs the bar widget. Hover the icon → **Install** runs `install.sh` in a terminal, which sets up the voice service:
+This installs the bar widget. Click the icon → **Install** runs `install.sh` in a terminal, which sets up the voice service:
 
 1. system packages if missing (`portaudio`, `pipewire-pulse`, a terminal);
 2. a dedicated Python venv at `~/.local/share/jarvis/venv` with `requirements.lock` (complete transitive set, sha256-pinned, `pip --require-hashes --no-deps`; + CUDA wheels from `requirements-gpu.lock` when an NVIDIA GPU is detected);
@@ -173,9 +173,9 @@ You also need the model CLIs you want to use: [Codex CLI](https://github.com/ope
 
 ![Bar](docs/screenshots/bar.png)
 
-The hover panel is the screenshot at the top of this page.
+The panel is the screenshot at the top of this page.
 
-The icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off, **󰍬** (urgent color) while a dictation is being recorded. Left-click toggles, right-click pauses for 30 minutes, middle-click starts/stops a dictation. Hovering opens the panel, organized in cards:
+The icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off, **󰍬** (urgent color) while a dictation is being recorded. Hovering shows a one-line tooltip with the state; left-click opens the panel (click anywhere else to close it), right-click pauses for 30 minutes, middle-click starts/stops a dictation. The panel is organized in cards:
 
 - **Hero** — state line (on / paused / off / recording, with "since HH:MM" or "back in N min") and an on/off switch (or **Install** when the service isn't set up yet);
 - **Chips** — what it is running with right now: language, STT provider, quick model, "think hard" model;
@@ -417,7 +417,7 @@ mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
 ```
 hey-jarvis/
 ├── manifest.json               Omarchy shell plugin manifest (id atzingen.jarvis)
-├── BarWidget.qml               the bar widget: icon + hover popup hosting PanelContent
+├── BarWidget.qml               the bar widget: icon + tooltip + click popup hosting PanelContent
 ├── app/qs/                     PanelContent.qml (THE panel, shared by popup and app),
 │                               StatusPoller.qml, shell.qml (quickshell), main.qml (PySide6), qs shims
 ├── install.sh                  idempotent installer (env, voices, scripts, service)

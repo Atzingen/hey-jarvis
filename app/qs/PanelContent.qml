@@ -25,6 +25,30 @@ Item {
   readonly property bool isPaused: serviceState === "paused"
   readonly property bool pt: lang.indexOf("pt") === 0
 
+  // Optimistic switches: the knob flips on the click itself; the real state
+  // (polled) takes over as soon as it changes, or after a timeout if the
+  // action failed and nothing changed.
+  property string pendingService: ""   // "on" | "off" | ""
+  property string pendingWake: ""      // "on" | "off" | ""
+  readonly property bool serviceChecked: pendingService !== "" ? pendingService === "on" : isOn
+  readonly property bool wakeChecked: pendingWake !== "" ? pendingWake === "on" : wakeOn
+
+  function settle() { pendingService = ""; pendingWake = ""; pendingTimer.stop() }
+  onServiceStateChanged: settle()
+  Timer { id: pendingTimer; interval: 5000; onTriggered: panel.settle() }
+
+  function toggleService() {
+    pendingService = isOn ? "off" : "on"
+    pendingTimer.restart()
+    run("jarvis toggle-notify", false)
+  }
+  function toggleWake() {
+    if (!isOn) return
+    pendingWake = wakeOn ? "off" : "on"
+    pendingTimer.restart()
+    run("jarvis wake toggle", false)
+  }
+
   // --- palette ------------------------------------------------------------
   // Section tints derive from the theme accent so every theme stays coherent:
   // voice = accent, dictation = accent rotated one way, keys = the other way.
@@ -74,13 +98,13 @@ Item {
     keyH: "falar agora, sem “hey jarvis”",
     keyDictToggle: "ditado (toggle)", keyDictPtt: "ditado (push-to-talk)",
     keyJ: "liga/desliga o Jarvis",
-    keyClick: "clique", keyClickAction: "liga/desliga",
+    keyClick: "clique", keyClickAction: "abre este painel",
     keyRight: "direito", keyRightAction: "pausa 30 min",
     keyConfig: "configuração no terminal",
     tipOn: "Ligar", tipOff: "Desligar", tipPause: "Pausar 30 min", tipDictate: "Ditar agora",
     tipDictateStop: "Parar e colar", tipLogs: "Logs (journalctl -f)", tipConfig: "Configuração",
     btnInstall: "Instalar",
-    footHint: "ícone da bar: clique liga/desliga · direito pausa 30 min · meio dita"
+    footHint: "ícone da bar: clique abre o painel · direito pausa 30 min · meio dita"
   }) : ({
     statusOn: "Active — listening for “hey jarvis”", statusPaused: "Paused", statusOff: "Off — microphone free",
     statusManual: "Active — hotkeys only (“hey jarvis” off, mic closed)",
@@ -111,13 +135,13 @@ Item {
     keyH: "talk now, no “hey jarvis” needed",
     keyDictToggle: "dictation (toggle)", keyDictPtt: "dictation (push-to-talk)",
     keyJ: "toggles Jarvis on/off",
-    keyClick: "click", keyClickAction: "toggle on/off",
+    keyClick: "click", keyClickAction: "opens this panel",
     keyRight: "right", keyRightAction: "pause 30 min",
     keyConfig: "settings in the terminal",
     tipOn: "Turn on", tipOff: "Turn off", tipPause: "Pause 30 min", tipDictate: "Dictate now",
     tipDictateStop: "Stop and paste", tipLogs: "Logs (journalctl -f)", tipConfig: "Settings",
     btnInstall: "Install",
-    footHint: "bar icon: click toggles · right-click pauses 30 min · middle-click dictates"
+    footHint: "bar icon: click opens the panel · right-click pauses 30 min · middle-click dictates"
   })
 
   readonly property string statusLine: !installed ? str.notInstalled
@@ -468,9 +492,9 @@ Item {
               font.letterSpacing: 1
             }
             PanelSwitch {
-              checked: panel.isOn
+              checked: panel.serviceChecked
               accent: Color.accent
-              onToggled: panel.run("jarvis toggle-notify", false)
+              onToggled: panel.toggleService()
             }
           }
           Row {
@@ -486,9 +510,9 @@ Item {
               font.letterSpacing: 1
             }
             PanelSwitch {
-              checked: panel.wakeOn
+              checked: panel.wakeChecked
               accent: Color.accent
-              onToggled: if (panel.isOn) panel.run("jarvis wake toggle", false)
+              onToggled: panel.toggleWake()
             }
           }
         }
@@ -623,7 +647,7 @@ Item {
           iconText: "󰐥"
           hoverColor: panel.isOn ? Color.urgent : Color.accent
           tooltipText: panel.isOn ? panel.str.tipOff : panel.str.tipOn
-          onClicked: panel.run("jarvis toggle-notify", false)
+          onClicked: panel.toggleService()
         }
         FooterAction {
           iconText: "󰏤"

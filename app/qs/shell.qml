@@ -29,6 +29,7 @@ ShellRoot {
       config: poller.config
       onRunRequested: function(cmd, close) {
         Quickshell.execDetached(["bash", "-c", cmd])
+        poller.refreshSoon()
       }
     }
   }

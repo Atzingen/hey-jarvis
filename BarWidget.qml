@@ -5,8 +5,9 @@ import qs.Ui
 import "app/qs" as Shared
 
 // Jarvis bar widget. The icon shows the voice-launcher.service state; hovering
-// opens the panel (PanelContent.qml — the same QML the standalone `jarvis app`
-// window renders). State plumbing lives in StatusPoller.qml, also shared.
+// shows a one-line tooltip ("Jarvis — active"), a click opens the panel
+// (PanelContent.qml — the same QML the standalone `jarvis app` window renders).
+// State plumbing lives in StatusPoller.qml, also shared.
 // Texts follow the `language` key of ~/.config/jarvis/config.toml.
 BarWidget {
   id: root
@@ -16,8 +17,25 @@ BarWidget {
 
   readonly property bool isOn: poller.serviceState === "on" || poller.serviceState === "manual"
   readonly property bool isPaused: poller.serviceState === "paused"
+  readonly property bool pt: poller.lang.indexOf("pt") === 0
   readonly property string pluginDir: String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/\/$/, "")
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+
+  // Short state for the tooltip; the panel carries the full status line.
+  readonly property string stateWord: !poller.installed ? (pt ? "não instalado" : "not installed")
+    : poller.dictating ? (pt ? "gravando ditado" : "recording dictation")
+    : poller.serviceState === "manual" ? (pt ? "ativo, só atalhos" : "active, hotkeys only")
+    : isOn ? (pt ? "ativo" : "active")
+    : isPaused ? (pt ? "pausado" : "paused")
+    : (pt ? "desligado" : "off")
+
+  // Popout contract the bar expects on the widget root (requestPopout closes
+  // the previous panel through close(); shell.summon/toggle route via
+  // open/close/opened).
+  readonly property bool opened: popupOpen
+  function open() { popupOpen = true }
+  function close() { popupOpen = false }
+  function togglePanel() { popupOpen = !popupOpen }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -25,33 +43,13 @@ BarWidget {
   function run(cmd, close) {
     if (!root.bar) return
     root.bar.run(cmd)
+    poller.refreshSoon()
     if (close) root.popupOpen = false
   }
 
   Shared.StatusPoller { id: poller }
 
   onPopupOpenChanged: if (popupOpen) poller.probeNow()
-
-  Timer { id: openTimer; interval: 350; onTriggered: root.popupOpen = true }
-  Timer {
-    id: closeTimer
-    interval: 450
-    onTriggered: if (!rootHover.hovered && !popupHover.hovered) root.popupOpen = false
-  }
-
-  HoverHandler {
-    id: rootHover
-    onHoveredChanged: hovered ? openTimer.start() : closeTimer.restart()
-  }
-
-  // Safety net: cursor teleports and focus changes don't always deliver the
-  // leave event to the popup; while open, re-check hover periodically.
-  Timer {
-    interval: 900
-    running: root.popupOpen
-    repeat: true
-    onTriggered: if (!rootHover.hovered && !popupHover.hovered) root.popupOpen = false
-  }
 
   BarIconButton {
     id: button
@@ -61,67 +59,39 @@ BarWidget {
     active: poller.serviceState === "on" || poller.dictating  // modo manual: cérebro sem cor de ativo
     // Active state in the theme accent (the bar default falls back to `urgent`, red).
     activeColor: poller.dictating ? Color.urgent : Color.accent
-    tooltipText: ""
+    tooltipText: root.popupOpen ? "" : "Jarvis — " + root.stateWord
 
     onPressed: function(b) {
-      if (!root.bar || !poller.installed) return
-      if (b === Qt.RightButton) root.run("jarvis pause 30m && notify-send -t 1500 Jarvis 'paused 30 min'")
-      else if (b === Qt.MiddleButton) root.run("jarvis dictate toggle")
-      else root.run("jarvis toggle-notify")
+      if (!root.bar) return
+      if (b === Qt.RightButton) { if (poller.installed) root.run("jarvis pause 30m && notify-send -t 1500 Jarvis 'paused 30 min'") }
+      else if (b === Qt.MiddleButton) { if (poller.installed) root.run("jarvis dictate toggle") }
+      else root.togglePanel()
     }
   }
 
-  PopupWindow {
+  // Click-mode popup: the bar coordinates it with the other panels and a
+  // Hyprland focus grab closes it on any click outside the card or the bar.
+  PopupCard {
     id: popup
-    visible: root.popupOpen
-    color: "transparent"
-    implicitWidth: Math.ceil(card.implicitWidth)
-    implicitHeight: Math.ceil(card.implicitHeight)
+    anchorItem: button
+    bar: root.bar
+    owner: root
+    open: root.popupOpen
+    contentWidth: popup.fittedContentWidth(panelContent.implicitWidth + popup.padding * 2
+      + Border.left(popup.borderSpec) + Border.right(popup.borderSpec))
+    contentHeight: popup.fittedContentHeight(panelContent.implicitHeight)
 
-    anchor {
-      id: popupAnchor
-      window: root.QsWindow.window
-      adjustment: PopupAdjustment.Slide
-      edges: Edges.Top | Edges.Left
-      gravity: Edges.Bottom | Edges.Right
-      rect.width: 1
-      rect.height: 1
-      onAnchoring: {
-        var w = root.QsWindow.window
-        if (!w) return
-        var point = w.contentItem.mapFromItem(root, root.width / 2 - popup.implicitWidth / 2, root.height + 6)
-        popupAnchor.rect.x = Math.round(point.x)
-        popupAnchor.rect.y = Math.round(point.y)
-      }
-    }
-
-    BorderSurface {
-      id: card
-      color: Color.popups.background
-      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, 1)
-      radius: Style.cornerRadius
-      implicitWidth: panelContent.implicitWidth + Style.space(18) * 2
-      implicitHeight: panelContent.implicitHeight + Style.space(16) * 2
-
-      HoverHandler {
-        id: popupHover
-        onHoveredChanged: if (!hovered) closeTimer.restart()
-      }
-
-      Shared.PanelContent {
-        id: panelContent
-        x: Style.space(18)
-        y: Style.space(16)
-        serviceState: poller.serviceState
-        detailText: poller.detailText
-        dictating: poller.dictating
-        installed: poller.installed
-        lang: poller.lang
-        config: poller.config
-        pluginDir: root.pluginDir
-        fontFamily: root.fontFamily
-        onRunRequested: function(cmd, close) { root.run(cmd, close) }
-      }
+    Shared.PanelContent {
+      id: panelContent
+      serviceState: poller.serviceState
+      detailText: poller.detailText
+      dictating: poller.dictating
+      installed: poller.installed
+      lang: poller.lang
+      config: poller.config
+      pluginDir: root.pluginDir
+      fontFamily: root.fontFamily
+      onRunRequested: function(cmd, close) { root.run(cmd, close) }
     }
   }
 }
