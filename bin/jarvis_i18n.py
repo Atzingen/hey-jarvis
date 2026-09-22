@@ -20,16 +20,37 @@ STT_LANG = {"pt-BR": "pt", "en": "en"}
 # voz Piper padrão por idioma (arquivo em ~/.local/share/piper-voices)
 DEFAULT_VOICE = {"pt-BR": "pt_BR-faber-medium", "en": "en_US-lessac-medium"}
 
+# Como o Jarvis se dirige ao usuário nas falas fixas e no prompt ({address}).
+# A chave `address` do config sobrescreve para todos os idiomas (set_address).
+DEFAULT_ADDRESS = {"pt-BR": "senhor", "en": "sir"}
+_ADDRESS_OVERRIDE = ""
+
+
+def set_address(text: str | None) -> None:
+    """Tratamento escolhido no config (vazio = padrão do idioma)."""
+    global _ADDRESS_OVERRIDE
+    _ADDRESS_OVERRIDE = (text or "").strip()
+
+
+def address(lang: str) -> str:
+    return _ADDRESS_OVERRIDE or DEFAULT_ADDRESS.get(norm_lang(lang), "sir")
+
+
+def system_prompt(lang: str, custom: str = "") -> str:
+    """Prompt de sistema do idioma (ou o custom do config), com o tratamento aplicado."""
+    text = custom or SYSTEM_PROMPT[norm_lang(lang)]
+    return text.replace("{address}", address(lang))
+
 STRINGS: dict[str, dict[str, str]] = {
     "pt-BR": {
-        "greeting": "No que vamos trabalhar, senhor?",
-        "not_heard": "Não ouvi, senhor",
-        "not_understood": "Não entendi, senhor",
-        "thinking": "Pensando, senhor",
-        "yes_sir": "Pois não, senhor?",
-        "done": "Feito, senhor.",
-        "problem": "Tive um problema, senhor. Pode repetir?",
-        "handoff": "Está demorando mais que o normal, senhor. Deixei rodando num terminal separado.",
+        "greeting": "No que vamos trabalhar, {address}?",
+        "not_heard": "Não ouvi, {address}",
+        "not_understood": "Não entendi, {address}",
+        "thinking": "Pensando, {address}",
+        "yes_sir": "Pois não, {address}?",
+        "done": "Feito, {address}.",
+        "problem": "Tive um problema, {address}. Pode repetir?",
+        "handoff": "Está demorando mais que o normal, {address}. Deixei rodando num terminal separado.",
         "handoff_window": "(trabalho longo — seguindo em terminal separado)",
         "handoff_history": "(resposta longa entregue a um terminal separado)",
         "interrupted": "(interrompida)",
@@ -43,7 +64,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "app_not_found": "Não encontrei o aplicativo {name}.",
         "test_answer": "[test] resposta fake",
         # autorização (system_access = ask)
-        "consent_needed": "Preciso da sua autorização, senhor. Veja a tela.",
+        "consent_needed": "Preciso da sua autorização, {address}. Veja a tela.",
         "consent_title": "Jarvis pede autorização",
         "consent_question": "você pediu:",
         "consent_tool": "o modelo quer usar {tool}:",
@@ -57,13 +78,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "consent_allow": "permitido",
         "consent_allow_all": "permitido — tudo até o fim desta pergunta",
         "consent_deny": "negado",
-        "consent_denied_spoken": "Sem autorização, senhor.",
+        "consent_denied_spoken": "Sem autorização, {address}.",
         "access_unavailable": "O acesso ao computador está indisponível: o {cli} instalado é antigo demais para o modo seguro. Respondo só com o que sei.",
         "ph_consent": ("AUTORIZAÇÃO", "o modelo pede pra executar algo — decida na janela que abriu (y/a/n)"),
         # janela da conversa
         "you": "você",
         "empty": "(a conversa aparece aqui)",
-        "ph_listening": ("OUVINDO", "pode falar, senhor · peça pra encerrar quando quiser · q fecha"),
+        "ph_listening": ("OUVINDO", "pode falar, {address} · peça pra encerrar quando quiser · q fecha"),
         "ph_recording": ("GRAVANDO", "fale à vontade — uma pausa encerra sua fala"),
         "ph_transcribing": ("TRANSCREVENDO", "um instante..."),
         "ph_thinking": ("PENSANDO", "fale por cima pra cancelar e pedir outra coisa · q fecha"),
@@ -121,14 +142,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "cfg_error": "erro",
     },
     "en": {
-        "greeting": "What shall we work on, sir?",
-        "not_heard": "I didn't catch that, sir",
-        "not_understood": "I didn't understand, sir",
-        "thinking": "Thinking, sir",
-        "yes_sir": "Yes, sir?",
-        "done": "Done, sir.",
-        "problem": "I ran into a problem, sir. Could you repeat?",
-        "handoff": "This is taking longer than usual, sir. I left it running in a separate terminal.",
+        "greeting": "What shall we work on, {address}?",
+        "not_heard": "I didn't catch that, {address}",
+        "not_understood": "I didn't understand, {address}",
+        "thinking": "Thinking, {address}",
+        "yes_sir": "Yes, {address}?",
+        "done": "Done, {address}.",
+        "problem": "I ran into a problem, {address}. Could you repeat?",
+        "handoff": "This is taking longer than usual, {address}. I left it running in a separate terminal.",
         "handoff_window": "(long task — continuing in a separate terminal)",
         "handoff_history": "(long answer handed to a separate terminal)",
         "interrupted": "(interrupted)",
@@ -141,7 +162,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "project_not_found": "I couldn't find the project {name}.",
         "app_not_found": "I couldn't find the application {name}.",
         "test_answer": "[test] fake answer",
-        "consent_needed": "I need your authorization, sir. Please check the screen.",
+        "consent_needed": "I need your authorization, {address}. Please check the screen.",
         "consent_title": "Jarvis asks for authorization",
         "consent_question": "you asked:",
         "consent_tool": "the model wants to use {tool}:",
@@ -155,12 +176,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "consent_allow": "allowed",
         "consent_allow_all": "allowed — everything until this question ends",
         "consent_deny": "denied",
-        "consent_denied_spoken": "Not authorized, sir.",
+        "consent_denied_spoken": "Not authorized, {address}.",
         "access_unavailable": "Computer access is unavailable: the installed {cli} is too old for the safe mode. I'll answer from knowledge only.",
         "ph_consent": ("AUTHORIZATION", "the model asks to run something — decide in the window that opened (y/a/n)"),
         "you": "you",
         "empty": "(the conversation shows up here)",
-        "ph_listening": ("LISTENING", "go ahead, sir · ask to end whenever you like · q closes"),
+        "ph_listening": ("LISTENING", "go ahead, {address} · ask to end whenever you like · q closes"),
         "ph_recording": ("RECORDING", "speak freely — a pause ends your turn"),
         "ph_transcribing": ("TRANSCRIBING", "one moment..."),
         "ph_thinking": ("THINKING", "talk over me to cancel and ask something else · q closes"),
@@ -228,7 +249,17 @@ def norm_lang(lang: str | None) -> str:
 def T(lang: str, key: str, **fmt):
     table = STRINGS.get(norm_lang(lang), STRINGS["pt-BR"])
     value = table.get(key, STRINGS["en"].get(key, key))
-    if fmt and isinstance(value, str):
+    if isinstance(value, tuple):
+        return tuple(_fill(v, lang, fmt) for v in value)
+    return _fill(value, lang, fmt)
+
+
+def _fill(value, lang: str, fmt: dict):
+    if not isinstance(value, str):
+        return value
+    if "{address}" in value:
+        value = value.replace("{address}", address(lang))
+    if fmt:
         return value.format(**fmt)
     return value
 
@@ -256,7 +287,10 @@ SYSTEM_PROMPT = {
         "transcrição e interprete a intenção, não a palavra exata. Você é quem "
         "decide o que o usuário quer — pergunta, pedido de ação na máquina, abrir "
         "algo, encerrar a conversa — não existe palavra-chave; as ações que o "
-        "sistema executa por você estão descritas a seguir, com seus marcadores."
+        "sistema executa por você estão descritas a seguir, com seus marcadores. "
+        "Dirija-se ao usuário como \"{address}\" e só assim: não use o nome dele "
+        "(mesmo que o conheça por outros arquivos ou memórias), nem em saudações "
+        "nem em despedidas."
     ),
     "en": (
         "You are Jarvis, a personal VOICE assistant — this is a spoken conversation "
@@ -278,7 +312,9 @@ SYSTEM_PROMPT = {
         "words. You decide what the user wants — a question, an action on the "
         "machine, opening something, ending the conversation — there are no "
         "keywords; the actions the system executes for you are described next, "
-        "with their markers."
+        "with their markers. Address the user as \"{address}\" and only that: do "
+        "not use their name (even if you know it from other files or memories), "
+        "neither in greetings nor in goodbyes."
     ),
 }
 

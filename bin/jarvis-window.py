@@ -23,6 +23,7 @@ QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from jarvis_consent import safe_text  # noqa: E402
+import jarvis_i18n  # noqa: E402
 from jarvis_i18n import T  # noqa: E402
 
 # fase -> cor ANSI; badge e dica vêm do i18n (chave ph_<fase>)
@@ -75,6 +76,7 @@ def render(state: dict) -> str:
     width = min(cols - 2, 96)
     phase = state.get("phase", "listening")
     lang = state.get("lang", "pt-BR")
+    jarvis_i18n.set_address((state.get("i18n") or {}).get("address"))
     color = PHASE_COLOR.get(phase, "37")
     ph = T(lang, f"ph_{phase}")
     name, hint = ph if isinstance(ph, tuple) else (phase.upper(), "")

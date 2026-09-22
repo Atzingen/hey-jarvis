@@ -70,6 +70,7 @@ def _hits(spec: str) -> tuple[int, int]:
 SAMPLE_RATE = 16000
 CHUNK = 1280  # 80ms @ 16kHz (openWakeWord default)
 LANG = jarvis_i18n.norm_lang(CFG["language"])
+jarvis_i18n.set_address(CFG.get("address", ""))   # "senhor"/"sir" ou o tratamento escolhido
 DEV_DIR = Path(CFG["dev_dir"]).expanduser()
 VOICE_NAME = CFG["voice"] if CFG["voice"] != "auto" else jarvis_i18n.DEFAULT_VOICE[LANG]
 VOICE = jarvis_config.VOICES_DIR / f"{VOICE_NAME}.onnx"
@@ -151,7 +152,7 @@ NARRATION_INTERVAL_QUICK = CFG["narration_interval_quick"]
 NARRATION_INTERVAL_DEEP = CFG["narration_interval_deep"]
 
 # Prompt de sistema compartilhado pelos dois provedores (vazio = padrão do idioma).
-CLAUDE_SYSTEM = CFG["system_prompt"] or jarvis_i18n.SYSTEM_PROMPT[LANG]
+CLAUDE_SYSTEM = jarvis_i18n.system_prompt(LANG, CFG["system_prompt"])
 
 # Perguntas rápidas (não-deep): "codex" (Codex CLI) ou "claude" (Claude Code CLI).
 # "pense bem" sempre usa o Claude Code CLI com deep_model/deep_effort.
@@ -505,9 +506,9 @@ def window_strings(lang: str) -> dict:
     """Textos que a janela mostra (fases, rótulos), no idioma configurado —
     vão no estado pra o viewer gráfico (QML) não depender do i18n em Python."""
     table = jarvis_i18n.STRINGS.get(jarvis_i18n.norm_lang(lang), jarvis_i18n.STRINGS["pt-BR"])
-    phases = {k[3:]: list(v) for k, v in table.items() if k.startswith("ph_") and isinstance(v, tuple)}
-    return {"you": table.get("you", "you"), "empty": table.get("empty", ""),
-            "dict_empty": table.get("dict_empty", ""), "phases": phases}
+    phases = {k[3:]: list(T(lang, k)) for k, v in table.items() if k.startswith("ph_") and isinstance(v, tuple)}
+    return {"you": T(lang, "you"), "empty": T(lang, "empty"), "dict_empty": T(lang, "dict_empty"),
+            "phases": phases, "address": jarvis_i18n.address(lang)}
 
 
 def app_dir() -> Path:

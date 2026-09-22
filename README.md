@@ -244,13 +244,14 @@ Everything is configurable, three ways:
 | `followup_seconds` | `20.0` | listening window after each answer, no wake word needed |
 | `quick_provider` | `codex` | fast path: `codex` (Codex CLI) or `claude` (Claude Code CLI) |
 | `system_access` | `ask` | `ask` = sandboxed, each consequential action needs your OK in a window showing the exact command; `full` = no sandbox / no approvals (`--dangerously-*`); `off` = knowledge-only. See [Models and machine access](#models-and-machine-access) |
-| `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default) and reasoning effort |
+| `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default; the settings screen cycles the known ones — `gpt-6-astra`, `gpt-6-sol`… — and accepts any name) and reasoning effort |
 | `codex_fast` | `true` | Codex fast mode (`service_tier=fast`) |
 | `claude_quick_model` / `claude_quick_effort` | `sonnet` / `low` | fast path when `quick_provider = "claude"` |
 | `deep_model` / `deep_effort` | `fable` / `high` | "think hard" (always Claude Code CLI): `fable`, `opus`, `sonnet`, `haiku` |
 | `voice` | `auto` | Piper voice; `auto` = the language default (`en_US-lessac-medium` / `pt_BR-faber-medium`) |
 | `voice_length_scale` | `1.15` | speech speed (>1 slower) |
 | `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
+| `address` | `""` | how Jarvis addresses you in every fixed phrase and in the system prompt (*sir*, *boss*, a name…); empty = `sir` / `senhor` by language. The model is told to use only this and never your name |
 | `window_enabled` | `true` | the conversation window |
 | `window_style` | `auto` | `auto` = graphic (quickshell, else PySide6) with the face and the voice ring, terminal where there is no Qt; `graphic`; `terminal` |
 | `picoh` | `auto` | Picoh robot as the face: `auto` looks for it on USB, `off` never does |

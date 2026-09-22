@@ -108,8 +108,11 @@ SETTINGS: list[Setting] = [
             "do mic; off = só responde de conhecimento.",
             group="Modelos", choices=SYSTEM_ACCESS_MODES),
     Setting("codex_model", "", "Modelo do Codex",
-            "Vazio usa o default do Codex CLI (ex.: gpt-5.4). Só vale com provedor codex.",
-            group="Modelos"),
+            "Vazio usa o default do Codex CLI. Só vale com provedor codex; ←/→ percorre os "
+            "modelos conhecidos, Enter aceita qualquer nome.",
+            group="Modelos", free_choices=True,
+            choices=["", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+                     "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"]),
     Setting("codex_effort", "low", "Esforço do Codex",
             "model_reasoning_effort do Codex nas perguntas rápidas.",
             group="Modelos", choices=EFFORTS),
@@ -138,6 +141,10 @@ SETTINGS: list[Setting] = [
             group="Voz", min=0.7, max=1.8, step=0.05),
     Setting("greeting", "", "Saudação",
             "Frase falada quando a palavra-chave dispara. Vazio = padrão do idioma.",
+            group="Voz"),
+    Setting("address", "", "Tratamento",
+            "Como o Jarvis se dirige a você nas falas fixas e no prompt (senhor, chefe, um nome...). "
+            "Vazio = \"senhor\" / \"sir\" pelo idioma. O modelo é instruído a nunca usar seu nome por conta própria.",
             group="Voz"),
 
     Setting("window_enabled", True, "Janela da conversa",
