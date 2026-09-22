@@ -23,7 +23,7 @@ by hand. Nothing is installed silently.
 
 - `~/.local/bin/` — the scripts listed in `SCRIPTS` (this repository's `bin/`)
 - `~/.local/share/jarvis/` — the dedicated Python venv (always; no pre-existing environment is reused), the panel app QML, `models/whisper/` (Whisper weights, see *Network endpoints*), and `workdir/` (the empty working directory the model CLI and every authorized command run in under `system_access = "ask"`)
-- `~/.local/share/piper-voices/` — TTS voices (pinned + checksummed, see below)
+- `~/.local/share/piper-voices/` — TTS voices (pinned + checksummed, see below). Every download `install.sh` makes itself (`fetch_verified`: voices, openWakeWord models) is **size-capped before verification**: curl refuses an announced size above the ceiling and the stream is cut at the ceiling when no size is announced (128 MiB per voice file, 32 MiB per wake-word model), so a remote endpoint cannot write more than that to disk regardless of how long the 600 s transfer window is
 - `~/.local/share/applications/jarvis.desktop` — launcher entry
 - `~/.config/systemd/user/voice-launcher.service` — the user unit
 - `~/.config/jarvis/` — created at runtime for `config.toml` (mode 0600)
@@ -181,6 +181,22 @@ open consent request and revokes the grant. Restarting
 (a long answer being followed in a scratch terminal), which is documented
 behaviour; the grant does not survive (revoked at hand-off and at start), so
 every further command in that scope needs a fresh `y`.
+
+Output bounds: the CLI and everything it runs are treated as an untrusted
+producer. Every process in the scope runs under `prlimit --fsize` =
+`MODEL_MAX_FILE_BYTES` (256 MiB), so the kernel refuses any single file larger
+than that (EFBIG/SIGXFSZ) whatever the launcher does. On top of that a watchdog
+thread checks the call's three output files every 0.2 s — stdout/events JSONL
+(32 MiB), stderr (4 MiB), answer file (1 MiB) — and, the moment one crosses its
+ceiling, **stops the whole scope**, truncates the files and leaves the reason
+as the answer. The same watchdog gives a handed-off call a finite total
+lifetime (`handoff_max_minutes`, default 30): when it expires the scope is
+stopped. Nothing the model wrote is ever read whole: event lines are consumed
+only when complete and never beyond 1 MiB (a longer unterminated line stops
+the scope), the answer and stderr are read up to their ceilings, and the
+scratch-terminal follower uses the same bounded reader. The files live in
+`$XDG_RUNTIME_DIR/jarvis-model/` (mode 0600, dir 0700) and are removed when the
+call ends.
 
 What an approval means: an authorized command runs with the user's full
 privileges (there is no privilege separation between Jarvis and the user), so

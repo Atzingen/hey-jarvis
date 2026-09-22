@@ -27,15 +27,26 @@ say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
-# fetch_verified <url> <sha256> <dest>: downloads only when the file is missing
-# or its hash does not match; a mismatch after download aborts the install.
+# fetch_verified <url> <sha256> <dest> <max_bytes>: downloads only when the file
+# is missing or its hash does not match; a mismatch after download aborts the
+# install. The download itself is capped at <max_bytes>: curl refuses a larger
+# announced size, and `head -c` cuts the stream (curl dies on the closed pipe)
+# when the size is not announced — a remote endpoint cannot write more than the
+# ceiling to disk, whatever it sends for however long.
 fetch_verified() {
-  local url="$1" sha="$2" dest="$3"
+  local url="$1" sha="$2" dest="$3" max="$4" size
   if [[ -f "$dest" ]] && echo "$sha  $dest" | sha256sum -c --quiet - 2>/dev/null; then
     return 0
   fi
   [[ -f "$dest" ]] && warn "$(basename "$dest") exists with a different checksum — re-downloading"
-  curl -sSL --fail --proto '=https' --tlsv1.2 --max-time 600 -o "$dest.tmp" "$url"
+  curl -sSL --fail --proto '=https' --tlsv1.2 --max-time 600 --max-filesize "$max" "$url" \
+    | head -c "$((max + 1))" > "$dest.tmp" || true
+  size=$(stat -c %s "$dest.tmp" 2>/dev/null || echo 0)
+  if (( size > max )); then
+    rm -f "$dest.tmp"
+    warn "$(basename "$dest") is larger than its $((max / 1024 / 1024)) MiB ceiling — not installed"
+    exit 1
+  fi
   echo "$sha  $dest.tmp" | sha256sum -c --quiet - || {
     rm -f "$dest.tmp"
     warn "checksum mismatch for $(basename "$dest") — not installed"
@@ -43,6 +54,8 @@ fetch_verified() {
   }
   mv "$dest.tmp" "$dest"
 }
+VOICE_MAX_BYTES=$((128 * 1024 * 1024))   # a Piper medium voice is ~63 MB
+OWW_MAX_BYTES=$((32 * 1024 * 1024))      # openWakeWord models are 1–4 MB
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
          jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis_narrate.py jarvis-window.py jarvis-conversation.py jarvis-app.py jarvis-panel.py
@@ -137,7 +150,7 @@ PY="$VENV/bin/python"
   )
   for entry in "${voice_files[@]}"; do
     read -r spec sha <<<"$entry"
-    fetch_verified "$base/$spec" "$sha" "$VOICES/${spec##*/}"
+    fetch_verified "$base/$spec" "$sha" "$VOICES/${spec##*/}" "$VOICE_MAX_BYTES"
   done
 
   # openWakeWord 0.6 ships no model files: the wake-word and feature models
@@ -160,7 +173,7 @@ PY="$VENV/bin/python"
   )
   for entry in "${oww_files[@]}"; do
     read -r name sha <<<"$entry"
-    fetch_verified "$oww_base/$name" "$sha" "$OWW_DIR/$name"
+    fetch_verified "$oww_base/$name" "$sha" "$OWW_DIR/$name" "$OWW_MAX_BYTES"
   done
 }
 

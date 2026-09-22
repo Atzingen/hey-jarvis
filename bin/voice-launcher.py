@@ -127,9 +127,22 @@ MODEL_TMP_DIR = _RUNTIME_DIR / "jarvis-model"
 # pedir; por padrão o log traz tamanhos e tempos.
 LOG_TEXT = bool(CFG.get("log_transcripts", False))
 
-# Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá).
+# Prazo até entregar trabalho lento a um terminal rascunho (segue rodando lá),
+# e vida total de um trabalho entregue: depois disso o scope inteiro é parado.
 HANDOFF_SECONDS_QUICK = CFG["handoff_seconds_quick"]
 HANDOFF_SECONDS_DEEP = CFG["handoff_seconds_deep"]
+HANDOFF_MAX_SECONDS = int(CFG.get("handoff_max_minutes", 30)) * 60
+
+# Tetos da saída do modelo. O CLI (e o que ele executa) é um produtor não
+# confiável: qualquer arquivo que passe do teto derruba o scope inteiro na hora
+# (vigia a cada 0,2 s, também durante o handoff), e por baixo o RLIMIT_FSIZE do
+# scope impede qualquer processo dele de escrever um arquivo maior que
+# MODEL_MAX_FILE_BYTES — o kernel recusa a escrita mesmo que o vigia não exista.
+MODEL_MAX_EVENTS_BYTES = 32 * 1024 * 1024   # stdout: eventos JSONL
+MODEL_MAX_STDERR_BYTES = 4 * 1024 * 1024    # stderr
+MODEL_MAX_ANSWER_BYTES = 1 * 1024 * 1024    # arquivo da resposta final
+MODEL_MAX_LINE_BYTES = 1 * 1024 * 1024      # uma linha JSONL (nunca lida inteira acima disso)
+MODEL_MAX_FILE_BYTES = 256 * 1024 * 1024    # RLIMIT_FSIZE de todo processo do scope
 
 # Narração de progresso: a cada N s sem fala, uma frase curta do que o modelo
 # está fazendo (jarvis_narrate). "auto" é resolvido no início de cada conversa.
@@ -243,6 +256,40 @@ def scoped(cmd: list[str], unit: str | None = None) -> list[str]:
         extra = [f"--unit={unit}"] if unit else []
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", *extra, "--"] + cmd
     return cmd
+
+
+def limited(cmd: list[str], max_file_bytes: int = MODEL_MAX_FILE_BYTES) -> list[str]:
+    """Prefixo que impõe RLIMIT_FSIZE ao comando e a tudo que ele lançar: um
+    processo do modelo que tente escrever um arquivo maior que o teto recebe
+    EFBIG/SIGXFSZ do kernel — limite no produtor, sem depender do launcher."""
+    if shutil.which("prlimit"):
+        return ["prlimit", f"--fsize={max_file_bytes}", "--"] + cmd
+    return cmd
+
+
+def read_bounded(path: Path, limit: int) -> tuple[str, bool]:
+    """Lê no máximo `limit` bytes de um arquivo escrito pelo modelo. Devolve
+    (texto, estourou): nunca carrega em memória mais que o teto."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read(limit + 1)
+    except OSError:
+        return "", False
+    if len(data) > limit:
+        return data[:limit].decode(errors="replace"), True
+    return data.decode(errors="replace"), False
+
+
+def output_overflow(files: dict[str, tuple[Path, int]]) -> str | None:
+    """Motivo do estouro se algum arquivo de saída do modelo passou do seu teto."""
+    for name, (path, limit) in files.items():
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if size > limit:
+            return f"{name} passou de {limit // (1024 * 1024)} MiB ({size} bytes)"
+    return None
 
 
 def stop_scope(unit: str | None, proc: subprocess.Popen) -> None:
@@ -770,7 +817,7 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
         # scope próprio (nomeado): um restart do Jarvis não mata um trabalho longo
         # em voo, e cancelar para o scope inteiro (CLI + filhos).
         # stdin fechado: o codex fica esperando entrada se herdar um stdin aberto.
-        proc = subprocess.Popen(scoped(cmd, unit), stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(limited(scoped(cmd, unit)), stdin=subprocess.DEVNULL,
                                 stdout=out_f, stderr=err_f, **popen_kwargs)
         out_f.close()
         err_f.close()
@@ -778,25 +825,63 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
         cleanup()
         return (f"Erro ao consultar: {e}", None)
 
+    started = time.monotonic()
+    ceilings = {"stdout": (ev, MODEL_MAX_EVENTS_BYTES), "stderr": (err, MODEL_MAX_STDERR_BYTES),
+                "resposta": (ans, MODEL_MAX_ANSWER_BYTES)}
+    killed: dict = {}
+
+    def kill_for(reason: str) -> None:
+        """Estouro (bytes ou prazo total): para o scope inteiro, esvazia os
+        arquivos e deixa o motivo como resposta — o terminal rascunho mostra."""
+        if killed:
+            return
+        killed["reason"] = reason
+        print(f"[ans]  saída do modelo interrompida: {reason}")
+        stop_scope(unit, proc)
+        for p in (ev, err):
+            try:
+                p.write_text("")
+            except OSError:
+                pass
+        try:
+            ans.write_text(T(LANG, "model_output_cut", reason=reason))
+        except OSError:
+            pass
+
     stop_tail = threading.Event()
+
+    def watchdog() -> None:
+        # vive até o processo acabar — também depois do handoff
+        while proc.poll() is None and not killed:
+            reason = output_overflow(ceilings)
+            if reason is None and time.monotonic() - started > HANDOFF_MAX_SECONDS:
+                reason = f"prazo total de {HANDOFF_MAX_SECONDS // 60} min"
+            if reason is not None:
+                kill_for(reason)
+                return
+            time.sleep(0.2)
+
+    threading.Thread(target=watchdog, daemon=True, name="model-watchdog").start()
 
     def tail_events() -> None:
         pos = 0
         while not stop_tail.is_set():
             try:
                 with open(ev) as f:
-                    f.seek(pos)
-                    for line in f:
-                        pos += len(line.encode())
-                        parsed = jarvis_events.parse_line(provider, line)
-                        if not parsed:
-                            continue
-                        if on_event is not None:
-                            on_event(*parsed)
-                        if on_status is not None:
-                            status = jarvis_events.status_label(*parsed, lang=LANG)
-                            if status:
-                                on_status(status)
+                    lines, pos, too_long = jarvis_events.read_complete_lines(f, pos, MODEL_MAX_LINE_BYTES)
+                if too_long:
+                    kill_for(f"linha de evento passou de {MODEL_MAX_LINE_BYTES // (1024 * 1024)} MiB")
+                    return
+                for line in lines:
+                    parsed = jarvis_events.parse_line(provider, line)
+                    if not parsed:
+                        continue
+                    if on_event is not None:
+                        on_event(*parsed)
+                    if on_status is not None:
+                        status = jarvis_events.status_label(*parsed, lang=LANG)
+                        if status:
+                            on_status(status)
             except OSError:
                 pass
             stop_tail.wait(0.3)
@@ -805,9 +890,11 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
         threading.Thread(target=tail_events, daemon=True, name="events-tail").start()
 
     def final_text() -> str:
-        out = ans.read_text().strip() if ans.exists() else ""
+        out, _ = read_bounded(ans, MODEL_MAX_ANSWER_BYTES)
+        out = out.strip()
         if not out:
-            out = jarvis_events.final_answer(provider, ev)
+            out = jarvis_events.final_answer(provider, ev, max_bytes=MODEL_MAX_EVENTS_BYTES,
+                                             max_line=MODEL_MAX_LINE_BYTES)
         return out
 
     limit = HANDOFF_SECONDS_DEEP if deep else HANDOFF_SECONDS_QUICK
@@ -817,7 +904,8 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
             if proc.poll() is not None:
                 time.sleep(0.1)  # deixa o último flush do arquivo de eventos assentar
                 out = final_text()
-                emsg = err.read_text().strip()[:200] if err.exists() else ""
+                emsg, _ = read_bounded(err, 4096)
+                emsg = emsg.strip()[:200]
                 cleanup()
                 finish_scope(unit)  # nada fica rodando depois da resposta
                 if out:
@@ -828,7 +916,8 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
                 cleanup()
                 return ("", None)
             if time.monotonic() > deadline:
-                # handoff: o trabalho segue, mas sem "permitir o resto" herdado
+                # handoff: o trabalho segue (o vigia continua: tetos de bytes e
+                # HANDOFF_MAX_SECONDS), mas sem "permitir o resto" herdado
                 jarvis_consent.revoke_grants(unit)
                 return ("", {"proc": proc, "answer_file": ans, "events_file": ev, "err_file": err,
                              "ctx_file": ctx, "provider": provider, "label": label,

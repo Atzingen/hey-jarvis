@@ -96,17 +96,42 @@ def status_label(kind: str, text: str, lang: str = "pt-BR") -> str | None:
     return None
 
 
-def final_answer(provider: str, path: Path, fallback_text: str = "") -> str:
+DEFAULT_MAX_BYTES = 32 * 1024 * 1024   # arquivo de eventos inteiro
+DEFAULT_MAX_LINE = 1 * 1024 * 1024     # uma linha JSONL
+
+
+def read_complete_lines(f, pos: int, max_line: int = DEFAULT_MAX_LINE) -> tuple[list[str], int, bool]:
+    """Linhas completas a partir de `pos` (bytes): (linhas, nova posição,
+    linha_estourada). Uma linha sem fim fica pra depois; uma que passe de
+    `max_line` sem terminar nunca é lida inteira — é sinal de estouro."""
+    f.seek(pos)
+    lines: list[str] = []
+    while True:
+        line = f.readline(max_line + 1)
+        if not line:
+            return lines, pos, False
+        if not line.endswith("\n"):
+            return lines, pos, len(line) > max_line
+        pos += len(line.encode())
+        lines.append(line)
+
+
+def final_answer(provider: str, path: Path, fallback_text: str = "",
+                 max_bytes: int = DEFAULT_MAX_BYTES, max_line: int = DEFAULT_MAX_LINE) -> str:
     """Resposta final a partir do arquivo de eventos; se não houver JSON de
-    resultado, devolve o texto cru (modo compatível / provider sem --json)."""
+    resultado, devolve o texto cru (modo compatível / provider sem --json).
+    Lê no máximo `max_bytes`; linhas acima de `max_line` são ignoradas."""
     try:
-        raw = Path(path).read_text()
+        with open(path, "rb") as f:
+            raw = f.read(max_bytes).decode(errors="replace")
     except OSError:
         return fallback_text
     result = None
     last_text = None
     any_json = False
     for line in raw.splitlines():
+        if len(line) > max_line:
+            continue
         parsed = parse_line(provider, line)
         if parsed is None:
             continue
@@ -144,15 +169,16 @@ def follow(path: str, provider: str, pid: int, answer_file: str | None = None,
     while True:
         try:
             with open(p) as f:
-                f.seek(pos)
-                for line in f:
-                    pos += len(line.encode())
-                    parsed = parse_line(provider, line)
-                    if parsed:
-                        label = status_label(*parsed, lang=lang)
-                        if label:
-                            print("  ·", safe_text(label), flush=True)
-        except FileNotFoundError:
+                lines, pos, too_long = read_complete_lines(f, pos)
+            for line in lines:
+                parsed = parse_line(provider, line)
+                if parsed:
+                    label = status_label(*parsed, lang=lang)
+                    if label:
+                        print("  ·", safe_text(label), flush=True)
+            if too_long:
+                pos = os.path.getsize(p)   # pula a linha gigante (o launcher já derruba o scope)
+        except OSError:
             pass
         try:
             os.kill(pid, 0)
@@ -161,7 +187,11 @@ def follow(path: str, provider: str, pid: int, answer_file: str | None = None,
         time.sleep(0.4)
     final = ""
     if answer_file and Path(answer_file).exists():
-        final = Path(answer_file).read_text().strip()
+        try:
+            with open(answer_file, "rb") as f:
+                final = f.read(DEFAULT_MAX_LINE).decode(errors="replace").strip()
+        except OSError:
+            final = ""
     if not final:
         final = final_answer(provider, p)
     print(f"\n  {T(lang, 'handoff_answer')}\n")

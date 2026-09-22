@@ -272,6 +272,7 @@ Everything is configurable, three ways:
 | `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
 | `max_history_exchanges` | `4` | previous exchanges sent as context |
 | `handoff_seconds_quick` / `_deep` | `45` / `180` | after this the model call moves to a scratch terminal (it keeps running) |
+| `handoff_max_minutes` | `30` | total lifetime of a handed-off call: after this its whole scope is stopped |
 | `narration_interval_quick` / `_deep` | `8` / `15` | seconds of silence before a progress sentence (3–60) |
 | `narration_local_model` | `gemma3:4b` | Ollama model that writes the sentence (`narration = local`/`auto`) |
 | `narration_openai_model` | `gpt-5.4-nano` | Responses API model for `narration = openai` (uses `openai_api_key`) |

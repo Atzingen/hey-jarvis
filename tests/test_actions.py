@@ -111,5 +111,81 @@ class BuildAskCallTest(unittest.TestCase):
         self.assertNotIn("--restricted", cmd)
 
 
+
+class OutputBoundsTest(unittest.TestCase):
+    """Tetos da saída do modelo: leitura limitada, detecção de estouro, RLIMIT no produtor."""
+
+    def _file(self, data: bytes):
+        import tempfile
+        f = tempfile.NamedTemporaryFile("wb", delete=False)
+        f.write(data)
+        f.close()
+        return vl.Path(f.name)
+
+    def test_read_bounded_within_limit(self) -> None:
+        text, overflow = vl.read_bounded(self._file(b"resposta curta"), 100)
+        self.assertEqual(text, "resposta curta")
+        self.assertFalse(overflow)
+
+    def test_read_bounded_never_reads_past_limit(self) -> None:
+        text, overflow = vl.read_bounded(self._file(b"x" * 1000), 10)
+        self.assertEqual(text, "x" * 10)
+        self.assertTrue(overflow)
+
+    def test_read_bounded_missing_file(self) -> None:
+        self.assertEqual(vl.read_bounded(vl.Path("/nonexistent/ans.txt"), 10), ("", False))
+
+    def test_output_overflow_reports_the_file_over_its_ceiling(self) -> None:
+        ok = self._file(b"a" * 10)
+        big = self._file(b"b" * 50)
+        self.assertIsNone(vl.output_overflow({"stdout": (ok, 10), "stderr": (big, 50)}))
+        reason = vl.output_overflow({"stdout": (ok, 10), "stderr": (big, 49)})
+        self.assertIsNotNone(reason)
+        self.assertIn("stderr", reason)
+
+    def test_output_overflow_ignores_missing_files(self) -> None:
+        self.assertIsNone(vl.output_overflow({"ans": (vl.Path("/nonexistent/x"), 1)}))
+
+    def test_limited_prefixes_prlimit_fsize(self) -> None:
+        cmd = vl.limited(["codex", "exec"], max_file_bytes=12345)
+        if vl.shutil.which("prlimit"):
+            self.assertEqual(cmd[:3], ["prlimit", "--fsize=12345", "--"])
+            self.assertEqual(cmd[3:], ["codex", "exec"])
+        else:
+            self.assertEqual(cmd, ["codex", "exec"])
+
+    def test_ceilings_are_finite_and_ordered(self) -> None:
+        self.assertLess(vl.MODEL_MAX_ANSWER_BYTES, vl.MODEL_MAX_EVENTS_BYTES)
+        self.assertLess(vl.MODEL_MAX_LINE_BYTES, vl.MODEL_MAX_EVENTS_BYTES)
+        self.assertLess(vl.MODEL_MAX_EVENTS_BYTES, vl.MODEL_MAX_FILE_BYTES)
+        self.assertGreater(vl.HANDOFF_MAX_SECONDS, max(vl.HANDOFF_SECONDS_QUICK, vl.HANDOFF_SECONDS_DEEP))
+
+
+@unittest.skipUnless(vl.shutil.which("systemd-run"), "precisa de systemd-run --user")
+class WatchdogIntegrationTest(unittest.TestCase):
+    """Um CLI que inunda o stdout é derrubado pelo vigia e a resposta vira o motivo."""
+
+    def test_flooding_cli_is_stopped_at_the_ceiling(self) -> None:
+        saved = (vl._build_ask_call, vl.cli_supports_safe_mode, vl.MODEL_MAX_EVENTS_BYTES,
+                 vl.SYSTEM_ACCESS, vl.HANDOFF_SECONDS_QUICK)
+        try:
+            vl.SYSTEM_ACCESS = "full"
+            vl.HANDOFF_SECONDS_QUICK = 30
+            vl.MODEL_MAX_EVENTS_BYTES = 200_000
+            vl.cli_supports_safe_mode = lambda provider: True
+            vl._build_ask_call = lambda q, deep, ans, spoken="", unit="": (
+                ["bash", "-c", "while true; do echo '{\"type\":\"flood\"}'; done"], "claude", {})
+            t0 = vl.time.monotonic()
+            answer, handoff = vl.ask_model("flood", deep=False)
+            elapsed = vl.time.monotonic() - t0
+        finally:
+            (vl._build_ask_call, vl.cli_supports_safe_mode, vl.MODEL_MAX_EVENTS_BYTES,
+             vl.SYSTEM_ACCESS, vl.HANDOFF_SECONDS_QUICK) = saved
+        self.assertIsNone(handoff)
+        self.assertIn("stdout", answer)
+        self.assertLess(elapsed, 15)
+        leftovers = list(vl.MODEL_TMP_DIR.glob("jarvis-ev-*")) if vl.MODEL_TMP_DIR.is_dir() else []
+        self.assertEqual([p for p in leftovers if p.stat().st_mtime > t0 - 1], [])
+
 if __name__ == "__main__":
     unittest.main()
