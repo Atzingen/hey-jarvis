@@ -71,15 +71,18 @@ ShellRoot {
   PanelWindow {
     id: win
     screen: {
-      var name = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""
+      // JARVIS_SCREEN só para testes (força um monitor); normal é o monitor com foco
+      var name = Quickshell.env("JARVIS_SCREEN") || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "")
       for (var i = 0; i < Quickshell.screens.length; i++)
         if (Quickshell.screens[i].name === name) return Quickshell.screens[i]
       return Quickshell.screens.length ? Quickshell.screens[0] : null
     }
     anchors.top: true
     margins.top: Style.space(52)
-    implicitWidth: content.implicitWidth + 2
-    implicitHeight: content.implicitHeight + 2
+    // 1 px transparente ao redor do cartão: com escala fracionária (1.25, 1.333…)
+    // a borda encostada na beira da superfície some no arredondamento de pixels.
+    implicitWidth: content.implicitWidth + 4
+    implicitHeight: content.implicitHeight + 4
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     WlrLayershell.namespace: "jarvis-conversation"
@@ -88,6 +91,7 @@ ShellRoot {
 
     Rectangle {
       anchors.fill: parent
+      anchors.margins: 1
       radius: Style.cornerRadius
       color: content.background
       border.width: 1
