@@ -27,7 +27,7 @@ by hand. Nothing is installed silently.
 - `~/.local/share/applications/jarvis.desktop` — launcher entry
 - `~/.config/systemd/user/voice-launcher.service` — the user unit
 - `~/.config/jarvis/` — created at runtime for `config.toml` (mode 0600)
-- `/etc/udev/rules.d/60-jarvis-picoh.rules` — **only if** `sudo -n true` succeeds (a cached sudo ticket or NOPASSWD); otherwise the script prints the command and does nothing. The rule (`integrations/60-jarvis-picoh.rules`, 4 lines) adds `uaccess` to tty devices of two USB vendor ids (Raspberry Pi Pico `2e8a`, CH340 `1a86`) so the logged-in user can open the Picoh's serial port without joining `uucp`/`dialout`. It is the only root-owned file the project can touch and it is never required: without it the robot simply stays unreachable.
+- `/etc/udev/rules.d/60-jarvis-picoh.rules` — **only after an explicit `y`** to the question `install.sh` asks in the terminal (or the `--picoh-udev` flag); non-interactive runs and any other answer skip it and print the command instead. The rule (`integrations/60-jarvis-picoh.rules`, 4 lines) adds `uaccess` to tty devices of two USB vendor ids (Raspberry Pi Pico `2e8a`, CH340 `1a86`) so the logged-in user can open the Picoh's serial port without joining `uucp`/`dialout`. It is the only root-owned file the project can touch and it is never required: without it the robot simply stays unreachable.
 
 It never edits Hyprland or Omarchy configuration; keybindings and the
 bar-accent hook are opt-in snippets the user adds themselves.

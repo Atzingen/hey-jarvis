@@ -2,7 +2,7 @@
 
 > **Say "hey jarvis". Ask anything. Watch it happen.** A local-first voice assistant for Arch Linux + Hyprland that understands what you mean, runs it on your machine, and talks back — in English or Brazilian Portuguese. Ships as an Omarchy shell plugin.
 
-![Jarvis bar panel](docs/screenshots/bar-panel.png)
+![Jarvis answering, with its face and the voice ring](docs/screenshots/window-answering.png)
 
 ## Your computer, one sentence away
 
@@ -23,6 +23,7 @@ There are **no keywords to memorize**. Everything you say goes to a model that a
 | **Feels like a conversation** | It listens until you stop talking, keeps the context of the last exchanges, opens a follow-up window after every answer and lets you **talk over it** to interrupt. |
 | **Actually does things** | Opens projects and apps, suspends the machine, runs commands and reads their output. Two model tiers: fast (Codex) for everyday questions, "think hard" (Claude Fable) when it matters. |
 | **Dictation everywhere** | The same microphone and Whisper model double as a system-wide speech-to-text: toggle or push-to-talk, live transcript, optional local polish for punctuation. |
+| **A window you'll want to keep open** | Jarvis's face inside a ring that pulses with its voice, the conversation in bubbles, what the model is doing while you wait — and, while dictating, the live transcript with a waveform. Follows your Omarchy theme; a terminal fallback exists where there is no Qt. |
 | **At home in Omarchy — and beyond** | A brain icon in your bar with a click-to-open panel (voice guide, keybindings, one-click controls) that follows your theme and language. The exact same panel also opens as a standalone window (`jarvis app`, or "Jarvis" in the launcher) on any Linux. |
 | **Yours to tune** | `jarvis config` — a terminal settings screen with profiles, or a scriptable CLI. Wake word, silence timing, models, voices, STT backend: everything is a key in one `config.toml`. |
 
@@ -35,7 +36,7 @@ omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable   # the bar w
 
 Then say **"hey jarvis"** and ask for something. Add the [keybindings](#keybindings) for push-to-talk and dictation, and you are done. The panel also opens as a standalone window — search for **Jarvis** in your launcher or run `jarvis app` (works outside Omarchy too).
 
-![Jarvis conversation window](docs/screenshots/window-graphic.png)
+![Jarvis bar panel](docs/screenshots/bar-panel.png)
 
 ---
 
@@ -202,7 +203,7 @@ Outside the Omarchy shell there is no theme to follow, so the standalone window 
 
 ## The conversation window
 
-![Conversation window (pt-BR)](docs/screenshots/window-graphic.png)
+![Conversation window while the model works](docs/screenshots/window-thinking.png)
 
 ![Dictation in the same window](docs/screenshots/window-dictation.png)
 
@@ -329,7 +330,7 @@ The mouth also moves for the greeting and for the progress narration while the m
 - `jarvis picoh probe` — which serial ports exist and whether one answered as a Picoh.
 - `jarvis picoh demo` — walks through the phases on the robot (`jarvis picoh fake` prints the serial commands instead, no robot needed).
 - `jarvis picoh reset` — lights off, eyes default, motors released.
-- Serial access without root: `install.sh` installs `integrations/60-jarvis-picoh.rules` (udev `uaccess` for Pico and CH340 boards) when `sudo` is available, otherwise it prints the command. Other serial boards on the machine are probed once (a board with auto-reset on DTR will reboot at that moment); pin `picoh_port` in the advanced settings to avoid that.
+- Serial access without root: `install.sh` asks (`[y/N]`, or pass `--picoh-udev`) before installing `integrations/60-jarvis-picoh.rules` (udev `uaccess` for Pico and CH340 boards) — the only root-owned file it can touch; any other answer, or a non-interactive run, just prints the command. Other serial boards on the machine are probed once (a board with auto-reset on DTR will reboot at that moment); pin `picoh_port` in the advanced settings to avoid that.
 
 ---
 

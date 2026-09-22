@@ -174,15 +174,25 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH — t
 
 # --- 4b. Picoh robot (optional) -------------------------------------------------
 # Serial access without root: the udev rule tags Pico (2e8a) and CH340 (1a86)
-# serial devices for the logged-in user. Needs root once; only a hint without sudo.
+# serial devices for the logged-in user. The only root-owned file this project
+# can touch, so it is never written silently: only after an explicit "y" here
+# (or `--picoh-udev`); otherwise the command is printed for the user to run.
 RULE="/etc/udev/rules.d/60-jarvis-picoh.rules"
+RULE_CMD="sudo install -Dm644 $HERE/integrations/60-jarvis-picoh.rules $RULE && sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty"
 if ! cmp -s "$HERE/integrations/60-jarvis-picoh.rules" "$RULE" 2>/dev/null; then
-  if sudo -n true 2>/dev/null; then
+  install_rule=no
+  if [[ " $* " == *" --picoh-udev "* ]]; then
+    install_rule=yes
+  elif [[ -t 0 ]]; then
+    printf '\033[1;36m==>\033[0m Picoh robot (optional): install the udev rule for serial access without root? [y/N] '
+    read -r answer && [[ $answer == [yY] ]] && install_rule=yes
+  fi
+  if [[ $install_rule == yes ]]; then
     say "Installing the udev rule for the Picoh robot ($RULE)"
     sudo install -Dm644 "$HERE/integrations/60-jarvis-picoh.rules" "$RULE"
     sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty || true
   else
-    warn "Picoh robot (optional): for serial access run: sudo install -Dm644 $HERE/integrations/60-jarvis-picoh.rules $RULE && sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty"
+    warn "Picoh robot (optional): skipped the udev rule. If you have a Picoh, run: $RULE_CMD"
   fi
 fi
 
