@@ -30,6 +30,28 @@ PHASE_COLOR = {"listening": "96", "recording": "92", "transcribing": "93", "thin
                "speaking": "94", "followup": "96", "handoff": "93",
                "dictating": "92", "polishing": "93", "pasted": "92", "copied": "92", "cancelled": "90"}
 METER = " ▁▂▃▄▅▆▇█"
+WAVE_HALF = 3  # linhas acima e abaixo do eixo do waveform do ditado (8 degraus por linha)
+
+
+def wave_lines(levels: list[float], width: int, color: str) -> list[str]:
+    """Waveform espelhado do ditado: uma coluna por amostra (a mais nova à direita),
+    WAVE_HALF linhas pra cima e pra baixo do eixo. A metade de baixo usa os mesmos
+    blocos em vídeo reverso, que preenche a célula de cima pra baixo."""
+    recent = [max(0.0, min(1.0, float(l))) for l in levels[-width:]]
+    # Ganho automático: a fala mais alta da janela preenche a altura toda; o piso
+    # do pico limita a amplificação, pra silêncio/ruído não virar onda.
+    gain = 1.0 / max(max(recent, default=0.0), 0.35)
+    cols = [0.0] * max(0, width - len(recent)) + [min(1.0, l * gain) if l >= 0.04 else 0.0 for l in recent]
+    steps = [int(round(l * WAVE_HALF * 8)) for l in cols]
+
+    def fill(step: int, d: int) -> int:
+        return max(0, min(8, step - (d - 1) * 8))
+
+    top = [f"  \x1b[{color}m" + "".join(METER[fill(s, d)] for s in steps) + "\x1b[0m"
+           for d in range(WAVE_HALF, 0, -1)]
+    bottom = [f"  \x1b[7;{color}m" + "".join(METER[8 - fill(s, d)] for s in steps) + "\x1b[0m"
+              for d in range(1, WAVE_HALF + 1)]
+    return top + bottom
 
 
 def load_state() -> dict | None:
@@ -82,10 +104,9 @@ def render(state: dict) -> str:
         else:
             body += ["  \x1b[90m" + (T(lang, "dict_empty") if phase != "dictating" else "…") + "\x1b[0m"]
         levels = state.get("levels") or []
-        meter = "".join(METER[min(8, int(l * 8.99))] for l in levels[-(width - 4):])
-        footer = ["\x1b[90m" + "─" * width + "\x1b[0m",
-                  ("  \x1b[92m" if phase == "dictating" else "  \x1b[90m") + meter + "\x1b[0m",
-                  "\x1b[90m" + "─" * width + "\x1b[0m"]
+        footer = ["\x1b[90m" + "─" * width + "\x1b[0m"] \
+            + wave_lines(levels, width - 4, "92" if phase == "dictating" else "90") \
+            + ["\x1b[90m" + "─" * width + "\x1b[0m"]
         footer += ["  \x1b[90m" + line + "\x1b[0m" for line in textwrap.wrap(hint, width - 2)]
         avail = max(3, rows - len(header) - len(footer) - 1)
         body = body[-avail:] + [""] * max(0, avail - len(body))

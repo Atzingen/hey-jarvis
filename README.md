@@ -290,7 +290,7 @@ Jarvis doubles as a speech-to-text tool for any window — the same microphone, 
 
 - **Toggle** (`Ctrl+Shift+K`): press, talk, press again → the text is transcribed, optionally polished, copied to the clipboard (top of Omarchy's clipboard history) and **pasted into the active window** (`Ctrl+V`, or `Ctrl+Shift+V` when the active window is a terminal). While recording, any other key cancels.
 - **Push-to-talk** (`Ctrl+Shift+L`): hold to talk, release to paste.
-- The window shows the **live transcript** (with the OpenAI backend the words appear as you speak) and a scrolling **audio level meter**, then the phase: TRANSCRIBING → POLISHING → PASTED.
+- The window shows the **live transcript** (with the OpenAI backend the words appear as you speak) and a tall, scrolling **audio waveform** (mirrored around its axis, auto-gain so quiet speech still fills it), then the phase: TRANSCRIBING → POLISHING → PASTED.
 - If Jarvis is in a conversation when you press the key, the conversation yields the microphone to dictation.
 
 Settings (`jarvis config` → Dictation): `dictation_output` = `paste` / `type` (types the text with `wtype`) / `clipboard` (copy only); `dictation_polish` (off by default) runs the transcript through a local Ollama model (`dictation_polish_model`, default `gemma3:4b`) that only fixes punctuation and removes hesitations — it never rewrites, and falls back to the raw text if the output looks wrong or Ollama is unavailable; `dictation_window` shows/hides the window; `dictation_max_seconds` (advanced) caps a recording.
