@@ -35,6 +35,14 @@ import numpy as np
 SAMPLE_RATE = 16000
 OPENAI_RATE = 24000
 
+# Tetos do caminho OpenAI Realtime. O endpoint remoto é entrada não confiável:
+# qualquer frame acima do limite, ou uma sessão que passe de um destes totais,
+# derruba a conexão (fail-closed) e a fala cai no Whisper local.
+OPENAI_MAX_FRAME_BYTES = 256 * 1024          # um frame do servidor (max_size do websockets)
+OPENAI_MAX_SESSION_BYTES = 16 * 1024 * 1024  # soma dos frames aceitos numa sessão
+OPENAI_MAX_EVENTS = 20_000                   # eventos aceitos numa sessão
+OPENAI_MAX_TEXT_CHARS = 32_000               # transcript acumulado (parcial ou final)
+
 # Pesos do Whisper: baixados do Hugging Face na primeira execução, sempre de
 # uma revisão FIXA (commit) — o hub verifica cada arquivo contra o sha256 do
 # commit — e para um diretório próprio do Jarvis (removido por --uninstall --purge).
@@ -243,6 +251,8 @@ class OpenAISession:
         self.ready = threading.Event()
         self.done = threading.Event()
         self.closed = False
+        self.session_bytes = 0
+        self.events = 0
         self.lock = threading.Lock()
         self.thread = threading.Thread(target=self._run, daemon=True, name="openai-stt")
         self.thread.start()
@@ -259,7 +269,7 @@ class OpenAISession:
         headers = {"Authorization": f"Bearer {self.b.api_key}"}
         try:
             self.ws = connect(self.b.url, additional_headers=headers,
-                              open_timeout=self.b.connect_timeout, max_size=None)
+                              open_timeout=self.b.connect_timeout, max_size=OPENAI_MAX_FRAME_BYTES)
             transcription = {"model": self.b.model, "language": self.b.language}
             if self.b.terms:
                 transcription["keywords"] = self.b.terms[:100]
@@ -288,27 +298,65 @@ class OpenAISession:
 
         try:
             for raw in self.ws:
-                ev = json.loads(raw)
-                t = ev.get("type", "")
-                if t == "conversation.item.input_audio_transcription.delta":
-                    self.partial += ev.get("delta", "")
-                    if self.on_partial:
-                        self.on_partial(self.partial)
-                elif t == "conversation.item.input_audio_transcription.completed":
-                    self.final = (ev.get("transcript") or "").strip()
-                    self.done.set()
-                    return
-                elif t == "error":
-                    err = ev.get("error", {})
-                    self.error = f"api: {err.get('code') or err.get('type')}: {err.get('message', '')[:160]}"
-                    self.done.set()
-                    return
-                if self.closed:
+                if not self._handle_frame(raw) or self.closed:
                     return
         except Exception as e:
             if not self.closed:
                 self.error = f"socket: {type(e).__name__}: {str(e)[:120]}"
             self.done.set()
+
+    def _fail(self, reason: str) -> bool:
+        """Sessão encerrada por violação de um teto: erro, socket fechado, done."""
+        self.error = reason
+        self.close()
+        self.done.set()
+        return False
+
+    def _handle_frame(self, raw) -> bool:
+        """Um frame do servidor. Devolve False quando a sessão terminou (final,
+        erro da API ou teto violado). Tudo é checado ANTES de guardar qualquer
+        coisa: só frames de texto, contados em bytes e em número, JSON que seja
+        um objeto, campos com o tipo esperado e texto acumulado abaixo do teto."""
+        if not isinstance(raw, str):
+            return self._fail("frame binário inesperado")
+        self.events += 1
+        self.session_bytes += len(raw)
+        if self.events > OPENAI_MAX_EVENTS:
+            return self._fail(f"teto de eventos ({OPENAI_MAX_EVENTS})")
+        if self.session_bytes > OPENAI_MAX_SESSION_BYTES:
+            return self._fail(f"teto de bytes da sessão ({OPENAI_MAX_SESSION_BYTES})")
+        try:
+            ev = json.loads(raw)
+        except ValueError:
+            return self._fail("frame não é JSON")
+        if not isinstance(ev, dict) or not isinstance(ev.get("type", ""), str):
+            return self._fail("evento fora do formato")
+        t = ev.get("type", "")
+        if t == "conversation.item.input_audio_transcription.delta":
+            delta = ev.get("delta", "")
+            if not isinstance(delta, str):
+                return self._fail("delta fora do formato")
+            if len(self.partial) + len(delta) > OPENAI_MAX_TEXT_CHARS:
+                return self._fail(f"teto de texto ({OPENAI_MAX_TEXT_CHARS} chars)")
+            self.partial += delta
+            if self.on_partial:
+                self.on_partial(self.partial)
+        elif t == "conversation.item.input_audio_transcription.completed":
+            transcript = ev.get("transcript") or ""
+            if not isinstance(transcript, str):
+                return self._fail("transcript fora do formato")
+            if len(transcript) > OPENAI_MAX_TEXT_CHARS:
+                return self._fail(f"teto de texto ({OPENAI_MAX_TEXT_CHARS} chars)")
+            self.final = transcript.strip()
+            self.done.set()
+            return False
+        elif t == "error":
+            err = ev.get("error")
+            err = err if isinstance(err, dict) else {}
+            self.error = f"api: {err.get('code') or err.get('type')}: {str(err.get('message', ''))[:160]}"
+            self.done.set()
+            return False
+        return True
 
     def _send_audio(self, chunk_i16: np.ndarray) -> None:
         try:

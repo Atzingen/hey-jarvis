@@ -79,6 +79,15 @@ not logged** unless `log_transcripts = true`.
 | `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio; (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
 | `127.0.0.1:11434` (Ollama) | `dictation_polish`, and progress narration when `narration = "local"`/`auto` with a local model + GPU (a warm-up request at conversation start) |
 
+The OpenAI Realtime transcription socket treats the server as untrusted input
+(`jarvis_stt.OpenAISession._handle_frame`): the WebSocket keeps a finite
+`max_size` (256 KiB per frame), and every frame is checked *before* anything is
+retained — text frames only, a valid JSON object with string fields, at most
+20 000 events and 16 MiB per session, and an accumulated transcript (partial or
+final) of at most 32 000 characters. Crossing any ceiling, or a nonconforming
+event, closes the socket fail-closed; the speech then falls back to the local
+Whisper. The existing connect (6 s) and final-transcript (8 s) deadlines stay.
+
 Wake word detection, voice activity detection, local transcription and TTS all
 run on the machine. Nothing is recorded or sent anywhere until the wake word
 fires, and with the default local STT the audio never leaves the machine.
