@@ -143,6 +143,11 @@ SETTINGS: list[Setting] = [
     Setting("window_enabled", True, "Janela da conversa",
             "Janela flutuante com fase, countdown, trocas e dicas.",
             group="Interface"),
+    Setting("window_style", "auto", "Estilo da janela",
+            "auto = gráfica (quickshell no Omarchy; senão PySide6) com o avatar do Jarvis e o anel "
+            "que pulsa com a voz, ou terminal onde não há Qt; graphic = só gráfica; terminal = a "
+            "janela de texto (alacritty).",
+            group="Interface", choices=["auto", "graphic", "terminal"]),
     Setting("picoh", "auto", "Robô Picoh",
             "auto = se um Picoh (robô da Ohbot) estiver no USB ele vira o rosto do Jarvis: cor da "
             "base por fase, boca no ritmo da voz, olhos; off = não procura o robô.",

@@ -45,7 +45,7 @@ fetch_verified() {
 }
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
-         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis_narrate.py jarvis-window.py jarvis-app.py jarvis-panel.py
+         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis_narrate.py jarvis-window.py jarvis-conversation.py jarvis-app.py jarvis-panel.py
          jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py jarvis_picoh.py dev-layout)
 
 if [[ ${1:-} == "--uninstall" ]]; then

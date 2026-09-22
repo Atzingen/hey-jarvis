@@ -12,6 +12,7 @@ detects, and states exactly what is written, executed, and contacted.
 | Bar widget + panel (`BarWidget.qml`, `app/qs/`) | inside the Omarchy shell (quickshell) | the shell, when the plugin is enabled |
 | Voice service (`voice-launcher.py`) | `voice-launcher.service`, a **user** systemd unit | `install.sh` (opt-in — see below) |
 | Conversation / dictation window, settings screen, `jarvis app` | floating terminal or window | the user (hotkey, click, or CLI) |
+| Picoh robot face (`jarvis_picoh.py`, optional) | child process of the voice service; idle unless a Picoh answers on a USB serial port | the voice service, when `picoh = auto` (default) |
 
 Adding the plugin (`omarchy plugin add`) installs **only the bar widget**.
 The voice service is a separate, explicit step: the **Install** button on the
@@ -26,10 +27,26 @@ by hand. Nothing is installed silently.
 - `~/.local/share/applications/jarvis.desktop` — launcher entry
 - `~/.config/systemd/user/voice-launcher.service` — the user unit
 - `~/.config/jarvis/` — created at runtime for `config.toml` (mode 0600)
+- `/etc/udev/rules.d/60-jarvis-picoh.rules` — **only if** `sudo -n true` succeeds (a cached sudo ticket or NOPASSWD); otherwise the script prints the command and does nothing. The rule (`integrations/60-jarvis-picoh.rules`, 4 lines) adds `uaccess` to tty devices of two USB vendor ids (Raspberry Pi Pico `2e8a`, CH340 `1a86`) so the logged-in user can open the Picoh's serial port without joining `uucp`/`dialout`. It is the only root-owned file the project can touch and it is never required: without it the robot simply stays unreachable.
 
 It never edits Hyprland or Omarchy configuration; keybindings and the
 bar-accent hook are opt-in snippets the user adds themselves.
 `install.sh --uninstall [--purge]` removes everything above.
+
+### The Picoh robot is optional
+
+The [Picoh](https://www.ohbot.co.uk/picoh.html) support is a spectator: the
+daemon reads the same two runtime files the conversation window reads
+(`jarvis-state.json`, `jarvis-tts.json`) and writes **only** to the robot's
+serial port. It has no other input, does not talk to the network and nothing in
+the voice service waits on it. With `picoh = auto` it probes USB serial ports
+(`/dev/ttyACM*`, `/dev/ttyUSB*`, or just `picoh_port` when set) with the
+official library's handshake (`v` → `v2`); a port that does not answer is closed
+and left alone (the probe can reset a board that auto-resets on DTR, which is
+why `picoh_port` exists). With `picoh = off` no port is ever opened. Without a
+robot, with the daemon disabled, or on a machine without `pyserial`, every other
+feature behaves exactly the same. `pyserial` is hash-locked like every other
+dependency.
 
 ## Privileges
 

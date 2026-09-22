@@ -454,6 +454,48 @@ def with_context(question: str, history: list[tuple[str, str]]) -> str:
 
 # --- janela persistente ----------------------------------------------
 
+def window_strings(lang: str) -> dict:
+    """Textos que a janela mostra (fases, rótulos), no idioma configurado —
+    vão no estado pra o viewer gráfico (QML) não depender do i18n em Python."""
+    table = jarvis_i18n.STRINGS.get(jarvis_i18n.norm_lang(lang), jarvis_i18n.STRINGS["pt-BR"])
+    phases = {k[3:]: list(v) for k, v in table.items() if k.startswith("ph_") and isinstance(v, tuple)}
+    return {"you": table.get("you", "you"), "empty": table.get("empty", ""),
+            "dict_empty": table.get("dict_empty", ""), "phases": phases}
+
+
+def app_dir() -> Path:
+    installed = Path.home() / ".local/share/jarvis/app"
+    if (installed / "qs/conversation.qml").exists():
+        return installed
+    return Path(__file__).resolve().parent.parent / "app"
+
+
+def _pyside_available() -> bool:
+    try:
+        return subprocess.run([sys.executable if "PySide6" in sys.modules else "python3", "-c", "import PySide6"],
+                              capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def window_command() -> list[str]:
+    """Host da janela conforme `window_style`: gráfica (quickshell, senão PySide6)
+    com avatar e anel de voz, ou o viewer de terminal (alacritty)."""
+    style = CFG.get("window_style", "auto")
+    terminal = ["alacritty", "--class", "TUI.float", "--title", "Jarvis", "-e", "python3", str(VIEWER_SCRIPT)]
+    if style == "terminal":
+        return terminal
+    qml = app_dir() / "qs" / "conversation.qml"
+    if qml.exists():
+        if shutil.which("quickshell"):
+            return ["quickshell", "-p", str(qml)]
+        if _pyside_available():
+            return ["python3", str(Path(__file__).resolve().parent / "jarvis-conversation.py"), str(app_dir())]
+    if style == "graphic":
+        print("   [janela: sem quickshell nem PySide6 — usando o terminal]")
+    return terminal
+
+
 class JarvisWindow:
     """Janela persistente da conversa (alacritty float rodando jarvis-window.py).
 
@@ -471,13 +513,12 @@ class JarvisWindow:
             return
         QUIT_FLAG.unlink(missing_ok=True)
         self.state = {"mode": mode, "phase": phase, "detail": "", "deadline": None,
-                      "exchanges": [], "lang": LANG}
+                      "exchanges": [], "lang": LANG, "i18n": window_strings(LANG)}
         self._write()
         try:
-            launch_detached(["alacritty", "--class", "TUI.float", "--title", "Jarvis",
-                             "-e", "python3", str(VIEWER_SCRIPT)])
+            launch_detached(window_command())
         except FileNotFoundError:
-            print("   [janela: alacritty não encontrado]")
+            print("   [janela: nenhum host disponível (quickshell, PySide6 ou alacritty)]")
 
     def update(self, phase: str | None = None, **fields) -> None:
         if not self.enabled:
