@@ -183,15 +183,18 @@ behaviour; the grant does not survive (revoked at hand-off and at start), so
 every further command in that scope needs a fresh `y`.
 
 Output bounds: the CLI and everything it runs are treated as an untrusted
-producer. Every process in the scope runs under `prlimit --fsize` =
-`MODEL_MAX_FILE_BYTES` (256 MiB), so the kernel refuses any single file larger
-than that (EFBIG/SIGXFSZ) whatever the launcher does. On top of that a watchdog
-thread checks the call's three output files every 0.2 s — stdout/events JSONL
-(32 MiB), stderr (4 MiB), answer file (1 MiB) — and, the moment one crosses its
-ceiling, **stops the whole scope**, truncates the files and leaves the reason
-as the answer. The same watchdog gives a handed-off call a finite total
-lifetime (`handoff_max_minutes`, default 30): when it expires the scope is
-stopped. Nothing the model wrote is ever read whole: event lines are consumed
+producer. Its stdout (events JSONL) and stderr are **pipes** read by the
+launcher, which writes them to the call's files only up to their ceilings —
+32 MiB and 4 MiB (`pump()`). At the ceiling the launcher closes the pipe (the
+producer gets EPIPE/SIGPIPE on its next write), **stops the whole scope**,
+truncates the files and leaves the reason as the answer: nothing beyond the
+ceiling ever reaches disk. The answer file, which the CLI writes itself, is
+watched every 0.2 s (1 MiB) by a thread that lives until the process exits and
+applies the same stop. That watchdog also gives a handed-off call a finite
+total lifetime (`handoff_max_minutes`, default 30): when it expires the scope
+is stopped. (An `RLIMIT_FSIZE` on the scope was tried and rejected: it also
+applies to the CLI's own state databases, which grow past any sane cap, and
+kills it on start.) Nothing the model wrote is ever read whole: event lines are consumed
 only when complete and never beyond 1 MiB (a longer unterminated line stops
 the scope), the answer and stderr are read up to their ceilings, and the
 scratch-terminal follower uses the same bounded reader. The files live in

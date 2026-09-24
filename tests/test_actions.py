@@ -146,18 +146,30 @@ class OutputBoundsTest(unittest.TestCase):
     def test_output_overflow_ignores_missing_files(self) -> None:
         self.assertIsNone(vl.output_overflow({"ans": (vl.Path("/nonexistent/x"), 1)}))
 
-    def test_limited_prefixes_prlimit_fsize(self) -> None:
-        cmd = vl.limited(["codex", "exec"], max_file_bytes=12345)
-        if vl.shutil.which("prlimit"):
-            self.assertEqual(cmd[:3], ["prlimit", "--fsize=12345", "--"])
-            self.assertEqual(cmd[3:], ["codex", "exec"])
-        else:
-            self.assertEqual(cmd, ["codex", "exec"])
+    def test_pump_copies_up_to_the_ceiling_then_closes_and_reports(self) -> None:
+        import io
+        overflow: list[str] = []
+        src = io.BytesIO(b"x" * 1000)
+        dest = self._file(b"")
+        written = vl.pump(src, dest, 300, overflow.append, "stdout")
+        self.assertEqual(written, 301)
+        self.assertEqual(dest.stat().st_size, 300)
+        self.assertEqual(len(overflow), 1)
+        self.assertIn("stdout passou de", overflow[0])
+        self.assertTrue(src.closed)
+
+    def test_pump_within_the_ceiling_copies_everything(self) -> None:
+        import io
+        overflow: list[str] = []
+        dest = self._file(b"")
+        written = vl.pump(io.BytesIO(b"abc\n" * 50), dest, 1000, overflow.append)
+        self.assertEqual(written, 200)
+        self.assertEqual(dest.read_bytes(), b"abc\n" * 50)
+        self.assertEqual(overflow, [])
 
     def test_ceilings_are_finite_and_ordered(self) -> None:
         self.assertLess(vl.MODEL_MAX_ANSWER_BYTES, vl.MODEL_MAX_EVENTS_BYTES)
         self.assertLess(vl.MODEL_MAX_LINE_BYTES, vl.MODEL_MAX_EVENTS_BYTES)
-        self.assertLess(vl.MODEL_MAX_EVENTS_BYTES, vl.MODEL_MAX_FILE_BYTES)
         self.assertGreater(vl.HANDOFF_MAX_SECONDS, max(vl.HANDOFF_SECONDS_QUICK, vl.HANDOFF_SECONDS_DEEP))
 
 

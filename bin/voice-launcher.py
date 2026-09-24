@@ -135,15 +135,14 @@ HANDOFF_SECONDS_DEEP = CFG["handoff_seconds_deep"]
 HANDOFF_MAX_SECONDS = int(CFG.get("handoff_max_minutes", 30)) * 60
 
 # Tetos da saída do modelo. O CLI (e o que ele executa) é um produtor não
-# confiável: qualquer arquivo que passe do teto derruba o scope inteiro na hora
-# (vigia a cada 0,2 s, também durante o handoff), e por baixo o RLIMIT_FSIZE do
-# scope impede qualquer processo dele de escrever um arquivo maior que
-# MODEL_MAX_FILE_BYTES — o kernel recusa a escrita mesmo que o vigia não exista.
+# confiável: stdout e stderr chegam por pipe e o launcher grava nos arquivos só
+# até o teto — passou, o pipe fecha (o produtor leva EPIPE) e o scope inteiro
+# cai; o arquivo da resposta (escrito pelo CLI) é vigiado a cada 0,2 s, também
+# durante o handoff.
 MODEL_MAX_EVENTS_BYTES = 32 * 1024 * 1024   # stdout: eventos JSONL
 MODEL_MAX_STDERR_BYTES = 4 * 1024 * 1024    # stderr
 MODEL_MAX_ANSWER_BYTES = 1 * 1024 * 1024    # arquivo da resposta final
 MODEL_MAX_LINE_BYTES = 1 * 1024 * 1024      # uma linha JSONL (nunca lida inteira acima disso)
-MODEL_MAX_FILE_BYTES = 256 * 1024 * 1024    # RLIMIT_FSIZE de todo processo do scope
 
 # Narração de progresso: a cada N s sem fala, uma frase curta do que o modelo
 # está fazendo (jarvis_narrate). "auto" é resolvido no início de cada conversa.
@@ -259,13 +258,36 @@ def scoped(cmd: list[str], unit: str | None = None) -> list[str]:
     return cmd
 
 
-def limited(cmd: list[str], max_file_bytes: int = MODEL_MAX_FILE_BYTES) -> list[str]:
-    """Prefixo que impõe RLIMIT_FSIZE ao comando e a tudo que ele lançar: um
-    processo do modelo que tente escrever um arquivo maior que o teto recebe
-    EFBIG/SIGXFSZ do kernel — limite no produtor, sem depender do launcher."""
-    if shutil.which("prlimit"):
-        return ["prlimit", f"--fsize={max_file_bytes}", "--"] + cmd
-    return cmd
+def pump(src, path: Path, limit: int, on_overflow, name: str = "saída") -> int:
+    """Copia um pipe do CLI (stdout ou stderr) para `path` até `limit` bytes.
+    Ao passar do teto fecha o pipe — o produtor leva EPIPE/SIGPIPE na próxima
+    escrita — e chama `on_overflow(motivo)`, que derruba o scope. Devolve os
+    bytes gravados. (RLIMIT_FSIZE não serve aqui: valeria também para os
+    bancos SQLite do próprio Codex, que passam de 256 MiB, e o mataria na hora.)"""
+    written = 0
+    try:
+        with open(path, "wb") as out:
+            while True:
+                chunk = src.read1(65536) if hasattr(src, "read1") else src.read(65536)
+                if not chunk:
+                    break
+                if written + len(chunk) > limit:
+                    out.write(chunk[: max(0, limit - written)])
+                    out.flush()
+                    written = limit + 1
+                    on_overflow(f"{name} passou de {limit // (1024 * 1024)} MiB")
+                    break
+                out.write(chunk)
+                out.flush()
+                written += len(chunk)
+    except OSError:
+        pass
+    finally:
+        try:
+            src.close()
+        except OSError:
+            pass
+    return written
 
 
 def read_bounded(path: Path, limit: int) -> tuple[str, bool]:
@@ -813,22 +835,18 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
         cleanup()
         return (f"{cmd[0]} não encontrado no ambiente.", None)
     try:
-        out_f = open(ev, "w")
-        err_f = open(err, "w")
         # scope próprio (nomeado): um restart do Jarvis não mata um trabalho longo
         # em voo, e cancelar para o scope inteiro (CLI + filhos).
         # stdin fechado: o codex fica esperando entrada se herdar um stdin aberto.
-        proc = subprocess.Popen(limited(scoped(cmd, unit)), stdin=subprocess.DEVNULL,
-                                stdout=out_f, stderr=err_f, **popen_kwargs)
-        out_f.close()
-        err_f.close()
+        # stdout/stderr são pipes: o launcher grava nos arquivos até o teto (pump).
+        proc = subprocess.Popen(scoped(cmd, unit), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
     except Exception as e:
         cleanup()
         return (f"Erro ao consultar: {e}", None)
 
     started = time.monotonic()
-    ceilings = {"stdout": (ev, MODEL_MAX_EVENTS_BYTES), "stderr": (err, MODEL_MAX_STDERR_BYTES),
-                "resposta": (ans, MODEL_MAX_ANSWER_BYTES)}
+    ceilings = {"resposta": (ans, MODEL_MAX_ANSWER_BYTES)}
     killed: dict = {}
 
     def kill_for(reason: str) -> None:
@@ -863,6 +881,12 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
             time.sleep(0.2)
 
     threading.Thread(target=watchdog, daemon=True, name="model-watchdog").start()
+    pumps = [threading.Thread(target=pump, args=(proc.stdout, ev, MODEL_MAX_EVENTS_BYTES, kill_for, "stdout"),
+                              daemon=True, name="model-stdout"),
+             threading.Thread(target=pump, args=(proc.stderr, err, MODEL_MAX_STDERR_BYTES, kill_for, "stderr"),
+                              daemon=True, name="model-stderr")]
+    for t in pumps:
+        t.start()
 
     def tail_events() -> None:
         pos = 0
@@ -903,7 +927,8 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
     try:
         while True:
             if proc.poll() is not None:
-                time.sleep(0.1)  # deixa o último flush do arquivo de eventos assentar
+                for t in pumps:   # o resto do stdout/stderr já está nos arquivos
+                    t.join(timeout=2)
                 out = final_text()
                 emsg, _ = read_bounded(err, 4096)
                 emsg = emsg.strip()[:200]
