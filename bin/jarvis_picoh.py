@@ -84,36 +84,38 @@ EYE_SHAPES: dict[str, tuple[str, bool]] = {
 # "fast" (senoide rápida) | shape: formato dos olhos | bright: brilho 0-10 |
 # nod/turn: cabeça 0-10 | eyes: pupilas (x, y) 0-10 | wander: olhos vagueiam
 Look = dict
-IDLE: Look = dict(colour=(0, 0, 0), pulse=None, shape="eyeball", bright=3,
+# Teto suave para todas as fases; espera ainda mais discreta.
+MAX_BRIGHT = 1.5
+IDLE: Look = dict(colour=(0, 0, 0), pulse=None, shape="eyeball", bright=1.0,
                   nod=5, turn=5, eyes=(5, 5), wander=False)
 LOOKS: dict[str, Look] = {
     # cada fase da conversa tem formato de olho e cor próprios
-    "listening":    dict(colour=(0, 220, 60), pulse=None, shape="large", bright=10,
+    "listening":    dict(colour=(0, 220, 60), pulse=None, shape="glasses", bright=1.5,
                          nod=6, turn=5, eyes=(5, 5), wander=False),
-    "recording":    dict(colour=(140, 255, 0), pulse="fast", shape="full", bright=10,
+    "recording":    dict(colour=(140, 255, 0), pulse="fast", shape="glasses", bright=1.5,
                          nod=6.5, turn=5, eyes=(5, 5), wander=False),
-    "transcribing": dict(colour=(0, 160, 255), pulse=None, shape="square", bright=8,
+    "transcribing": dict(colour=(0, 160, 255), pulse=None, shape="square", bright=1.5,
                          nod=5.5, turn=5, eyes=(5, 6), wander=False),
-    "thinking":     dict(colour=(255, 120, 0), pulse="breathe", shape="smallball", bright=8,
+    "thinking":     dict(colour=(255, 120, 0), pulse="breathe", shape="smallball", bright=1.5,
                          nod=6.5, turn=5, eyes=(4, 8), wander=True),
-    "consent":      dict(colour=(255, 20, 0), pulse="blink", shape="angry", bright=10,
+    "consent":      dict(colour=(255, 20, 0), pulse="blink", shape="angry", bright=1.5,
                          nod=5, turn=5, eyes=(5, 5), wander=False),
-    "speaking":     dict(colour=(90, 110, 255), pulse=None, shape="heart", bright=10,
+    "speaking":     dict(colour=(90, 110, 255), pulse=None, shape="heart", bright=1.5,
                          nod=5.5, turn=5, eyes=(5, 5), wander=False),
-    "followup":     dict(colour=(0, 170, 140), pulse=None, shape="glasses", bright=8,
+    "followup":     dict(colour=(0, 170, 140), pulse=None, shape="glasses", bright=1.5,
                          nod=6, turn=5, eyes=(5, 5), wander=False),
-    "handoff":      dict(colour=(170, 0, 255), pulse="breathe", shape="sunglasses", bright=8,
+    "handoff":      dict(colour=(170, 0, 255), pulse="breathe", shape="sunglasses", bright=1.5,
                          nod=5, turn=5, eyes=(5, 5), wander=False),
     # ditado (outro modo): ciano enquanto grava, âmbar revisando, coração colou, triste cancelou
-    "dictating":    dict(colour=(0, 220, 255), pulse="fast", shape="large", bright=10,
+    "dictating":    dict(colour=(0, 220, 255), pulse="fast", shape="glasses", bright=1.5,
                          nod=4.5, turn=5, eyes=(5, 3), wander=False),
-    "polishing":    dict(colour=(255, 120, 0), pulse="breathe", shape="smallball", bright=8,
+    "polishing":    dict(colour=(255, 120, 0), pulse="breathe", shape="smallball", bright=1.5,
                          nod=5, turn=5, eyes=(5, 5), wander=True),
-    "pasted":       dict(colour=(0, 255, 80), pulse=None, shape="heart", bright=10,
+    "pasted":       dict(colour=(0, 255, 80), pulse=None, shape="heart", bright=1.5,
                          nod=5, turn=5, eyes=(5, 5), wander=False),
-    "copied":       dict(colour=(0, 255, 80), pulse=None, shape="heart", bright=10,
+    "copied":       dict(colour=(0, 255, 80), pulse=None, shape="heart", bright=1.5,
                          nod=5, turn=5, eyes=(5, 5), wander=False),
-    "cancelled":    dict(colour=(255, 0, 0), pulse=None, shape="sad", bright=6,
+    "cancelled":    dict(colour=(255, 0, 0), pulse=None, shape="sad", bright=1.5,
                          nod=4, turn=5, eyes=(5, 3), wander=False),
 }
 # fases que são só um "flash" antes de voltar ao repouso
@@ -305,7 +307,7 @@ class Picoh:
         self._colour = rgb
 
     def eye_brightness(self, level: float) -> None:
-        level = max(0.0, min(10.0, float(level))) / 10
+        level = max(0.0, min(MAX_BRIGHT, float(level))) / 10
         val = int(round(level * level * 255))
         if val == self._bright:
             return
