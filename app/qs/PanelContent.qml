@@ -14,7 +14,7 @@ Item {
   property bool dictating: false
   property bool installed: true
   property string lang: "en"
-  property var config: ({})             // language, stt_provider, quick_provider, deep_model, system_access
+  property var config: ({})             // language, stt_provider, quick_provider, routing_mode, system_access
   property string pluginDir: ""         // onde está o install.sh (só usado pelo botão Instalar)
   property string fontFamily: Style.font.family
 
@@ -75,13 +75,13 @@ Item {
     keyWake: "liga/desliga só a escuta “hey jarvis”",
     statusDictating: "Gravando ditado…",
     notInstalled: "Não instalado — clique em Instalar para configurar o serviço de voz",
-    chipLang: "IDIOMA", chipStt: "STT", chipQuick: "RÁPIDO", chipDeep: "PENSE BEM", chipAccess: "ACESSO",
+    chipLang: "IDIOMA", chipStt: "STT", chipQuick: "AGENTE", chipDeep: "ROTEAMENTO", chipAccess: "ACESSO",
     voiceTitle: "CONVERSA POR VOZ",
     intro: "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar e abre a janela da conversa. Não há palavras-chave: o modelo decide.",
     rows: [
       ["“abre o projeto X”", "layout dev: Ghostty 2×2 + VS Code + Chrome"],
       ["“abre o btop / o Chrome”", "abre um app instalado"],
-      ["“pense bem <pergunta>”", "modelo mais forte (Claude Fable)"],
+      ["“continue de onde parou”", "retoma a sessão do agente"],
       ["“quantos containers no Docker?”", "roda o comando e responde o resultado"],
       ["falar por cima da resposta", "ele para e escuta você (barge-in)"],
       ["“fecha a conversa” / “é só isso”", "encerra (o modelo entende)"],
@@ -92,12 +92,14 @@ Item {
     dictIntro: "Speech-to-text: fale e o texto é transcrito e colado na janela ativa (vai pro topo do clipboard).",
     dictK: "aperta, fala, aperta de novo",
     dictL: "segura e fala, solta pra colar",
-    dictOther: "outra tecla", dictOtherAction: "cancela e descarta",
+    dictOther: "outra tecla", dictOtherAction: "durante a gravação, cancela",
+    dictEsc: "durante a revisão, usa o texto bruto",
     dictStart: "Ditar agora", dictStop: "Parar e colar",
     keysTitle: "ATALHOS",
     keyH: "falar agora, sem “hey jarvis”",
     keyDictToggle: "ditado (toggle)", keyDictPtt: "ditado (push-to-talk)",
-    keyJ: "liga/desliga o Jarvis",
+    keyJ: "chama o Jarvis (liga se necessário)",
+    keyWakeToggle: "liga/desliga a escuta de “hey jarvis”",
     keyClick: "clique", keyClickAction: "abre este painel",
     keyRight: "direito", keyRightAction: "pausa 30 min",
     keyConfig: "configuração no terminal",
@@ -112,13 +114,13 @@ Item {
     keyWake: "toggles just the wake-word listening",
     statusDictating: "Recording dictation…",
     notInstalled: "Not installed — click Install to set up the voice service",
-    chipLang: "LANGUAGE", chipStt: "STT", chipQuick: "QUICK", chipDeep: "THINK HARD", chipAccess: "ACCESS",
+    chipLang: "LANGUAGE", chipStt: "STT", chipQuick: "AGENT", chipDeep: "ROUTING", chipAccess: "ACCESS",
     voiceTitle: "VOICE CONVERSATION",
     intro: "Say “hey jarvis” and talk after the greeting — it listens until you stop and opens the conversation window. No keywords: the model decides.",
     rows: [
       ["“open project X”", "dev layout: Ghostty 2×2 + VS Code + Chrome"],
       ["“open btop / Chrome”", "launches an installed app"],
-      ["“think hard <question>”", "stronger model (Claude Fable)"],
+      ["“continue where you stopped”", "continues the same agent session"],
       ["“how many Docker containers?”", "runs the command, answers with the result"],
       ["talk over the answer", "it stops and listens (barge-in)"],
       ["“close it” / “that's all, thanks”", "ends it (the model understands)"],
@@ -129,12 +131,14 @@ Item {
     dictIntro: "Speech-to-text: talk and the text is transcribed and pasted into the active window (top of the clipboard).",
     dictK: "press · talk · press again",
     dictL: "hold to talk, release to paste",
-    dictOther: "other key", dictOtherAction: "cancels and discards",
+    dictOther: "other key", dictOtherAction: "cancels while recording",
+    dictEsc: "during polishing, uses the raw text",
     dictStart: "Dictate now", dictStop: "Stop and paste",
     keysTitle: "KEYBINDINGS",
     keyH: "talk now, no “hey jarvis” needed",
     keyDictToggle: "dictation (toggle)", keyDictPtt: "dictation (push-to-talk)",
-    keyJ: "toggles Jarvis on/off",
+    keyJ: "calls Jarvis (starts it if needed)",
+    keyWakeToggle: "toggles “hey jarvis” listening",
     keyClick: "click", keyClickAction: "opens this panel",
     keyRight: "right", keyRightAction: "pause 30 min",
     keyConfig: "settings in the terminal",
@@ -536,7 +540,7 @@ Item {
       Chip { label: panel.str.chipLang;  value: panel.config.language || "";        tint: panel.fg }
       Chip { label: panel.str.chipStt;   value: panel.config.stt_provider || "";    tint: panel.dictColor }
       Chip { label: panel.str.chipQuick; value: panel.config.quick_provider || "";  tint: panel.voiceColor }
-      Chip { label: panel.str.chipDeep;  value: panel.config.deep_model || "";      tint: panel.keysColor }
+      Chip { label: panel.str.chipDeep;  value: panel.config.routing_mode || "";      tint: panel.keysColor }
       // machine access mode: "full" is the only one without a consent step, so it stands out
       Chip { label: panel.str.chipAccess; value: panel.config.system_access || "";
              tint: panel.config.system_access === "full" ? Color.urgent : panel.fg }
@@ -595,6 +599,7 @@ Item {
         KeyRow { width: parent.width; key: "Ctrl+Shift+K"; action: panel.str.dictK; tint: panel.dictColor }
         KeyRow { width: parent.width; key: "Ctrl+Shift+L"; action: panel.str.dictL; tint: panel.dictColor }
         KeyRow { width: parent.width; key: panel.str.dictOther; action: panel.str.dictOtherAction; tint: Qt.darker(panel.fg, 1.3) }
+        KeyRow { width: parent.width; key: "Esc"; action: panel.str.dictEsc; tint: panel.dictColor }
 
         Item { width: 1; height: Style.space(4) }
 
@@ -622,6 +627,7 @@ Item {
 
         KeyRow { width: parent.width; key: "Ctrl+Shift+H"; action: panel.str.keyH }
         KeyRow { width: parent.width; key: "Ctrl+Shift+J"; action: panel.str.keyJ }
+        KeyRow { width: parent.width; key: "Ctrl+Alt+Shift+J"; action: panel.str.keyWakeToggle }
         KeyRow { width: parent.width; key: "Ctrl+Shift+K"; action: panel.str.keyDictToggle; tint: panel.dictColor }
         KeyRow { width: parent.width; key: "Ctrl+Shift+L"; action: panel.str.keyDictPtt; tint: panel.dictColor }
         KeyRow { width: parent.width; key: panel.str.keyClick; action: panel.str.keyClickAction; tint: Qt.darker(panel.fg, 1.3) }

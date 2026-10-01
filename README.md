@@ -1,558 +1,414 @@
-# Jarvis — talk to your Omarchy desktop
+# Jarvis — converse com seu computador
 
-> **Say "hey jarvis". Ask anything. Watch it happen.** A local-first voice assistant for Arch Linux + Hyprland that understands what you mean, runs it on your machine, and talks back — in English or Brazilian Portuguese. Ships as an Omarchy shell plugin.
+Diga **“hey jarvis”**, faça uma pergunta ou peça uma ação. O Jarvis transcreve sua fala, responde em voz alta e mantém a conversa na tela. Também oferece ditado para qualquer aplicativo, integração com a barra do Omarchy e suporte opcional ao robô Picoh.
 
-![Jarvis answering, with its face and the voice ring](docs/screenshots/window-answering.png)
+**Uma assinatura do Claude Code ou do Codex é suficiente para o agente.** Chave de API, Jev e classificador local são opcionais. Instalações novas e configurações antigas continuam começando em `routing_mode = "agent"`, com respostas por API desabilitadas.
 
-## Your computer, one sentence away
+![Janela de conversa do Jarvis](docs/screenshots/window-answering.png)
 
-You are deep in a terminal and need a second project open. You want to know how many containers are still running before you close the lid. You have a paragraph in your head and no patience to type it. With Jarvis you just say it:
+[Instalação](#instalação) · [Fluxo](#como-um-pedido-é-atendido) · [Roteamento](#roteamento-opcional) · [Configuração](#como-configurar) · [Terminal](#conversa-no-terminal) · [Ditado](#ditado-e-atalhos) · [Diagnóstico](#diagnóstico) · [Referência detalhada em inglês](docs/reference.en.md)
 
-- *"hey jarvis, let's work on iaprev"* — a 2×2 terminal grid, VS Code and a browser open on that project.
-- *"how many Docker containers are running?"* — it runs `docker ps` and tells you the number.
-- *"think hard: Postgres or SQLite for this?"* — the question goes to the strongest model and comes back as a spoken, reasoned answer.
-- **`Ctrl+Shift+K`**, talk, `Ctrl+Shift+K` again — your words are transcribed and pasted into whatever window has focus. Speech-to-text for every app, no extra daemon.
+## O que você pode fazer
 
-There are **no keywords to memorize**. Everything you say goes to a model that already has access to your machine — the same Codex CLI and Claude Code you use for coding — so it can answer by *doing*, not by guessing.
-
-## Why you'll like it
-
-| | |
+| Você pede | O Jarvis faz |
 |---|---|
-| **Private by default** | Wake word, voice capture and (with a GPU) transcription run **locally**. Nothing leaves the machine until you wake it — and when you do, only your words go to the model you chose. |
-| **Feels like a conversation** | It listens until you stop talking, keeps the context of the last exchanges, opens a follow-up window after every answer and lets you **talk over it** to interrupt. |
-| **Actually does things** | Opens projects and apps, suspends the machine, runs commands and reads their output. Two model tiers: fast (Codex) for everyday questions, "think hard" (Claude Fable) when it matters. |
-| **Dictation everywhere** | The same microphone and Whisper model double as a system-wide speech-to-text: toggle or push-to-talk, live transcript, optional local polish for punctuation. |
-| **A window you'll want to keep open** | Jarvis's face inside a ring that pulses with its voice, the conversation in bubbles, what the model is doing while you wait — and, while dictating, the live transcript with a waveform. Follows your Omarchy theme; a terminal fallback exists where there is no Qt. |
-| **At home in Omarchy — and beyond** | A brain icon in your bar with a click-to-open panel (voice guide, keybindings, one-click controls) that follows your theme and language. The exact same panel also opens as a standalone window (`jarvis app`, or "Jarvis" in the launcher) on any Linux. |
-| **Yours to tune** | `jarvis config` — a terminal settings screen with profiles, or a scriptable CLI. Wake word, silence timing, models, voices, STT backend: everything is a key in one `config.toml`. |
+| “Explique a diferença entre RAM e armazenamento.” | Responde pela assinatura ou pela API que você habilitou. |
+| “Qual é a previsão do tempo para amanhã?” | Usa busca web na rota API habilitada, ou encaminha ao agente e às ferramentas permitidas. |
+| “Quantos containers estão rodando aqui?” | Encaminha ao agente, respeitando a configuração de acesso ao computador. |
+| “Abra o projeto X.” | Abre o ambiente do projeto: terminais, editor e navegador. |
+| “Continue de onde parou.” | Mantém a sessão identificada do agente. |
+| Aperta `Ctrl+Shift+K`, fala e aperta novamente | Transcreve e entrega o texto para colar no aplicativo ativo. |
 
-## Try it in two minutes
+O Jarvis fala português do Brasil e inglês. A captura usa detecção de fala, com encerramento após silêncio; depois da resposta, a janela de continuação permite falar novamente sem repetir a palavra-chave. Falar por cima interrompe a resposta. A voz é sintetizada localmente pelo Piper.
 
-```bash
-omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable   # the bar widget
-# click the icon → Install (sets up the voice service), or: bash install.sh
-```
+## Instalação
 
-Then say **"hey jarvis"** and ask for something. Add the [keybindings](#keybindings) for push-to-talk and dictation, and you are done. The panel also opens as a standalone window — search for **Jarvis** in your launcher or run `jarvis app` (works outside Omarchy too).
+Você precisa de Linux, microfone, áudio funcionando e **um** agente autenticado: [Codex CLI](https://github.com/openai/codex) ou [Claude Code](https://code.claude.com/docs/en/overview). Faça o login desse CLI com sua assinatura antes de usar o Jarvis. A API de respostas é uma contratação/configuração separada.
 
-![Jarvis bar panel](docs/screenshots/bar-panel.png)
-
----
-
-# Reference
-
-Everything below is the detailed documentation: how a conversation flows, every setting, the CLI, the architecture and the troubleshooting notes.
-
-## Table of contents
-
-- [Features](#features)
-- [How a conversation works](#how-a-conversation-works)
-- [Install](#install)
-- [The bar widget](#the-bar-widget)
-- [The conversation window](#the-conversation-window)
-- [Settings](#settings) · [Main](#main-settings) · [Advanced](#advanced-settings) · [Profiles](#profiles)
-- [Dictation](#dictation)
-- [The Picoh robot](#the-picoh-robot)
-- [Speech-to-text: local or OpenAI](#speech-to-text-local-or-openai)
-- [Models and machine access](#models-and-machine-access)
-- [Language](#language)
-- [The `jarvis` CLI](#the-jarvis-cli)
-- [Keybindings](#keybindings)
-- [Architecture](#architecture)
-- [Repository layout](#repository-layout)
-- [Requirements](#requirements)
-- [Troubleshooting](#troubleshooting)
-- [Security model](#security-model)
-- [License](#license)
-
----
-
-## Features
-
-| | |
-|---|---|
-| **Wake word, always on** | openWakeWord (`hey jarvis`, ~2 % CPU). Nothing leaves the machine until you wake it. Push-to-talk keybinding too. |
-| **Natural turns** | Speech is captured by a VAD: it records while you talk and stops after ~1.2 s of silence — no fixed recording window. |
-| **Conversation, not commands** | After every answer a 20 s follow-up window opens; just keep talking. Previous exchanges go to the model as context. |
-| **Barge-in** | Talk over Jarvis while it thinks or speaks: it stops, listens, and chains what you said. An energy gate keeps it from interrupting itself through the speakers. |
-| **The model decides** | No keyword parsing. The model receives an *action protocol* (open project, open app, sleep, end conversation) and emits markers the launcher executes; anything else about the machine it does itself. |
-| **Machine access, with your consent** | Answers about your system come from real commands — but by default (`system_access = "ask"`) the model runs sandboxed and every action that changes something opens a window showing the **exact command** for you to allow or deny. `full` (no sandbox, no prompts) and `off` (knowledge-only) are opt-in. |
-| **Two model tiers** | Fast path: Codex (low effort, fast tier). Say **"think hard …"** (*"pense bem …"*) for Claude Fable / high effort. |
-| **Live window** | A floating window shows the phase (listening / recording / thinking / answering / your turn, with countdown), the conversation with speaker labels, live speech-to-text, and what the model is doing while you wait. |
-| **Never silent while it works** | Every few seconds without speech, Jarvis says one short sentence about what the model is doing right now (*"I'm counting the Docker containers."*). A small local model (Ollama) or the OpenAI API writes it from the CLI's live events; the model itself or fixed phrases are the fallbacks. |
-| **Long tasks don't die** | If a model call exceeds its deadline it is handed to a separate scratch terminal that keeps running and shows the answer. |
-| **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU) or OpenAI Realtime (`gpt-live-transcribe`) with live provisional text. Automatic fallback. |
-| **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
-| **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
-| **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
-| **A face, if you want one** | Plug in a [Picoh](https://www.ohbot.co.uk/picoh.html) (the Ohbot robot head) and it becomes Jarvis's face: base colour per phase (green listening, amber thinking, red asking for consent, blue answering), mouth moving in sync with the voice, eyes that wander while the model works. Auto-detected on USB, nothing to configure — and entirely optional: without the robot nothing changes. |
-| **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, a tooltip on hover and a panel in cards on click — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
-
----
-
-## How a conversation works
-
-```
-"hey jarvis"  ──►  greeting  ──►  you talk … 1.2 s silence  ──►  speech-to-text
-                                                                       │
-                     ┌─────────────────────────────────────────────────┘
-                     ▼
-              model (Codex, or Claude for "think hard")
-              gets: system prompt + action protocol + machine notes + last exchanges
-                     │
-        ┌────────────┼───────────────────────────────┐
-        ▼            ▼                               ▼
-   spoken answer   markers → launcher executes     anything else about the machine
-   (Piper TTS)     <<ABRIR_PROJETO: x>> dev layout  → the model runs it itself
-                   <<ABRIR_APP: x>>     launch app
-                   <<DORMIR>>           suspend
-                   <<FIM>>              end conversation
-                     │
-                     ▼
-        20 s follow-up window — keep talking, or say goodbye, or stay silent
-```
-
-Things you can say (any phrasing works — these are examples):
-
-| You say | What happens |
-|---|---|
-| "how many Docker containers are running?" | the model runs `docker ps` and answers with the number |
-| "open a terminal on workspace 1" | the model does it (`omarchy-launch-terminal`, `hyprctl dispatch …`) and confirms |
-| "let's work on hey-jarvis" / "abre o projeto iaprev" | `<<ABRIR_PROJETO>>` → 2×2 Ghostty grid + VS Code + Chrome for `~/Desktop/dev/<project>` |
-| "open btop" / "abre o Chrome" | `<<ABRIR_APP>>` → launches the installed app (TUIs float like Omarchy's own) |
-| "think hard: should I use Postgres or SQLite here?" | Claude Fable, high effort |
-| "go to sleep" / "pode dormir" | `<<DORMIR>>` → `systemctl suspend` |
-| "that's all, thanks" / "fecha essa conversa" | `<<FIM>>` → goodbye, conversation closes |
-| *talk while it is answering* | it stops and listens (barge-in) |
-| **"pause"** / **"fim"** (single word) | the only two local hard commands: mute / end |
-
-Data-heavy answers (weather for the week, rankings) are spoken as a summary; the full detail — after a `---` line in the model's reply — is shown only in the window.
-
-While the model works you are not left in silence: after `narration_interval_quick` seconds (8; 15 for "think hard") without anything spoken, Jarvis says one short first-person sentence about what is going on, built from the CLI's streaming events (commands run, reasoning). Who writes the sentence depends on `narration`: `auto` (default) picks a local Ollama model when Ollama answers, the configured model is installed and there is a CUDA GPU, else the OpenAI API when a key is set, else fixed phrases ("reading a file", "running a command", "still thinking about it"). `self` asks the main model to write its own progress lines instead. Each sentence is only spoken when there is something new, never repeats the previous one, is cut the moment the answer arrives, and can be talked over like any other speech. The log shows every line as `[narr] ▶ …`.
-
----
-
-## Install
-
-**As an Omarchy plugin** (Omarchy 4+, recommended):
+No Omarchy, adicione o painel à barra:
 
 ```bash
 omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable
 ```
 
-This installs the bar widget. Click the icon → **Install** runs `install.sh` in a terminal, which sets up the voice service:
+Clique no ícone e em **Instalar** para instalar o serviço de voz. Adicionar o plugin sozinho instala o painel.
 
-1. system packages if missing (`portaudio`, `pipewire-pulse`, a terminal);
-2. a dedicated Python venv at `~/.local/share/jarvis/venv` with `requirements.lock` (complete transitive set, sha256-pinned, `pip --require-hashes --no-deps`; + CUDA wheels from `requirements-gpu.lock` when an NVIDIA GPU is detected);
-3. Piper voices for en-US and pt-BR into `~/.local/share/piper-voices`;
-4. the scripts into `~/.local/bin`;
-5. the `voice-launcher.service` user unit, enabled and started.
-
-**Manually** (any Hyprland setup):
+Para instalar a partir do repositório:
 
 ```bash
-git clone https://github.com/Atzingen/hey-jarvis.git && cd hey-jarvis
+git clone https://github.com/Atzingen/hey-jarvis.git
+cd hey-jarvis
 bash install.sh
 ```
 
-After a `git pull`, `bash install.sh --update` re-copies the scripts and restarts the service.
+O instalador prepara o ambiente Python de voz, os modelos de reconhecimento, as vozes Piper, os scripts, a interface e o serviço de usuário `voice-launcher.service`. As dependências Python e os downloads de voz têm versões/verificações fixadas. Fora do Omarchy, instale os pacotes de sistema que ele indicar e execute novamente.
 
-### Uninstall
+**A instalação normal não baixa o classificador de roteamento, não instala seu PyTorch e não ativa respostas pagas por API.** Uma GPU pode acelerar o reconhecimento de fala existente; o classificador opcional descrito abaixo roda somente na CPU.
+
+Escolha o agente e o idioma:
 
 ```bash
-bash install.sh --uninstall            # stops the service and model scopes, removes scripts, unit and ~/.local/share/jarvis
-bash install.sh --uninstall --purge    # also removes ~/.config/jarvis (settings, profiles) and the Piper voices
-omarchy plugin remove atzingen.jarvis  # removes the bar widget
+jarvis config set language pt-BR
+jarvis config set quick_provider codex   # ou claude
+jarvis config
+jarvis talk
 ```
 
-Nothing is written outside `~/.local/bin`, `~/.local/share/jarvis` (venv, panel app, Whisper weights, the model's working directory), `~/.local/share/piper-voices`, `~/.config/jarvis`, `~/.local/share/applications/jarvis.desktop`, `~/.config/systemd/user/voice-launcher.service` and, at runtime, `$XDG_RUNTIME_DIR`. Jarvis never edits your Hyprland or Omarchy configuration; the keybindings and the bar-accent hook are opt-in snippets you add yourself.
-
-You also need the model CLIs you want to use: [Codex CLI](https://github.com/openai/codex) (`codex login`) for the fast path and/or [Claude Code](https://docs.claude.com/en/docs/claude-code) for "think hard" (or set `quick_provider = "claude"` to use Claude for everything).
-
----
-
-## The bar widget
-
-![Bar](docs/screenshots/bar.png)
-
-The panel is the screenshot at the top of this page.
-
-The icon shows the service state — **󰧑** on (in the theme accent color), **󱍎** paused, **󱍄** off, **󰍬** (urgent color) while a dictation is being recorded. Hovering shows a one-line tooltip with the state; left-click opens the panel (click anywhere else to close it), right-click pauses for 30 minutes, middle-click starts/stops a dictation. The panel is organized in cards:
-
-- **Hero** — state line (on / paused / off / recording, with "since HH:MM" or "back in N min") and an on/off switch (or **Install** when the service isn't set up yet);
-- **Chips** — what it is running with right now: language, STT provider, quick model, "think hard" model;
-- **Voice conversation** — the spoken-command guide;
-- **Dictation** — the speech-to-text keys (`Ctrl+Shift+K` toggle, `Ctrl+Shift+L` push-to-talk, any other key cancels), the live state (ready / recording / Jarvis off) and a **Dictate now / Stop and paste** button;
-- **Keybindings** — every shortcut as a key cap, plus the mouse actions on the icon;
-- **Footer** — icon actions: power, pause 30 min, dictate, logs, settings.
-
-Section colors derive from the theme accent (voice = accent, dictation and keys = the accent rotated on the hue wheel), so the panel follows every Omarchy theme. Panel texts follow the configured language.
-
-### The same panel as an app — on any Linux
-
-The exact same panel opens as a standalone window: **`jarvis app`**, or search for **Jarvis** in your application launcher (`install.sh` adds a desktop entry). It is the same `app/qs/PanelContent.qml` the bar popup renders — same cards, same colors, same **Dictate now / Stop and paste** button — hosted by whatever is available:
-
-1. **quickshell** (Omarchy / Arch): renders the QML directly (`app/qs/shell.qml`);
-2. **PySide6** (Ubuntu, Fedora, anywhere Qt runs — `pip install PySide6`): the same QML via `bin/jarvis-panel.py`;
-3. **no Qt at all**: a terminal (curses) rendition of the panel, pure stdlib (`bin/jarvis-app.py`).
-
-Outside the Omarchy shell there is no theme to follow, so the standalone window uses a fixed dark palette (`app/qs/Commons/`).
-
-![Jarvis standalone window](docs/screenshots/app.png)
-
-## The conversation window
-
-![Conversation window while the model works](docs/screenshots/window-thinking.png)
-
-![Dictation in the same window](docs/screenshots/window-dictation.png)
-
-A window opens the moment a conversation starts and stays until it ends. With `window_style = auto` (the default) it is the **graphic window**: quickshell renders it on Omarchy (a layer-shell surface at the top of the focused monitor, in the colours of the current theme — no Hyprland rule needed), PySide6 renders the same QML anywhere else, and where neither exists the **terminal viewer** (alacritty + `jarvis-window.py`) takes over. `window_style = graphic` or `terminal` forces one.
-
-- **Jarvis's face** on the left (`app/qs/assets/robot.png`, which swells a little with the voice and sways while the model works) inside a **ring of radial bars** that rises with what Jarvis is saying (the same speech envelope that moves the Picoh's mouth), breathes while listening, spins while thinking and pulses in the urgent colour while waiting for an authorization;
-- **badge** with the current phase — LISTENING / RECORDING / TRANSCRIBING / THINKING / ANSWERING / YOUR TURN (with a countdown) / IN TERMINAL;
-- the **conversation** as bubbles per speaker (yours on the right, Jarvis's with the model label), most recent at the bottom;
-- while recording with the OpenAI backend, **your words appear as you speak** (provisional text);
-- an **activity strip** at the bottom: what the model is doing right now (`running: docker ps …`, `thinking: …`), so waiting never feels dead;
-- **hints** for the phase (talk over me, ask to end, `q` closes).
-
-The terminal viewer shows the same information as text blocks. In both, `q` or `Esc` (or the `✕`) ends the conversation, and the dictation window is the same window in dictation mode (live transcript + waveform).
-
----
-
-## Settings
-
-![Settings screen](docs/screenshots/settings-en.png)
-
-Everything is configurable, three ways:
-
-- **`jarvis config`** (also the **Settings** button in the bar panel): a terminal screen. *Main* options on top, *Advanced* collapsed below (Enter expands). `←/→`/Enter cycles options or edits a value, `d` resets one key, `D` resets everything, `s` saves and restarts the service, `p` saves the current values as a named profile, `o` loads a profile, `e` opens the file in `$EDITOR`, `q`/Esc quits (asks to save if there are pending changes). Changed values are marked `*`; the footer explains the selected item and its default.
-- **CLI**: `jarvis config show | get <key> | set <key> <value> | reset [<key>] | path` — validated (choices, min/max), secrets masked.
-- **The file**: `~/.config/jarvis/config.toml` (mode 0600). Only the keys you changed are written; each is documented inline. Anything missing uses the built-in default.
-
-### Main settings
-
-| Key | Default | What |
-|---|---|---|
-| `language` | `en` | `en` or `pt-BR` — voice, recognition language, prompts, window and settings texts |
-| `wake_word_enabled` | `true` | `false` = hotkeys-only mode: the mic stays closed while idle; push-to-talk (`Ctrl+Shift+H`) and dictation (`Ctrl+Shift+K/L`) still open it on demand. `jarvis wake` toggles it live |
-| `wake_word` | `hey_jarvis` | openWakeWord model: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` |
-| `wake_threshold` | `0.5` | wake score threshold (lower = more sensitive) |
-| `stt_provider` | `auto` | `auto` / `local` / `openai` — see [Speech-to-text](#speech-to-text-local-or-openai) |
-| `openai_api_key` | `""` | key for the `openai` STT backend (empty = `OPENAI_API_KEY` env) |
-| `end_silence_seconds` | `1.2` | continuous silence that ends your turn — raise it if it cuts you off |
-| `followup_seconds` | `20.0` | listening window after each answer, no wake word needed |
-| `quick_provider` | `codex` | fast path: `codex` (Codex CLI) or `claude` (Claude Code CLI) |
-| `system_access` | `ask` | `ask` = sandboxed, each consequential action needs your OK in a window showing the exact command; `full` = no sandbox / no approvals (`--dangerously-*`); `off` = knowledge-only. See [Models and machine access](#models-and-machine-access) |
-| `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default; the settings screen cycles the known ones — `gpt-6-astra`, `gpt-6-sol`… — and accepts any name) and reasoning effort |
-| `codex_fast` | `true` | Codex fast mode (`service_tier=fast`) |
-| `claude_quick_model` / `claude_quick_effort` | `sonnet` / `low` | fast path when `quick_provider = "claude"` |
-| `deep_model` / `deep_effort` | `fable` / `high` | "think hard" (always Claude Code CLI): `fable`, `opus`, `sonnet`, `haiku` |
-| `voice` | `auto` | Piper voice; `auto` = the language default (`en_US-lessac-medium` / `pt_BR-faber-medium`) |
-| `voice_length_scale` | `1.15` | speech speed (>1 slower) |
-| `greeting` | `""` | spoken on wake; empty = language default (*"What shall we work on, sir?"*) |
-| `address` | `""` | how Jarvis addresses you in every fixed phrase and in the system prompt (*sir*, *boss*, a name…); empty = `sir` / `senhor` by language. The model is told to use only this and never your name |
-| `window_enabled` | `true` | the conversation window |
-| `window_style` | `auto` | `auto` = graphic (quickshell, else PySide6) with the face and the voice ring, terminal where there is no Qt; `graphic`; `terminal` |
-| `picoh` | `auto` | Picoh robot as the face: `auto` looks for it on USB, `off` never does |
-| `dictation_window` | `true` | live transcript + audio meter while dictating |
-| `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
-| `dictation_polish` / `dictation_polish_model` | `false` / `gemma3:4b` | optional Ollama pass for punctuation/hesitations |
-| `narration` | `auto` | progress narration while the model works: `auto` (Ollama+GPU → `local`; else key → `openai`; else `templates`), `local`, `openai`, `self` (the main model narrates), `templates`, `off` |
-
-### Advanced settings
-
-| Key | Default | What |
-|---|---|---|
-| `whisper_model` | `auto` | `auto` = `large-v3-turbo` on GPU, `small` on CPU; or any faster-whisper size |
-| `whisper_device` | `auto` | `auto` / `cuda` / `cpu` |
-| `openai_stt_model` | `gpt-live-transcribe` | or `gpt-realtime-whisper`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` |
-| `vad_speech_threshold` | `0.5` | silero probability to count a frame as speech |
-| `first_speech_wait_seconds` | `6.0` | how long to wait for you to start after the greeting |
-| `max_utterance_seconds` | `45.0` | hard cap per utterance |
-| `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
-| `max_history_exchanges` | `4` | previous exchanges sent as context |
-| `handoff_seconds_quick` / `_deep` | `45` / `180` | after this the model call moves to a scratch terminal (it keeps running) |
-| `handoff_max_minutes` | `30` | total lifetime of a handed-off call: after this its whole scope is stopped |
-| `narration_interval_quick` / `_deep` | `8` / `15` | seconds of silence before a progress sentence (3–60) |
-| `narration_local_model` | `gemma3:4b` | Ollama model that writes the sentence (`narration = local`/`auto`) |
-| `narration_openai_model` | `gpt-5.4-nano` | Responses API model for `narration = openai` (uses `openai_api_key`) |
-| `system_prompt` | `""` | style instructions; empty = language default (edit in `$EDITOR`) |
-| `barge_min_rms` | `0.012` | energy floor for your speech to count as an interruption |
-| `tts_bleed_factor` | `1.5` | speech must exceed N× the TTS bleed measured on the mic |
-| `barge_tts_warmup_frames` | `4` | frames calibrating the bleed at the start of each TTS |
-| `barge_hits_tts` / `barge_hits_idle` | `3/4` / `2/3` | N of the last M frames with speech to trigger |
-| `interrupt_threshold_boost` | `0.2` | extra wake threshold during the answer (TTS false positives) |
-| `barge_debug` | `true` | log `[barge] rms/gate/vad` once a second while busy |
-| `dictation_max_seconds` | `600` | recording cap for a dictation |
-| `dev_dir` | `~/Desktop/dev` | where "open project X" looks |
-| `layout_script` | `~/.local/bin/dev-layout` | run as `<script> <project>` |
-| `picoh_port` | `""` | serial port of the Picoh (`""` = probe every USB serial port with the handshake) |
-
-### Profiles
-
-`p` in the settings screen saves the current values as `~/.config/jarvis/profiles/<name>.toml`; `o` loads one (then `s` to apply). Useful for "quiet office" vs "home speakers", or en vs pt-BR setups.
-
----
-
-## Dictation
-
-Jarvis doubles as a speech-to-text tool for any window — the same microphone, STT backend, hotwords and window, no second daemon or second Whisper copy in VRAM.
-
-- **Toggle** (`Ctrl+Shift+K`): press, talk, press again → the text is transcribed, optionally polished, copied to the clipboard (top of Omarchy's clipboard history) and **pasted into the active window** (`Ctrl+V`, or `Ctrl+Shift+V` when the active window is a terminal). While recording, any other key cancels.
-- **Push-to-talk** (`Ctrl+Shift+L`): hold to talk, release to paste.
-- The window shows the **live transcript** (with the OpenAI backend the words appear as you speak) and a tall, scrolling **audio waveform** (mirrored around its axis, auto-gain so quiet speech still fills it), then the phase: TRANSCRIBING → POLISHING → PASTED.
-- If Jarvis is in a conversation when you press the key, the conversation yields the microphone to dictation.
-
-Settings (`jarvis config` → Dictation): `dictation_output` = `paste` / `type` (types the text with `wtype`) / `clipboard` (copy only); `dictation_polish` (off by default) runs the transcript through a local Ollama model (`dictation_polish_model`, default `gemma3:4b`) that only fixes punctuation and removes hesitations — it never rewrites, and falls back to the raw text if the output looks wrong or Ollama is unavailable; `dictation_window` shows/hides the window; `dictation_max_seconds` (advanced) caps a recording.
-
-CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybindings call (`integrations/hypr-bindings.lua`). Requires `wl-clipboard` and `wtype`.
-
----
-
-## The Picoh robot
-
-[Picoh](https://www.ohbot.co.uk/picoh.html) is a small robot head (Raspberry Pi Pico inside, USB serial) with a motorised mouth and head, LED-matrix eyes and an RGB base. With `picoh = auto` (the default) Jarvis looks for it on every USB serial port with the same handshake the official library uses (`v` → `v2`) and, when found, drives it as its face:
-
-| Phase | Base colour | Eyes / head |
-|---|---|---|
-| listening (waiting for you) | green | large eyes, head slightly up |
-| recording (you are talking) | lime, pulsing fast | fully open eyes, attentive |
-| transcribing | cyan | square eyes |
-| thinking | amber, breathing | small pupils wandering up-left/up-right |
-| asking for consent | red, blinking | angry eyes |
-| answering | blue-violet | heart eyes, **mouth opens with the voice** (bottom lip follows the volume envelope of the Piper audio, 20 Hz), small nods on loud syllables |
-| your turn again (follow-up) | teal | glasses |
-| handed off to a terminal | purple, breathing | sunglasses |
-| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | large eyes |
-| idle | off, dim round eyes | occasional blink |
-
-The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. Nothing in the service depends on it.
-
-- `jarvis picoh probe` — which serial ports exist and whether one answered as a Picoh.
-- `jarvis picoh demo` — walks through the phases on the robot (`jarvis picoh fake` prints the serial commands instead, no robot needed).
-- `jarvis picoh reset` — lights off, eyes default, motors released.
-- Serial access without root: `install.sh` asks (`[y/N]`, or pass `--picoh-udev`) before installing `integrations/60-jarvis-picoh.rules` (udev `uaccess` for Pico and CH340 boards) — the only root-owned file it can touch; any other answer, or a non-interactive run, just prints the command. Other serial boards on the machine are probed once (a board with auto-reset on DTR will reboot at that moment); pin `picoh_port` in the advanced settings to avoid that.
-
----
-
-## Speech-to-text: local or OpenAI
-
-`stt_provider` picks how your speech becomes text. Both backends sit behind the same interface (`bin/jarvis_stt.py`), so the rest of the pipeline doesn't care.
-
-| Provider | What it does | When |
-|---|---|---|
-| `local` | faster-whisper on the machine. NVIDIA GPU: `large-v3-turbo` fp16 — ~0.1 s for 10 s of speech on an RTX 4090. CPU: `small` int8 — ~1.5 s on a desktop, 3–5 s on a laptop. No key, no network, offline. Project and app names are passed as `hotwords`. | default; always the fallback |
-| `openai` | OpenAI Realtime API (`gpt-live-transcribe`, WebSocket): audio streams while you talk, **provisional text shows live in the window**, final transcript on commit. Project names as `keywords`. If the API fails (no network, bad key, no credits, timeout) the buffered audio is transcribed locally — you never lose an utterance. ≈ US$ 0.017 per spoken minute. | machines without a GPU, or when you want live text |
-| `auto` | GPU present → `local`; no GPU and a key → `openai`; else `local` on CPU. | default value |
+A tela `jarvis config` salva e reinicia o serviço quando necessário. Depois de editar o TOML ou usar `config set` pelo terminal, aplique as alterações com:
 
 ```bash
-jarvis config set openai_api_key sk-...      # or export OPENAI_API_KEY in the service environment
+systemctl --user restart voice-launcher.service
+```
+
+Para atualizar, após obter as mudanças do repositório, execute `bash install.sh --update`. Esse comando reaplica os arquivos e dependências da instalação normal e reinicia o serviço.
+
+## Como um pedido é atendido
+
+```mermaid
+flowchart TD
+    A[Você fala + contexto da conversa] --> B{Continuação clara de uma sessão?}
+    B -- Sim --> S[Mesmo agente, mesmo ID de sessão]
+    B -- Não --> C{Modo configurado}
+    C -- agent: padrão --> G[Agente autenticado pela assinatura]
+    C -- assistant --> I{API de respostas habilitada e configurada?}
+    I -- Não --> G
+    I -- Sim --> M[Modelo inicial responde ou encaminha]
+    M -- Resposta pronta --> R[Texto na tela + voz + histórico]
+    M -- Precisa do computador --> G
+    M -- Análise complexa --> J{Perfil API forte configurado?}
+    J -- Não --> G
+    J -- Sim --> K[Perfil API forte]
+    K --> R
+    C -- jev ou local --> D{Classificador disponível?}
+    D -- Não / erro / timeout / carregando --> G
+    D -- Sim --> E[Classifica intenção e complexidade]
+    E --> F{Precisa de computador ou sessão?}
+    F -- Sim --> G
+    F -- Não --> H{API habilitada, modelo e chave válidos?}
+    H -- Não --> G
+    H -- Sim --> P[Resposta por API; busca web se habilitada]
+    P --> R
+    G --> S
+    S --> R
+    S -. tarefa longa ou abrir terminal .-> T[Interface nativa + teclado, sem reenviar o pedido]
+    T --> S
+```
+
+O diagrama mostra as decisões **antes de executar**. Se uma execução já começou e a conexão cair, o Jarvis mantém o ID e tenta consultar a mesma sessão. Quando não consegue confirmar o resultado, informa a incerteza. **Ele não dispara uma segunda execução para compensar uma resposta perdida.**
+
+Uma consulta atual depende de ferramentas de busca disponíveis. Quando a rota API não oferece busca, o encaminhamento é para o agente; as permissões desse agente continuam valendo. `system_access = "off"` não ganha acesso à internet ou ao computador por causa do roteador.
+
+## Roteamento opcional
+
+| `routing_mode` | Como decide | O que exige | Se faltar a dependência |
+|---|---|---|---|
+| **`agent` — padrão** | Envia diretamente ao agente escolhido. | Codex **ou** Claude autenticado. | Informa o problema do CLI/login; não depende de outro fornecedor. |
+| `assistant` | Um modelo inicial por API responde diretamente ou pede encaminhamento. | API de respostas explicitamente habilitada, modelo e chave. | Usa o agente por assinatura. |
+| `jev` | O Jev classifica o pedido e o nível de complexidade. | Chave do Jev/TypeSafe. | Usa o agente por assinatura. |
+| `local` | Um classificador opcional decide na CPU. | Instalação separada do GLiNER2.5-multi-Decide. | Usa o agente enquanto o classificador carrega, falha ou está ausente. |
+
+**O Jev é um classificador.** Ele não substitui o modelo que responde, não executa comandos e não escolhe nomes de modelos arbitrários. Sem uma API de respostas habilitada, a classificação continua levando ao agente da assinatura. A mesma regra vale para o classificador local.
+
+**`assistant` é a alternativa sem Jev:** a primeira chamada à API já pode produzir a resposta. Se precisar de ferramentas do computador, entrega o pedido original e o contexto ao agente. Se existir um perfil API mais forte, permite uma escalada para ele; não cria uma cadeia sem fim de classificações.
+
+O modo `agent` ignora os classificadores. Não importa seus modelos, não inicia workers locais nem consulta Jev/API de respostas. Ter uma chave OpenAI para transcrição ou narração **não habilita** a nova rota de respostas.
+
+A janela mostra o modelo que atendeu **cada resposta**, com uma linha discreta do caminho escolhido: por exemplo, `Jev → busca web → API` ou `Jev → computador → Agente · assinatura`. Enquanto classifica, mostra que está escolhendo a rota. Se houver fallback, a mesma linha registra a falha e o encaminhamento para a assinatura. O histórico mantém o modelo e a rota de cada mensagem, mesmo quando respostas de tarefas longas chegam depois.
+
+### Escolha de modelo e esforço
+
+O roteador classifica a complexidade como baixa, média ou alta. Baixa/média usam o perfil normal. Alta pode usar o perfil forte que você configurar. Sem perfil forte, mantém o atual.
+
+| Perfil | Modelo/esforço |
+|---|---|
+| Agente normal | `codex_model` + `codex_effort`, ou `claude_quick_model` + `claude_quick_effort` |
+| Agente forte | `agent_strong_model` + `agent_strong_effort`, do **mesmo provedor** |
+| API normal | `api_model` + `api_effort` |
+| API forte | `api_strong_model` + `api_strong_effort` |
+
+Use identificadores e níveis de esforço aceitos pelo modelo da sua conta. O Jarvis não ativa um modelo pago apenas porque descobriu uma chave.
+
+**“Pense bem” e “think hard” agora são texto comum.** Essas frases não trocam de provedor nem ativam um modo especial. As antigas chaves `deep_model`, `deep_effort`, `handoff_seconds_deep` e `narration_interval_deep` continuam legíveis nos arquivos/perfis para permitir reversão, mas saíram dos controles ativos.
+
+## Como configurar
+
+Abra `jarvis config`. O grupo **Roteamento** reúne modo, API opcional, chave Jev e perfis fortes. As chaves ficam em `~/.config/jarvis/config.toml`, com permissão `0600`; campos secretos são mascarados na interface e em `config show`.
+
+### Só assinatura, sem chaves de API
+
+```toml
+routing_mode = "agent"
+api_provider = "none"
+quick_provider = "codex"       # ou "claude"
+agent_session_mode = "auto"
+```
+
+Esse é o comportamento de fábrica e o de configurações antigas que não contêm as novas chaves. Provedor, modelo, esforço e prioridade já salvos são preservados.
+
+### Jev decide; a assinatura continua disponível
+
+```toml
+routing_mode = "jev"
+api_provider = "none"
+quick_provider = "codex"
+```
+
+Preencha `jev_api_key` na configuração. Também é possível fornecer `JEV_API_KEY` no ambiente do processo do Jarvis. Sem chave válida, o pedido segue ao agente. A configuração acima **não exige chave OpenAI**.
+
+Para permitir respostas diretas por API, configure também:
+
+```toml
+api_provider = "openai"
+api_model = "<modelo disponível na sua conta>"
+api_effort = ""                # vazio: não envia parâmetro de esforço
+api_web_search = true
+```
+
+Substitua o marcador do modelo e preencha `openai_api_key` na configuração, ou disponibilize `OPENAI_API_KEY` ao serviço. O opt-in que autoriza a rota é `api_provider = "openai"` junto com um modelo preenchido. Uma variável exportada em um terminal não aparece automaticamente em um serviço systemd já iniciado.
+
+### Modelo inicial por API, sem Jev
+
+Use a configuração de API acima e altere:
+
+```toml
+routing_mode = "assistant"
+```
+
+O modelo inicial responde quando consegue resolver o pedido em texto/busca pública. Necessidade de arquivos, aplicativos, comandos ou sites autenticados leva ao agente. `api_strong_model` é opcional.
+
+### Classificador local, somente CPU
+
+Essa opção é **experimental**. Ele classifica o pedido; não gera a resposta e não transforma o Jarvis em um assistente inteiramente local.
+
+```bash
+jarvis router install-local
+jarvis config set routing_mode local
+systemctl --user restart voice-launcher.service
+```
+
+O instalador opcional usa **Python 3.11 em Linux x86_64**, ambiente próprio em `~/.local/share/jarvis/router-local`, dependências fixadas com hashes e revisão fixa do modelo. Se necessário, indique o interpretador:
+
+```bash
+JARVIS_ROUTER_PYTHON=/caminho/para/python3.11 jarvis router install-local
+```
+
+O worker usa PyTorch CPU, bloqueia CUDA e carrega somente os arquivos já baixados. A instalação é explícita; uma fala nunca dispara download. Enquanto o modelo está frio, o pedido segue imediatamente ao agente. Depois de `local_router_idle_seconds` sem uso, o processo sai e libera a memória.
+
+Veja as [evidências de validação](docs/routing-validation.md) para resultado, latência, consumo em disco e limitações da avaliação em português. Falhas de classificação não ampliam permissões: a rota API não executa ações textuais.
+
+### Limites e reversão
+
+| Chave | Padrão | Efeito |
+|---|---|---|
+| `router_timeout_seconds` | `5.0` | Prazo da classificação Jev/local; depois usa o agente. |
+| `api_timeout_seconds` | `30.0` | Prazo da resposta API; uma execução incerta não é repetida. |
+| `local_router_idle_seconds` | `300` | Inatividade até descarregar o classificador. |
+| `handoff_seconds_quick` | `45` | Quando abrir o terminal de uma tarefa longa. |
+| `handoff_max_minutes` | `30` | Prazo máximo de um turno; não é o tempo de vida de uma sessão ociosa. |
+| `agent_session_mode` | `auto` | Sessão nativa quando suportada; `legacy` mantém o executor de compatibilidade. |
+
+Para voltar ao caminho direto e ao executor anterior:
+
+```bash
+jarvis config set routing_mode agent
+jarvis config set api_provider none
+jarvis config set agent_session_mode legacy
+systemctl --user restart voice-launcher.service
+```
+
+Perfis de configuração continuam disponíveis na tela de configuração. A [referência completa](docs/reference.en.md#settings) descreve as opções de áudio, voz, narração, interface e interrupção.
+
+## Conversa no terminal
+
+Tarefas do agente podem começar em uma sessão persistente. Ao demorar, ou ao clicar em **Abrir terminal**, o Jarvis abre um terminal normal com a interface do CLI e entrada de teclado. A janela mostra se o atendimento usa uma sessão interativa ou o modo de compatibilidade.
+
+- **Codex:** app-server local, login da assinatura e TUI conectada ao mesmo ID. Esse canal local não é a API paga de respostas.
+- **Claude:** sessão nativa em background e `attach` do ID exato, com um canal tmux privado para integrar a voz. Com o terminal anexado, o teclado tem a entrada; **`Ctrl+B`, depois `D`** desanexa e libera os pedidos de voz que estiverem na fila. Fechar a janela também desanexa.
+- **Continuação:** novas mensagens pertencem à sessão identificada, com diretório e política de acesso conferidos. Não é usado `--last`, nem reenviado o pedido original ao abrir uma janela.
+- **Resultado nas sessões nativas:** a conclusão real atualiza o histórico da conversa aberta, inclusive depois de abrir o terminal. A indicação “continua no terminal” não entra como resposta do modelo. O visualizador legado conserva seu comportamento anterior.
+- **Compatibilidade:** se o CLI não oferecer as capacidades necessárias, o executor anterior é escolhido antes de enviar o pedido. Seu visualizador de progresso continua identificado como compatibilidade.
+
+A integração nativa foi desenvolvida com Codex CLI `0.156.1` e Claude Code `2.1.280`. Claude também precisa de `tmux`; o terminal gráfico usa Alacritty. Versões/capacidades incompatíveis mantêm o caminho anterior.
+
+Uma continuação mantém o perfil da sessão. No Claude, um pedido independente que selecionar outro modelo/esforço começa uma nova sessão nativa com o contexto recente; a sessão anterior continua identificável. No Codex, o perfil pode ser aplicado por turno. Quando o pedido menciona um único projeto real pelo nome em `dev_dir`, esse diretório é usado; nomes ambíguos ou links não selecionam outro diretório automaticamente.
+
+```bash
+jarvis session status <id-do-jarvis>
+jarvis session open <id-do-jarvis>
+jarvis session stop <id-do-jarvis>
+```
+
+Os registros ficam privados em `~/.local/share/jarvis/sessions`. O ID do Jarvis aparece no estado da conversa e em `jarvis router status`. Encerrar uma conversa por voz com “fim” desvincula a próxima conversa; uma tarefa já entregue ao terminal continua lá.
+
+## Acesso ao computador
+
+| `system_access` | Comportamento |
+|---|---|
+| **`ask` — padrão** | O modelo não tem shell/leitura/escrita próprios. Comandos, inclusive leituras, passam pela ferramenta de consentimento e mostram o comando exato. |
+| `off` | Sem ferramentas do computador. Responde com as informações disponíveis. |
+| `full` | Ferramentas do agente com as opções de acesso total já usadas pelo Jarvis. |
+
+O roteador não muda essa escolha. Perfis fortes também não ganham permissões adicionais. Nas sessões persistentes, “permitir o resto desta pergunta” pertence ao turno atual, sem virar uma permissão para toda a conversa. O cancelamento interrompe também um comando autorizado em andamento.
+
+Respostas por API são texto: marcadores como `<<ABRIR_APP: ...>>` ou `<<DORMIR>>` não são executados quando vêm dessa rota. Mais detalhes em [SECURITY.md](SECURITY.md).
+
+## Ditado e atalhos
+
+| Atalho | Função |
+|---|---|
+| `Ctrl+Shift+J` | Chama o Jarvis como a palavra-chave; liga o serviço se necessário. |
+| `Ctrl+Shift+H` | Também chama o Jarvis. |
+| `Ctrl+Alt+Shift+J` | Liga/desliga apenas a escuta da palavra-chave. |
+| `Ctrl+Shift+K` | Começa/termina o ditado. |
+| `Ctrl+Shift+L` | Ditado enquanto a tecla estiver pressionada. |
+| `Esc`, durante a revisão do ditado | Cancela a revisão por LLM e entrega a transcrição original. |
+
+Adicione os atalhos de [integrations/hypr-bindings.lua](integrations/hypr-bindings.lua) à sua configuração. O instalador não altera os atalhos do desktop automaticamente.
+
+O texto original fica disponível no clipboard assim que a transcrição termina, antes da revisão opcional. Para enviar diretamente a um prompt de IA sem uma etapa extra de limpeza:
+
+```bash
+jarvis config set dictation_polish false
+systemctl --user restart voice-launcher.service
+```
+
+`dictation_output` escolhe `paste`, `clipboard` ou `type`. As configurações e atalhos de ditado funcionam independentemente do roteador da conversa.
+
+### Texto enquanto você fala
+
+Em **Configuração → Escuta → Reconhecimento de fala**, escolha o backend:
+
+| Opção | Onde transcreve | Texto parcial durante a fala | Requisitos |
+|---|---|---|---|
+| `nemotron` | Na máquina, Nemotron 3.5 ASR 0.6B | Sim | Instalação opcional; CPU ou acelerador compatível |
+| `openai` | API OpenAI, `gpt-live-transcribe` | Sim | Internet, chave e saldo de API |
+| `local` | Na máquina, Whisper | Ao finalizar cada trecho | Sem chave; CUDA ou CPU |
+| `auto` | Mantém a seleção anterior | Depende do backend | CUDA → Whisper; sem CUDA → OpenAI com chave, senão Whisper CPU |
+
+O Nemotron e a API são opcionais. Se a opção escolhida falhar, o áudio capturado
+vai para o Whisper local. Escolher Nemotron nunca ativa uma API paga como fallback.
+A assinatura do agente e o roteamento das respostas continuam independentes do reconhecimento de fala.
+
+**Nemotron local:** instale uma vez, depois selecione na configuração:
+
+```bash
+jarvis stt install-nemotron
+jarvis config set stt_provider nemotron
+systemctl --user restart voice-launcher.service
+```
+
+O instalador baixa o runtime NVIDIA NeMo-Speech.cpp e o modelo quantizado (~707 MiB),
+com versão e SHA-256 fixos. O instalador normal do Jarvis não baixa esse componente.
+O servidor escuta somente em loopback com uma chave temporária e é encerrado junto
+com o Jarvis. O Whisper de fallback só é carregado se necessário.
+
+`jarvis stt install-nemotron --device cpu` instala o pacote sem CUDA.
+Em **Avançado → Reconhecimento → Dispositivo do Nemotron**, `nemotron_device`
+permite `auto`, `cpu`, `cuda` ou `metal`. O runtime também tem suporte a Mac Intel
+(CPU) e Apple Silicon (Metal); a interface, os atalhos e a entrega de texto deste
+Jarvis continuam voltados a Linux/Hyprland. Esta mudança não porta o aplicativo inteiro para macOS.
+
+**OpenAI:** salve a chave no campo **Chave da OpenAI (API)**, sem colocá-la em scripts
+ou no histórico do terminal, e selecione:
+
+```bash
 jarvis config set stt_provider openai
-voice-launcher --stt local                   # one-off override for a run
+jarvis config set openai_stt_model gpt-live-transcribe
+systemctl --user restart voice-launcher.service
 ```
 
-The API session is opened the moment Jarvis starts listening, so the handshake overlaps with you starting to speak; only speech is sent (no silence, no greeting).
+Para inserir o texto no prompt ou editor durante o ditado, ative
+**Configuração → Ditado → Escrever durante o ditado** (`dictation_live = true`).
+As palavras provisórias aparecem na janela; nas pausas de aproximadamente 0,8 s,
+o texto confirmado é inserido no campo selecionado usando a saída configurada
+(`paste` cola cada trecho; `type` simula digitação). A gravação continua enquanto
+o trecho anterior é finalizado. Ao encerrar, o texto completo fica no clipboard,
+sem uma segunda colagem e sem a etapa de revisão com IA. O modo `clipboard`
+continua apenas copiando o resultado ao final.
 
----
+A inserção espera a liberação de Ctrl, Shift, Alt e Super. Se não for possível
+verificar as teclas, ou elas continuarem pressionadas por 10 s, a escrita para e
+o resultado continua disponível no clipboard ao encerrar. No modo `paste`, os
+trechos intermediários também passam pelo clipboard. Para escrever durante a
+fala, prefira o toggle Ctrl+Shift+K; segurar Ctrl+Shift+L adia a inserção.
 
-## Models and machine access
+Mantenha o campo selecionado enquanto dita. Se trocar de janela, a escrita para
+e o texto continua sendo reunido para o clipboard. Cancelar interrompe novas
+inserções; os trechos já escritos permanecem no campo. Para voltar à entrega única
+com revisão opcional, desative `dictation_live`; `dictation_polish` volta a valer.
 
-- **Fast path** — `quick_provider`: Codex CLI (`codex exec --json --ephemeral`, effort `codex_effort`, `service_tier=fast` when `codex_fast`) or Claude Code (`claude -p --output-format stream-json`).
-- **"Think hard"** — say *"think hard …"* / *"pense bem …"*: always Claude Code with `deep_model` / `deep_effort`.
-- **`system_access`** — how much the model may touch the machine. The model is told it is on your computer and must answer with *results*, not commands, and gets a short **machine cheat-sheet** (Omarchy 4: `omarchy-launch-terminal`, `hyprctl dispatch 'hl.dsp.focus({ workspace = "N" })'`, the `<<ABRIR_APP>>` marker for apps).
+Para usar somente o caminho local já existente:
 
-  | Mode | Claude Code | Codex CLI |
-  |---|---|---|
-  | **`ask`** (default) | `claude -p --restricted --tools "" --strict-mcp-config --permission-mode manual --no-session-persistence`: **no built-in tools at all** (no Bash, no Read/Write), none of your `~/.claude` settings, hooks or plugins, no bypass. | `codex exec --ignore-user-config --ignore-rules --sandbox read-only --disable shell_tool --disable unified_exec …`: no shell tool, none of your `~/.codex` config or MCP servers, no sub-agents, Codex's sandbox underneath. |
-  | | Both get exactly **one tool**: `run(command)` from `bin/jarvis_consent_mcp.py`. Every call — reading a file included — opens the **authorization window** with the exact command line; it runs only after `y`, as `bash -c` in `~/.local/share/jarvis/workdir` with a minimal environment (no API keys), 60 s timeout, output capped at 64 KB, inside the model's own systemd scope. | |
-  | `full` | `--dangerously-skip-permissions` (your own Claude Code, your own settings) | `--dangerously-bypass-approvals-and-sandbox` |
-  | `off` | same restricted invocation, without the `run` tool | same, without the `run` tool |
+```bash
+jarvis config set stt_provider local
+jarvis config set dictation_live false
+systemctl --user restart voice-launcher.service
+```
 
-  The **authorization window** (`bin/jarvis-consent.py`, a floating terminal) shows what you asked, the complete command (scroll with `j`/`k` when it doesn't fit — `y` only works once you've seen the end), the directory, and three keys: **`y`** allow once (Enter does *not* allow), `a` allow everything until this question is answered, `n`/Esc deny. No answer within 90 s = denied; talking over Jarvis or closing the conversation denies and closes any pending request. Jarvis says *"I need your authorization, sir"* when a request opens, and the conversation window switches to the **AUTHORIZATION** phase. `allow everything` is a short-lived grant for that one model call — revoked when the answer arrives, on cancel, on hand-off and at service start; nothing is ever remembered. Desktop actions (`<<ABRIR_APP>>`, `<<ABRIR_PROJETO>>`, `<<DORMIR>>`, `<<FIM>>`) only count as whole trailing lines of the answer, apps come only from installed desktop entries, and suspend only fires if *you* said sleep/suspend. Full details in [SECURITY.md](SECURITY.md#model-machine-access-system_access).
+[Validação da integração e limites dos testes](docs/validation/stt-streaming-2026-09-30.md),
+com referência à avaliação anterior de CPU/GPU.
 
-  `full` is the 2.1 behaviour: the voice transcript (and anything the model reads) can drive machine actions with no confirmation. Enable it only if you trust everything that is said near the microphone: `jarvis config set system_access full`. Existing configs with `system_access = true/false` are read as `ask`/`off` (no silent bypass after an update). `full` is also the only mode in which the `dev-layout` terminals start `claude --dangerously-skip-permissions` (`DEV_LAYOUT_CLAUDE_ARGS`); otherwise they start plain `claude`.
+## Interface, áudio e Picoh
 
-  The mode is a choice field in the settings screen (`jarvis config`, or the Settings button on the bar panel) — no command needed — and the current value is shown as the **ACCESS** chip on the bar panel and in `jarvis app`.
+`jarvis app` abre o painel da barra como aplicativo. A janela acompanha transcrição, andamento, autorizações e resposta, com o avatar e o anel de voz. O mesmo QML roda no Quickshell ou no host PySide6; há alternativa em terminal quando Qt não está disponível.
 
-  ![Settings screen — Computer access](docs/screenshots/settings-system-access.png)
-- Both CLIs run in **streaming JSON mode**; `bin/jarvis_events.py` turns their events (commands run, reasoning, messages) into the live activity lines in the window and in the scratch terminal.
-- The same events feed `bin/jarvis_narrate.py`, the progress narration: the sentence comes from Ollama (`POST /api/generate`, `keep_alive 5m`, warmed up when the conversation starts) or the OpenAI Responses API, with a 3–4 s budget in a background thread; on timeout or a bad output (more than one line, over 140 characters, a marker, markdown) it falls back to the model's own last progress line and then to a fixed phrase. `python bin/jarvis_narrate.py status` shows what `auto` resolves to on this machine; `replay <events.jsonl> <codex|claude> [mode]` replays a recorded event file and prints what would be narrated, to tune prompt and cadence.
-- Every subprocess Jarvis spawns — apps, windows, the model CLI — is launched in its own systemd scope (`uwsm-app` / `systemd-run --scope`), outside the service cgroup. Restarting `voice-launcher.service` never kills what it opened.
+O reconhecimento pode usar Whisper local, Nemotron local ou a API OpenAI, conforme `stt_provider`. A voz usa Piper; `voice`, `voice_length_scale`, `greeting` e `address` personalizam como o Jarvis fala. A narração de progresso possui sua própria configuração: `narration = templates` usa frases locais sem API; `off` a desativa.
 
----
+O Picoh é opcional e acompanha as fases e a voz sem participar do roteamento. Use `jarvis picoh probe` para detectar e `jarvis picoh demo` para testar. Detalhes de áudio, dispositivos e robô estão na [referência técnica](docs/reference.en.md).
 
-## Language
+## Diagnóstico
 
-`language = "en"` or `"pt-BR"` changes, at once: the Piper voice (with `voice = "auto"`), the speech-recognition language (Whisper / OpenAI), the system prompt and action protocol sent to the model, the fixed spoken phrases (greeting, "thinking, sir", "I didn't catch that"…), the conversation window, the settings screen and the bar panel. The repository default is English; `jarvis config set language pt-BR` switches to Portuguese.
+```bash
+jarvis router status
+jarvis config show
+jarvis log
+```
 
-Custom `greeting`, `voice` or `system_prompt` values override the language defaults.
-
----
-
-## The `jarvis` CLI
-
-| Command | Effect |
+| Situação | Confira |
 |---|---|
-| `jarvis on` / `off` / `toggle` / `toggle-notify` | control the service (`toggle-notify` also sends a notification) |
-| `jarvis pause <dur>` / `pause-notify [dur]` | stop now, start again after `30s`, `45m`, `1h`, `2h30m`… |
-| `jarvis wake on\|off\|toggle\|status` | just the wake-word listening: `off` keeps the service up with the **microphone closed** — push-to-talk and dictation still work (takes effect instantly, persists as `wake_word_enabled`) |
-| `jarvis status` / `status-short` | JSON for bars (`{text, alt, class, tooltip}`, `alt` = on/off/paused) / `on`\|`off` |
-| `jarvis app` | the panel as a window — quickshell → PySide6 → terminal fallback (also the **Jarvis** entry in the app launcher) |
-| `jarvis log` | `journalctl --user -u voice-launcher -f` |
-| `jarvis config` | settings screen (floating terminal) |
-| `jarvis config show \| get \| set \| reset \| path` | scriptable settings |
-| `jarvis picoh probe \| demo \| reset \| fake` | the Picoh robot: find it, walk through the phases, rest position, demo without a robot |
+| Não tenho Jev, API nem modelo local | Use `routing_mode = "agent"` e autentique o CLI escolhido. |
+| Tenho Jev, mas tudo vai ao agente | Verifique a chave Jev. Sem API de respostas habilitada/modelo/chave, o destino também é o agente. |
+| Tenho uma chave para transcrição, mas não quero pagar por respostas | Mantenha `api_provider = "none"`. |
+| A configuração diz `local`, mas o pedido foi ao agente | O classificador pode estar ausente, carregando ou fora do prazo. Consulte o motivo no estado. |
+| O terminal mostra compatibilidade | Confira versão/capacidades do CLI, Alacritty e, para Claude, tmux. `agent_session_mode = "legacy"` também força esse caminho. |
+| Falei enquanto digitava no terminal Claude | A voz fica na fila. Desanexe com `Ctrl+B`, depois `D`. |
+| Houve erro depois que a tarefa começou | Abra a sessão indicada e confira o resultado; o Jarvis não duplica automaticamente a execução. |
+| A alteração do TOML não apareceu | Reinicie `voice-launcher.service`. |
 
-Runtime overrides: `voice-launcher --test` (dry run: no layouts, no suspend), `--stt local|openai|auto`, `--whisper-model <size>`, `--wake-threshold 0.6`.
+A [matriz de validação](docs/routing-validation.md) separa testes simulados de chamadas reais. A fixture [routing_pt_br.json](tests/fixtures/routing_pt_br.json) contém 60 pedidos públicos para comparar classificadores sem executar ações do agente.
 
----
+## Desenvolvimento e arquitetura
 
-## Keybindings
+O áudio permanece no launcher; os módulos novos separam classificação, política de escolha e sessão de execução.
 
-`~/.config/hypr/bindings.lua` (Omarchy 4, Lua):
-
-```lua
-o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
-o.bind("CTRL + SHIFT + H", "Jarvis: push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
--- dictation (Ctrl+Shift+K toggle, Ctrl+Shift+L push-to-talk, any other key cancels): see integrations/hypr-bindings.lua
-```
-
-Push-to-talk (`SIGUSR1`) starts a conversation as if the wake word had fired — handy during a call.
-
----
-
-## Architecture
-
-```
-mic 16 kHz, 80 ms chunks ─► openWakeWord ─► (wake)
-                                              │
-                    ┌─────────────────────────┴──────────────────────────┐
-                    │  conversation loop (voice-launcher.py)              │
-                    │   greeting (Piper) → VAD capture → STT session      │
-                    │   → model (Codex/Claude, streaming JSON)            │
-                    │     ask mode: consent window per action             │
-                    │   → actions (markers) → TTS → follow-up window      │
-                    │  BargeInListener: wake word or speech over TTS      │
-                    └───┬──────────────┬──────────────┬──────────────────┘
-                        ▼              ▼              ▼
-                 jarvis_stt.py   jarvis_events.py  $XDG_RUNTIME_DIR/jarvis-state.json ─► jarvis-window.py
-                 local whisper   CLI events →                                (floating viewer)
-                 or OpenAI RT    activity lines                     + jarvis-tts.json ─► jarvis_picoh.py
-                                                                    (speech envelope)    (Picoh robot face)
-```
-
-- One thread reads the microphone at a time. The wake loop hands the stream to the conversation; during the busy phase the `BargeInListener` owns it.
-- Barge-in gate: the TTS bleed level is calibrated on the first frames of each utterance and only ever updated from frames *below* the gate, so it never learns from your voice.
-- The window is a plain file watcher: the launcher writes state, the viewer renders. No IPC to break.
-- Consent works the same way (`bin/jarvis_consent.py`): a request is a JSON file in `$XDG_RUNTIME_DIR/jarvis-consent/`, the authorization window writes the decision next to it. The requester is always `jarvis_consent_mcp.py` (a stdio MCP server whose only tool, `run`, is the only tool the model has in `ask` mode — for Claude Code and for Codex alike); it also executes the command after `y`.
-- Every model call runs in a named systemd scope (`jarvis-model-*.scope`). Cancelling a question stops the whole scope — the CLI, the commands it spawned, the consent server — and denies any open request.
-- Config is a schema (`bin/jarvis_config.py: SETTINGS`) with defaults, labels, help, choices and limits — the TUI, the CLI and the TOML writer are all generated from it.
-
----
-
-## Repository layout
-
-```
-hey-jarvis/
-├── manifest.json               Omarchy shell plugin manifest (id atzingen.jarvis)
-├── BarWidget.qml               the bar widget: icon + tooltip + click popup hosting PanelContent
-├── app/qs/                     PanelContent.qml (THE panel, shared by popup and app),
-│                               StatusPoller.qml, shell.qml (quickshell), main.qml (PySide6), qs shims
-├── install.sh                  idempotent installer (env, voices, scripts, service)
-├── bin/
-│   ├── voice-launcher          wrapper (runs voice-launcher.py in the plugin's venv)
-│   ├── voice-launcher.py       main loop: wake → capture → STT → model → actions → TTS
-│   ├── jarvis                  CLI: on/off/pause/status/app/log/config
-│   ├── jarvis_config.py        settings schema, defaults, TOML, profiles, CLI
-│   ├── jarvis-config.py        settings screen (curses)
-│   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
-│   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
-│   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
-│   ├── jarvis_narrate.py       progress narration while the model works (Ollama / OpenAI / self / templates)
-│   ├── jarvis_picoh.py         Picoh robot daemon: phase → colour/eyes/head, speech envelope → mouth
-│   ├── jarvis_dictate.py       dictation: polish (Ollama), paste into the active window, level meter
-│   ├── jarvis_consent.py       consent requests/decisions (files in $XDG_RUNTIME_DIR/jarvis-consent)
-│   ├── jarvis-consent.py       authorization window: exact command, y / a / n
-│   ├── jarvis_consent_mcp.py   stdio MCP server: the `run` tool (the model's only tool in ask mode)
-│   ├── jarvis-window.py        conversation window: terminal viewer
-│   ├── jarvis-conversation.py  conversation window via PySide6 (same QML as the quickshell one, for non-Omarchy distros)
-│   ├── jarvis-panel.py         `jarvis app` via PySide6 (same QML, for non-Omarchy distros)
-│   ├── jarvis-app.py           `jarvis app` fallback: the panel as a terminal (curses) screen
-│   └── dev-layout              Hyprland dev layout (2×2 terminals + VS Code + browser)
-├── systemd/voice-launcher.service
-├── integrations/
-│   ├── hypr-bindings.lua       keybinding snippet (Lua + classic)
-│   ├── jarvis.desktop          desktop entry template (Jarvis in the app launcher)
-│   ├── 60-jarvis-picoh.rules   udev rule: serial access to the Picoh without root
-│   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
-├── tests/                      unit tests: `python -m unittest tests.test_narrate`
-├── docs/                       screenshots, bar-active-accent hook
-├── requirements.txt            direct Python deps (input for the lock)
-├── requirements.lock           full transitive set with sha256 hashes (what install.sh installs)
-├── requirements-gpu.txt/.lock  optional cuBLAS/cuDNN wheels for CUDA whisper
-├── requirements-overrides.txt  uv override used when regenerating the locks
-└── LICENSE                     MIT
-```
-
----
-
-## Requirements
-
-- Arch Linux with Hyprland — developed on Omarchy 4 (the bar widget needs the Omarchy shell; the voice service works on any Hyprland).
-- Python 3.11+, PipeWire, PortAudio, `wl-clipboard` + `wtype` (dictation paste), a terminal (`ghostty` by default), a microphone.
-- Codex CLI and/or Claude Code CLI, logged in.
-- Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription; a Picoh robot on USB.
-
-Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets, pyserial…); `install.sh` installs the hash-locked `requirements.lock`. Tested with Python 3.11 and 3.14. To bump a dependency, edit `requirements*.txt` and regenerate: `uv pip compile --universal --generate-hashes --python-version 3.11 --no-header --override requirements-overrides.txt -o requirements.lock requirements.txt` (same for `-gpu`).
-
----
-
-## Troubleshooting
-
-| Symptom | Check |
+| Arquivo | Responsabilidade |
 |---|---|
-| Nothing happens on "hey jarvis" | `jarvis log` — is the service running? `wake_threshold` too high? default mic device (`pactl info`)? |
-| It cuts me off mid-sentence | raise `end_silence_seconds` (1.5–2.0) |
-| It interrupts itself while speaking | raise `tts_bleed_factor` / `barge_min_rms`; `barge_debug` prints the measured levels in the log |
-| The Picoh robot does nothing | `jarvis picoh probe` — no port listed: cable/driver; port listed but no answer: not a Picoh (or `picoh_port` pinned to the wrong one); `[picoh]` lines in `jarvis log`; permission denied: install the udev rule (see [The Picoh robot](#the-picoh-robot)) or re-plug the robot |
-| It doesn't stop when I talk over it | lower `barge_min_rms`; check `[barge]` lines in `jarvis log` for your speech level |
-| `openai indisponível … fallback local` in the log | key, credits (`credit_balance_exhausted`) or network — answers still come from local whisper |
-| Whisper on CPU although I have a GPU | `pip install --require-hashes --no-deps -r requirements-gpu.lock` in the env; `jarvis log` shows `whisper …/cuda` |
-| Answers say "I can't access…" / "not authorized" | `system_access` is `off`, you denied (or let time out) the authorization window, or the CLI isn't logged in |
-| An "authorization" window pops up | that's `system_access = "ask"` (default): the model wants to run what the window shows — `y` allows, `n` denies. Set `full` to stop being asked (see [Models and machine access](#models-and-machine-access)) |
-| Narration is silent, or only says "running a command" | `python ~/.local/bin/jarvis_narrate.py status` shows what `narration = auto` resolved to; `[narr]` lines in `jarvis log` show generation time and failures (Ollama down or model missing → `ollama pull gemma3:4b`; OpenAI `HTTP 429` = no credits). After two failures in a row the backend is off for the rest of the conversation |
-| Narration talks too much / too little | `narration_interval_quick` / `_deep` (seconds), or `narration = off` |
-| Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
+| `bin/voice-launcher.py` | Microfone, conversa, ditado, voz e integração com a janela. |
+| `bin/jarvis_routing.py` | Catálogo de perfis, validação de decisões e fallback. |
+| `bin/jarvis_router_api.py` | Resposta/encaminhamento pelo modelo inicial e execução da API. |
+| `bin/jarvis_router_jev.py` | Classificação estruturada do Jev. |
+| `bin/jarvis_router_local.py` | Worker CPU opcional, aquecimento e descarregamento. |
+| `bin/jarvis_conversation_routing.py` | Encaminhamento, continuidade e conclusão tardia. |
+| `bin/jarvis_sessions.py` | IDs, registros privados, envio único, terminal e prazos. |
+| `bin/jarvis_agent_codex.py`, `bin/jarvis_agent_claude.py` | Integrações dos CLIs autenticados. |
+| `bin/jarvis_config.py`, `bin/jarvis_i18n.py` | Configuração, perfis e textos pt-BR/en. |
 
----
+Com o ambiente Python de voz disponível:
 
-## Security model
+```bash
+python -m unittest discover -s tests -v
+python scripts/evaluate-routing.py --mode local --output /tmp/jarvis-routing-report.json
+```
 
-What runs where, what `install.sh` writes, which network endpoints are ever
-contacted, and how the model's machine access is gated (consent by default,
-`full` opt-in) — one page, written for reviewers: [SECURITY.md](SECURITY.md).
+A avaliação nunca executa o agente. Os modos Jev/API exigem sua configuração explícita; `assistant` pode consumir créditos da API para classificar/responder aos exemplos. A instalação opcional do classificador e seus pacotes ficam fora de `requirements.lock` do áudio.
 
-## License
+## Remoção e licença
 
-MIT — see `LICENSE`.
+```bash
+bash install.sh --uninstall
+# Para remover também configurações/perfis e vozes:
+bash install.sh --uninstall --purge
+omarchy plugin remove atzingen.jarvis
+```
 
-### Third-party components
-
-Installed by `install.sh` into the Python environment or `~/.local/share`, each under its own license:
-
-| Component | Role | License |
-|---|---|---|
-| [openWakeWord](https://github.com/dscripka/openWakeWord) + `hey_jarvis` model | wake word | Apache-2.0 |
-| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | local speech-to-text | MIT |
-| Whisper models (OpenAI, via Systran conversions) | STT weights | MIT |
-| [Silero VAD](https://github.com/snakers4/silero-vad) (bundled in faster-whisper) | voice activity detection | MIT |
-| [Piper](https://github.com/rhasspy/piper) (`piper-tts`) | text-to-speech, called as a subprocess | GPL-3.0-or-later |
-| Piper voices `pt_BR-faber-medium`, `en_US-lessac-medium` | TTS voices | see each voice's `MODEL_CARD` on Hugging Face (`rhasspy/piper-voices`) |
-| [sounddevice](https://github.com/spatialaudio/python-sounddevice) / PortAudio | microphone | MIT / MIT |
-| [onnxruntime](https://github.com/microsoft/onnxruntime) | ONNX inference | MIT |
-| [websockets](https://github.com/python-websockets/websockets) | OpenAI Realtime client | BSD-3-Clause |
-| NumPy | audio buffers | BSD-3-Clause |
-| NVIDIA cuBLAS / cuDNN wheels (optional, `requirements-gpu.txt`) | CUDA for local Whisper | NVIDIA EULA |
-
-Codex CLI and Claude Code CLI are not bundled — you install and log into them yourself, under their own terms. Using the OpenAI Realtime API or the model CLIs sends your speech/questions to those providers.
+O projeto usa a licença [MIT](LICENSE). Os componentes de terceiros têm licenças próprias; consulte a [referência de componentes](docs/reference.en.md#third-party-components), os respectivos modelos e [SECURITY.md](SECURITY.md).

@@ -1,0 +1,7 @@
+# Optional CPU classifier, isolated from the voice environment (Python 3.11, Linux x86_64).
+--extra-index-url https://download.pytorch.org/whl/cpu
+gliner2[local]==2.0.0
+torch==2.8.0+cpu
+# Tokenizer dependencies used by the multilingual checkpoint.
+protobuf==6.33.5
+sentencepiece==0.2.1

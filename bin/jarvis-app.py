@@ -36,7 +36,7 @@ STRINGS = {
         "status_manual": "Ativo — só atalhos (“hey jarvis” desligado, mic fechado)",
         "not_installed": "Serviço não instalado — rode install.sh",
         "chips": [("IDIOMA", "language"), ("STT", "stt_provider"),
-                  ("RÁPIDO", "quick_provider"), ("PENSE BEM", "deep_model"), ("ACESSO", "system_access")],
+                  ("AGENTE", "quick_provider"), ("ROTEAMENTO", "routing_mode"), ("ACESSO", "system_access")],
         "voice_title": "CONVERSA POR VOZ",
         "voice_meta": "“hey jarvis”",
         "intro": "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar "
@@ -44,7 +44,7 @@ STRINGS = {
         "voice_rows": [
             ("“abre o projeto X”", "layout dev: terminal 2×2 + VS Code + Chrome"),
             ("“abre o btop / o Chrome”", "abre um app instalado"),
-            ("“pense bem <pergunta>”", "modelo mais forte (Claude Fable)"),
+            ("“continue de onde parou”", "retoma a sessão do agente"),
             ("“quantos containers no Docker?”", "roda o comando e responde o resultado"),
             ("falar por cima da resposta", "ele para e escuta você (barge-in)"),
             ("“fecha a conversa” / “é só isso”", "encerra (o modelo entende)"),
@@ -61,7 +61,9 @@ STRINGS = {
         "keys_title": "ATALHOS",
         "keys_rows": [
             ("Ctrl+Shift+H", "falar agora, sem “hey jarvis”"),
-            ("Ctrl+Shift+J", "liga/desliga o Jarvis"),
+            ("Ctrl+Shift+J", "chama o Jarvis (liga se necessário)"),
+            ("Ctrl+Alt+Shift+J", "liga/desliga a escuta de hey jarvis"),
+            ("Esc na revisão", "pula a revisão e usa o texto bruto"),
             ("Ctrl+Shift+K", "ditado (toggle)"),
             ("Ctrl+Shift+L", "ditado (push-to-talk)"),
             ("jarvis config", "configuração no terminal"),
@@ -81,7 +83,7 @@ STRINGS = {
         "status_manual": "Active — hotkeys only (“hey jarvis” off, mic closed)",
         "not_installed": "Voice service not installed — run install.sh",
         "chips": [("LANGUAGE", "language"), ("STT", "stt_provider"),
-                  ("QUICK", "quick_provider"), ("THINK HARD", "deep_model"), ("ACCESS", "system_access")],
+                  ("AGENT", "quick_provider"), ("ROUTING", "routing_mode"), ("ACCESS", "system_access")],
         "voice_title": "VOICE CONVERSATION",
         "voice_meta": "“hey jarvis”",
         "intro": "Say “hey jarvis” and talk after the greeting — it listens until you stop "
@@ -89,7 +91,7 @@ STRINGS = {
         "voice_rows": [
             ("“open project X”", "dev layout: terminal 2×2 + VS Code + Chrome"),
             ("“open btop / Chrome”", "launches an installed app"),
-            ("“think hard <question>”", "stronger model (Claude Fable)"),
+            ("“continue where you stopped”", "continues the same agent session"),
             ("“how many Docker containers?”", "runs the command, answers with the result"),
             ("talk over the answer", "it stops and listens (barge-in)"),
             ("“close it” / “that's all, thanks”", "ends it (the model understands)"),
@@ -106,7 +108,9 @@ STRINGS = {
         "keys_title": "KEYBINDINGS",
         "keys_rows": [
             ("Ctrl+Shift+H", "talk now, no “hey jarvis” needed"),
-            ("Ctrl+Shift+J", "toggles Jarvis on/off"),
+            ("Ctrl+Shift+J", "calls Jarvis (starts it if needed)"),
+            ("Ctrl+Alt+Shift+J", "toggles hey jarvis listening"),
+            ("Esc while polishing", "skips polishing and uses raw text"),
             ("Ctrl+Shift+K", "dictation (toggle)"),
             ("Ctrl+Shift+L", "dictation (push-to-talk)"),
             ("jarvis config", "settings in the terminal"),

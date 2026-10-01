@@ -1,0 +1,892 @@
+[
+  {
+    "id": "simple-01",
+    "group": "simple",
+    "text": "Qual é a capital do Brasil?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-02",
+    "group": "simple",
+    "text": "Explique em duas frases o que é uma API.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-03",
+    "group": "simple",
+    "text": "Traduza para inglês: vou chegar amanhã.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-04",
+    "group": "simple",
+    "text": "Quanto é 17 vezes 8?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-05",
+    "group": "simple",
+    "text": "Reescreva esta frase: preciso disso logo.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-06",
+    "group": "simple",
+    "text": "O que significa latência?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-07",
+    "group": "simple",
+    "text": "Dê três nomes para um projeto de jardinagem.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-08",
+    "group": "simple",
+    "text": "Explique a diferença entre memória RAM e armazenamento.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-09",
+    "group": "simple",
+    "text": "Resuma este texto: a equipe concluiu a análise e vai apresentar os resultados na sexta.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "simple-10",
+    "group": "simple",
+    "text": "Como se escreve exceção?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-01",
+    "group": "web",
+    "text": "Qual é a previsão do tempo para Campinas amanhã?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-02",
+    "group": "web",
+    "text": "Busque as notícias de hoje sobre energia solar.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-03",
+    "group": "web",
+    "text": "Confira na documentação oficial qual é a versão estável mais recente do Python.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-04",
+    "group": "web",
+    "text": "Qual foi o resultado do jogo do Santos ontem?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-05",
+    "group": "web",
+    "text": "Pesquise o horário de funcionamento do museu amanhã.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-06",
+    "group": "web",
+    "text": "Qual é a cotação do euro agora?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-07",
+    "group": "web",
+    "text": "Veja a previsão de chuva para o próximo fim de semana em São Paulo.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-08",
+    "group": "web",
+    "text": "Procure o anúncio oficial da última versão do Linux.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-09",
+    "group": "web",
+    "text": "Busque a página oficial com as datas do próximo Enem.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "web-10",
+    "group": "web",
+    "text": "Qual é o calendário divulgado para a próxima edição da conferência PyCon Brasil?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": true,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "project-01",
+    "group": "project",
+    "text": "Abra o projeto hey-jarvis.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-02",
+    "group": "project",
+    "text": "Leia o README deste projeto e corrija os exemplos.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-03",
+    "group": "project",
+    "text": "Quantos containers Docker estão rodando na minha máquina?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-04",
+    "group": "project",
+    "text": "Abra o Chrome.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-05",
+    "group": "project",
+    "text": "Crie um arquivo de teste neste repositório.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-06",
+    "group": "project",
+    "text": "Procure o erro no log do serviço local.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-07",
+    "group": "project",
+    "text": "Rode os testes deste projeto e corrija as falhas.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-08",
+    "group": "project",
+    "text": "Mostre quais arquivos eu modifiquei neste repositório.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-09",
+    "group": "project",
+    "text": "Abra o terminal no diretório do meu projeto.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "project-10",
+    "group": "project",
+    "text": "Ajuste o espaçamento do botão na tela de configuração do aplicativo.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "deep-01",
+    "group": "deep",
+    "text": "Compare cuidadosamente as vantagens de PostgreSQL e SQLite para um aplicativo que atende mil usuários e recebe muitas escritas concorrentes.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-02",
+    "group": "deep",
+    "text": "Desenhe uma estratégia para migrar um sistema monolítico com indisponibilidade mínima, explicando os riscos.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-03",
+    "group": "deep",
+    "text": "Analise os prós e contras de três abordagens de cache para uma aplicação distribuída.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-04",
+    "group": "deep",
+    "text": "Elabore uma proposta de experimento para comparar dois métodos de ensino, incluindo possíveis variáveis de confusão.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-05",
+    "group": "deep",
+    "text": "Explique passo a passo como demonstrar a convergência de uma sequência monótona e limitada.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-06",
+    "group": "deep",
+    "text": "Projete um protocolo para reconciliar edições concorrentes em um aplicativo que funciona sem internet.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-07",
+    "group": "deep",
+    "text": "Compare a consistência forte e a consistência eventual para um sistema de reservas e proponha uma solução.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-08",
+    "group": "deep",
+    "text": "Ajude a planejar a arquitetura de um assistente de voz que preserve privacidade e funcione sem API paga.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-09",
+    "group": "deep",
+    "text": "Analise como separar causalidade e correlação no estudo do desempenho escolar.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "deep-10",
+    "group": "deep",
+    "text": "Proponha uma solução para evitar execução duplicada quando uma chamada de rede perde a resposta.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "continuation-01",
+    "group": "continuation",
+    "text": "Continue de onde parou.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-02",
+    "group": "continuation",
+    "text": "Agora rode os testes dessa mudança.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-03",
+    "group": "continuation",
+    "text": "E corrija também aquele outro arquivo.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-04",
+    "group": "continuation",
+    "text": "Pode continuar.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-05",
+    "group": "continuation",
+    "text": "Mostre o diff do que você alterou.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-06",
+    "group": "continuation",
+    "text": "Retome a execução interrompida.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-07",
+    "group": "continuation",
+    "text": "Faça a mesma mudança na outra tela desse projeto.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-08",
+    "group": "continuation",
+    "text": "O comando que você rodou terminou?",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-09",
+    "group": "continuation",
+    "text": "Agora salve o arquivo com essa correção.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "continuation-10",
+    "group": "continuation",
+    "text": "Confira se aquele erro do log desapareceu.",
+    "context": [
+      [
+        "Corrija o botão de salvar no projeto exemplo.",
+        "Estou editando o componente do botão nesse projeto."
+      ]
+    ],
+    "active_session": true,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-01",
+    "group": "ambiguity",
+    "text": "Não abra nenhum programa. Só explique o que é o Chrome.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-02",
+    "group": "ambiguity",
+    "text": "Não execute comandos: me explique em palavras como funciona o Docker.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-03",
+    "group": "ambiguity",
+    "text": "Explique este comando sem rodá-lo: ls -la.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-04",
+    "group": "ambiguity",
+    "text": "Não leia meus arquivos. Só me dê um exemplo fictício de README.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-05",
+    "group": "ambiguity",
+    "text": "Pense bem antes de responder: não abra o projeto; só descreva o que é um repositório.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "api",
+    "needs_computer": false,
+    "needs_web": false,
+    "allowed_profiles": [
+      "api_default",
+      "api_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-06",
+    "group": "ambiguity",
+    "text": "Faça aquilo no arquivo.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-07",
+    "group": "ambiguity",
+    "text": "Abra o outro projeto, aquele que eu mencionei antes.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-08",
+    "group": "ambiguity",
+    "text": "Corrija isso na minha máquina.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-09",
+    "group": "ambiguity",
+    "text": "Qual deles está com problema aqui?",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  },
+  {
+    "id": "ambiguity-10",
+    "group": "ambiguity",
+    "text": "Conserte aquela tela, mas ainda não sei dizer qual arquivo é.",
+    "context": [],
+    "active_session": false,
+    "expected_route": "agent",
+    "needs_computer": true,
+    "needs_web": false,
+    "allowed_profiles": [
+      "agent_default",
+      "agent_strong"
+    ]
+  }
+]

@@ -17,16 +17,20 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from collections.abc import Callable
 
 import numpy as np
 
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
 CMD_FILE = RUNTIME_DIR / "jarvis-dictate.cmd"       # start | stop | toggle | cancel
 STATE_FILE = RUNTIME_DIR / "jarvis-dictating"       # existe enquanto grava
+POLISHING_FILE = RUNTIME_DIR / "jarvis-polishing"
+SKIP_POLISH_FILE = RUNTIME_DIR / "jarvis-skip-polish"
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags"
@@ -195,6 +199,50 @@ def polish(text: str, lang: str = "pt-BR", model: str = "gemma3:4b", budget_s: f
     return " ".join(out)
 
 
+def polish_interruptible(text: str, lang: str = "pt-BR", model: str = "gemma3:4b",
+                         budget_s: float = 20.0,
+                         should_skip: Callable[[], bool] | None = None) -> str:
+    """Revisa em um filho cancelável; interromper devolve a transcrição inteira."""
+    if not text.strip() or (should_skip and should_skip()):
+        return text
+    process: subprocess.Popen | None = None
+    deadline = time.monotonic() + budget_s
+    payload = json.dumps({"text": text, "lang": lang, "model": model, "budget_s": budget_s})
+    try:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--polish"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding="utf-8",
+        )
+        while True:
+            if (should_skip and should_skip()) or time.monotonic() >= deadline:
+                return text
+            try:
+                output, _ = process.communicate(input=payload, timeout=0.05)
+                break
+            except subprocess.TimeoutExpired:
+                payload = None
+        # Esc pode chegar junto com o resultado: a escolha do usuário prevalece.
+        if process.returncode != 0 or (should_skip and should_skip()):
+            return text
+        result = json.loads(output)
+        return result if isinstance(result, str) and result.strip() else text
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return text
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=0.3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            for pipe in (process.stdin, process.stdout):
+                if pipe is not None:
+                    pipe.close()
+
+
 # --- colagem -------------------------------------------------------------------------
 
 def active_window_is_terminal() -> bool:
@@ -208,7 +256,33 @@ def active_window_is_terminal() -> bool:
     return "terminal" in tags or any(k in cls for k in ("ghostty", "alacritty", "kitty", "foot", "wezterm", "tui."))
 
 
-def paste_text(text: str, mode: str = "paste", dry_run: bool = False) -> str:
+def wait_for_shortcut_release(should_cancel: Callable[[], bool] | None = None) -> bool:
+    """Consulta só modificadores; nunca insere texto com um acorde ainda pressionado."""
+    query = ('return hl.is_key_down("Control_L") or hl.is_key_down("Control_R") or '
+             'hl.is_key_down("Shift_L") or hl.is_key_down("Shift_R") or '
+             'hl.is_key_down("Alt_L") or hl.is_key_down("Alt_R") or '
+             'hl.is_key_down("Super_L") or hl.is_key_down("Super_R") or '
+             'hl.is_key_down("ISO_Level3_Shift")')
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if should_cancel is not None and should_cancel():
+            return False
+        try:
+            result = subprocess.run(["hyprctl", "repl", query], capture_output=True,
+                                    text=True, check=True, timeout=1)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        state = result.stdout.strip()
+        if state == "false":
+            return True
+        if state != "true":
+            return False
+        time.sleep(0.05)
+    return False
+
+
+def paste_text(text: str, mode: str = "paste", dry_run: bool = False,
+               target_window: str | None = None, should_cancel: Callable[[], bool] | None = None) -> str:
     """mode: paste (clipboard + Ctrl+V), type (digita via wtype), clipboard (só copia).
     Retorna como terminou: 'pasted' | 'typed' | 'clipboard' | 'dry-run'."""
     if dry_run:
@@ -224,6 +298,17 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False) -> str:
         return "clipboard"
     time.sleep(0.3)  # deixa o usuário soltar Ctrl/Shift do atalho antes de colar
     try:
+        if should_cancel is not None and should_cancel():
+            return "cancelled"
+        if target_window is not None:
+            if not wait_for_shortcut_release(should_cancel):
+                return "cancelled" if should_cancel is not None and should_cancel() else "clipboard"
+            active = subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True,
+                                    text=True, check=True, timeout=1)
+            if json.loads(active.stdout).get("address") != target_window:
+                return "clipboard"
+        if should_cancel is not None and should_cancel():
+            return "cancelled"
         if mode == "type":
             # uma quebra de linha digitada num terminal é um Enter: vira espaço
             typed = " ".join(text.replace("\r", "\n").split("\n"))
@@ -237,3 +322,8 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False) -> str:
     except Exception as e:
         print(f"[dictate] wtype falhou ({e}); texto ficou no clipboard")
         return "clipboard"
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["--polish"]:
+    request = json.load(sys.stdin)
+    json.dump(polish(**request), sys.stdout, ensure_ascii=False)

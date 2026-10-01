@@ -34,6 +34,11 @@ ShellRoot {
     Qt.quit()
   }
 
+  function skipPolish() {
+    if (root.state && root.state.mode === "dictation" && root.state.phase === "polishing")
+      Quickshell.execDetached(["sh", "-c", 'test -f "$1/jarvis-polishing" && touch "$1/jarvis-skip-polish"', "jarvis-skip", root.runtimeDir])
+  }
+
   FileView {
     id: stateFile
     path: root.runtimeDir + "/jarvis-state.json"
@@ -106,6 +111,8 @@ ShellRoot {
         tts: root.tts
         themeRaw: themeFileView.text()
         onQuitRequested: root.quit()
+        onSkipPolishRequested: root.skipPolish()
+        onOpenSessionRequested: function(sessionId) { Quickshell.execDetached(["jarvis", "session", "open", sessionId]) }
       }
     }
   }

@@ -96,9 +96,13 @@ def render(state: dict) -> str:
         f"\x1b[1m{title}\x1b[0m" + " " * pad + f"\x1b[1;{color}m[ {badge} ]\x1b[0m",
         "\x1b[90m" + "─" * width + "\x1b[0m",
     ]
+    if state.get("mode") != "dictation" and state.get("routing_summary"):
+        header += ["  \x1b[90m" + line + "\x1b[0m"
+                   for line in _wrap(state["routing_summary"], width - 4)]
 
     # --- ditado: transcrição grande + medidor de áudio -------------------------
     if state.get("mode") == "dictation":
+        hint = state.get("dictation_notice") or hint
         text = state.get("partial") or state.get("final") or ""
         body = [""]
         if text:
@@ -124,6 +128,8 @@ def render(state: dict) -> str:
         label = safe_text(ex.get("label", ""))
         b.append(f"\x1b[1;93m▌ Jarvis\x1b[0m" + (f"  \x1b[90m{label}\x1b[0m" if label else ""))
         b += ["  " + line for line in _wrap(ex.get("a", ""), width - 4)]
+        if ex.get("routing_summary"):
+            b += ["  \x1b[90m" + line + "\x1b[0m" for line in _wrap(ex["routing_summary"], width - 4)]
         b.append("")
         blocks.append(b)
     partial = state.get("partial") or ""
@@ -185,6 +191,10 @@ def main() -> None:
                 r, _, _ = select.select([sys.stdin], [], [], 0.25)
                 if r:
                     ch = sys.stdin.read(1)
+                    if ch == "\x1b" and state.get("mode") == "dictation" and state.get("phase") == "polishing":
+                        if (_RUNTIME_DIR / "jarvis-polishing").exists():
+                            (_RUNTIME_DIR / "jarvis-skip-polish").touch()
+                        continue
                     if ch in ("q", "Q", "\x1b"):
                         QUIT_FLAG.touch()
                         break

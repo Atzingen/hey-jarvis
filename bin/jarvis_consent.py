@@ -31,6 +31,7 @@ import time
 import unicodedata
 import uuid
 from pathlib import Path
+from typing import Callable
 
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
 CONSENT_DIR = RUNTIME_DIR / "jarvis-consent"
@@ -245,13 +246,16 @@ def broker_env() -> dict[str, str]:
 
 
 def execute_brokered(cmd: str, timeout: float = COMMAND_TIMEOUT,
-                     limit: int = OUTPUT_LIMIT) -> tuple[int, str]:
+                     limit: int = OUTPUT_LIMIT,
+                     should_cancel: Callable[[], bool] | None = None) -> tuple[int, str]:
     """Roda o comando EXATAMENTE como mostrado ao usuário (`bash -c`), no
     workdir do plugin, com ambiente mínimo e saída limitada a `limit` bytes.
     Retorna (código de saída, saída combinada). Roda no cgroup de quem chama —
     dentro do scope do modelo, quando chamado pelo servidor MCP — então cancelar
     a pergunta mata o comando junto; no timeout, o grupo de processos inteiro
     (inclusive o que o comando deixou em background) é morto."""
+    if should_cancel is not None and should_cancel():
+        return (130, "[command cancelled]")
     WORKDIR.mkdir(parents=True, exist_ok=True)
     proc = subprocess.Popen(["bash", "-c", cmd], cwd=str(WORKDIR), env=broker_env(),
                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -272,10 +276,20 @@ def execute_brokered(cmd: str, timeout: float = COMMAND_TIMEOUT,
     t = threading.Thread(target=reader, daemon=True)
     t.start()
     timed_out = False
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
+    cancelled = False
+    deadline = time.monotonic() + timeout
+    while proc.poll() is None:
+        if should_cancel is not None and should_cancel():
+            cancelled = True
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        try:
+            proc.wait(timeout=min(.2, remaining) if should_cancel is not None else remaining)
+        except subprocess.TimeoutExpired:
+            pass
     _kill_group(proc)
     t.join(timeout=2)
     if proc.stdout is not None:
@@ -283,6 +297,8 @@ def execute_brokered(cmd: str, timeout: float = COMMAND_TIMEOUT,
     out = buf.decode(errors="replace")
     if total[0] > limit:
         out += f"\n[output truncated at {limit} bytes]"
+    if cancelled:
+        return (130, out + "\n[command cancelled — process group killed]")
     if timed_out:
         return (124, out + f"\n[timeout after {int(timeout)}s — command killed]")
     return (proc.returncode, out)

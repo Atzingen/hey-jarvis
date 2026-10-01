@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,6 +68,22 @@ class Bridge(QObject):
         self.changed.emit()
         if self._state is None or self._state.get("phase") == "closed":
             QGuiApplication.quit()
+
+    @Slot()
+    def skipPolish(self) -> None:
+        if (self._state and self._state.get("mode") == "dictation"
+                and self._state.get("phase") == "polishing" and (RUNTIME_DIR / "jarvis-polishing").exists()):
+            try:
+                (RUNTIME_DIR / "jarvis-skip-polish").touch()
+            except OSError:
+                pass
+
+    @Slot(str)
+    def openSession(self, identifier: str) -> None:
+        if (self._state and self._state.get("can_attach") and self._state.get("session_id") == identifier
+                and re.fullmatch(r"[a-f0-9]{32}", identifier)):
+            subprocess.Popen([str(Path(__file__).resolve().with_name("jarvis")), "session", "open", identifier],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @Slot()
     def quit(self) -> None:

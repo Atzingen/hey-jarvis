@@ -21,7 +21,18 @@ VOICES="$HOME/.local/share/piper-voices"
 UNIT_DIR="$HOME/.config/systemd/user"
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 UPDATE_ONLY=0
-[[ ${1:-} == "--update" ]] && UPDATE_ONLY=1
+STAGE=""
+for argument in "$@"; do
+  case "$argument" in
+    --update) UPDATE_ONLY=1 ;;
+    --uninstall|--purge|--picoh-udev) ;;
+    --stage) [[ $# == 2 && $1 == --stage && -n $2 && $2 != -* ]] || { echo 'Usage: install.sh --stage DIRECTORY' >&2; exit 2; }; STAGE=$2; break ;;
+    *) echo "Unknown installer argument: $argument" >&2; exit 2 ;;
+  esac
+done
+if [[ " $* " == *" --purge "* && ${1:-} != --uninstall ]]; then
+  echo '--purge requires --uninstall' >&2; exit 2
+fi
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*"; }
@@ -58,13 +69,47 @@ VOICE_MAX_BYTES=$((128 * 1024 * 1024))   # a Piper medium voice is ~63 MB
 OWW_MAX_BYTES=$((32 * 1024 * 1024))      # openWakeWord models are 1–4 MB
 
 SCRIPTS=(voice-launcher voice-launcher.py jarvis jarvis_config.py jarvis-config.py jarvis_i18n.py
-         jarvis_stt.py jarvis_events.py jarvis_dictate.py jarvis_narrate.py jarvis-window.py jarvis-conversation.py jarvis-app.py jarvis-panel.py
-         jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py jarvis_picoh.py dev-layout)
+         jarvis_stt.py jarvis_nemotron.py jarvis_events.py jarvis_dictate.py jarvis_dictation_stream.py jarvis_narrate.py jarvis-window.py jarvis-conversation.py jarvis-app.py jarvis-panel.py
+         jarvis_consent.py jarvis-consent.py jarvis_consent_mcp.py jarvis_picoh.py dev-layout
+         jarvis_routing.py jarvis_router_api.py jarvis_router_jev.py jarvis_router_local.py
+         jarvis_http.py jarvis_sessions.py jarvis_agent_policy.py jarvis_agent_codex.py
+         jarvis_agent_claude.py jarvis_conversation_routing.py jarvis-router.py)
+
+install_runtime_files() {
+  local destination_bin="$1" destination_share="$2" file
+  mkdir -p "$destination_bin" "$destination_share"
+  for file in "${SCRIPTS[@]}"; do
+    install -Dm755 "$HERE/bin/$file" "$destination_bin/$file"
+  done
+  mkdir -p "$destination_share/app"
+  cp -rL "$HERE/app/." "$destination_share/app/"
+  install -Dm755 "$HERE/scripts/install-router-local.sh" "$destination_share/router-tools/scripts/install-router-local.sh"
+  for file in requirements-router-local.txt requirements-router-local.lock; do
+    install -Dm644 "$HERE/$file" "$destination_share/router-tools/$file"
+  done
+}
+
+if [[ -n $STAGE ]]; then
+  install_runtime_files "$STAGE/bin" "$STAGE/share/jarvis"
+  say "Runtime staged in $STAGE; no environments, downloads or services changed"
+  exit 0
+fi
 
 if [[ ${1:-} == "--uninstall" ]]; then
   say "Stopping and disabling voice-launcher.service"
   systemctl --user disable --now voice-launcher.service 2>/dev/null || true
   systemctl --user stop jarvis-resume.timer 2>/dev/null || true
+  session_python="$SHARE/venv/bin/python"
+  [[ -x $session_python ]] || session_python=python3
+  if [[ -f $BIN_DIR/jarvis_sessions.py ]]; then
+    for record in "$SHARE"/sessions/*/session.json; do
+      [[ -f $record ]] || continue
+      identifier=$(basename "$(dirname "$record")")
+      [[ $identifier =~ ^[a-f0-9]{32}$ ]] || continue
+      "$session_python" "$BIN_DIR/jarvis_sessions.py" stop "$identifier" 2>/dev/null || true
+      systemctl --user stop "jarvis-watch-$identifier.service" "jarvis-session-$identifier.scope" 2>/dev/null || true
+    done
+  fi
   # model calls run in their own scopes (they survive a service restart on purpose)
   systemctl --user list-units --plain --no-legend 'jarvis-model-*' 2>/dev/null | awk '{print $1}' \
     | xargs -r systemctl --user stop 2>/dev/null || true
@@ -78,7 +123,9 @@ if [[ ${1:-} == "--uninstall" ]]; then
   rm -f "$RUNTIME"/jarvis-state.json "$RUNTIME"/jarvis-state.tmp "$RUNTIME"/jarvis-quit \
         "$RUNTIME"/jarvis-tts.json "$RUNTIME"/jarvis-tts.tmp \
         "$RUNTIME"/jarvis-wake-off "$RUNTIME"/jarvis-dictating "$RUNTIME"/jarvis-dictate.cmd \
+        "$RUNTIME"/jarvis-talk "$RUNTIME"/jarvis-polishing "$RUNTIME"/jarvis-skip-polish \
         "$RUNTIME"/jarvis-meeting-paused "$RUNTIME"/jarvis-resume-at
+  rm -f "$RUNTIME/jarvis-active-session.json"
   if [[ ${2:-} == "--purge" ]]; then
     say "Removing ~/.config/jarvis and Piper voices"
     rm -rf "$HOME/.config/jarvis" "$VOICES"
@@ -109,7 +156,7 @@ if (( ! UPDATE_ONLY )); then
     fi
   fi
   need codex || warn "Codex CLI not found — fast questions need it (or set quick_provider = \"claude\")."
-  need claude || warn "Claude Code CLI not found — 'think hard' questions need it."
+  need claude || warn "Claude Code CLI not found — optional alternative subscription agent."
 fi
 
 # --- 2. python environment ------------------------------------------------------
@@ -179,10 +226,7 @@ PY="$VENV/bin/python"
 
 # --- 4. scripts -----------------------------------------------------------------
 say "Installing scripts to $BIN_DIR"
-mkdir -p "$BIN_DIR"
-for f in "${SCRIPTS[@]}"; do
-  install -Dm755 "$HERE/bin/$f" "$BIN_DIR/$f"
-done
+install_runtime_files "$BIN_DIR" "$SHARE"
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH — the bar widget and keybindings need it." ;; esac
 
 # --- 4b. Picoh robot (optional) -------------------------------------------------
@@ -213,10 +257,6 @@ fi
 say "Installing voice-launcher.service"
 install -Dm644 "$HERE/systemd/voice-launcher.service" "$UNIT_DIR/voice-launcher.service"
 
-say "Installing the panel app to $SHARE/app"
-rm -rf "$SHARE/app"
-mkdir -p "$SHARE"
-cp -rL "$HERE/app" "$SHARE/app"
 # the model's working directory in `ask` mode: recreated empty at every install
 rm -rf "$SHARE/workdir"; mkdir -p "$SHARE/workdir"
 

@@ -18,6 +18,8 @@ Item {
   property string fontFamily: Style.font.family
 
   signal quitRequested()
+  signal skipPolishRequested()
+  signal openSessionRequested(string sessionId)
 
   // --- paleta: tema do Omarchy quando disponível, senão a fixa do shim ------
   property color background: Color.popups.background
@@ -58,7 +60,7 @@ Item {
   readonly property var phases: i18n.phases || ({})
   readonly property var ph: phases[phase] || [phase.toUpperCase(), ""]
   readonly property string phaseName: String(ph[0] || "")
-  readonly property string hint: String(ph[1] || "")
+  readonly property string hint: String((dictation && st.dictation_notice) || ph[1] || "")
   readonly property string youLabel: String(i18n.you || "you")
   readonly property var exchanges: st.exchanges || []
   readonly property string partial: String(st.partial || "")
@@ -104,7 +106,13 @@ Item {
 
   focus: true
   Keys.onPressed: function(ev) {
-    if (ev.key === Qt.Key_Q || ev.key === Qt.Key_Escape) { panel.quitRequested(); ev.accepted = true }
+    if (ev.key === Qt.Key_Escape && panel.state && panel.state.mode === "dictation" && panel.phase === "polishing") {
+      panel.skipPolishRequested()
+      ev.accepted = true
+    } else if (ev.key === Qt.Key_Q || ev.key === Qt.Key_Escape) {
+      panel.quitRequested()
+      ev.accepted = true
+    }
   }
 
   readonly property int sidebarW: Style.space(250)
@@ -198,6 +206,63 @@ Item {
         color: panel.muted
         font.family: panel.fontFamily; font.pixelSize: Style.font.caption
       }
+      Text {
+        width: panel.sidebarW - panel.pad * 2
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: !panel.dictation && !!panel.st.effective_route
+        text: (panel.st.effective_route === "api" ? panel.i18n.route_api : panel.i18n.route_agent)
+              + (panel.st.session_backend ? "\n" + (panel.st.session_backend === "native" ? panel.i18n.route_native : panel.st.session_backend === "legacy" ? panel.i18n.route_legacy : "") : "")
+        textFormat: Text.PlainText
+        color: panel.accent
+        wrapMode: Text.WordWrap
+        horizontalAlignment: Text.AlignHCenter
+        font.family: panel.fontFamily; font.pixelSize: Style.font.caption
+      }
+      Text {
+        objectName: "currentRouting"
+        width: panel.sidebarW - panel.pad * 2
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: !panel.dictation && !!panel.st.routing_summary
+        text: String(panel.st.routing_summary || "")
+        textFormat: Text.PlainText
+        color: Qt.rgba(panel.foreground.r, panel.foreground.g, panel.foreground.b, 0.65)
+        wrapMode: Text.WordWrap
+        horizontalAlignment: Text.AlignHCenter
+        font.family: panel.fontFamily; font.pixelSize: Style.font.caption
+      }
+      Text {
+        width: panel.sidebarW - panel.pad * 2
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: !panel.dictation && !!panel.st.fallback_reason
+                 && ["subscription_default", "active_session", "assistant_answer", "assistant_handoff", "classified_api", "classified_web", "classified_agent"].indexOf(panel.st.fallback_reason) < 0
+                 && (!panel.st.routing_summary || ["terminal_open_failed", "submission_unknown", "session_connection_lost"].indexOf(panel.st.fallback_reason) >= 0 || panel.st.session_backend === "legacy")
+        text: panel.st.fallback_reason === "terminal_open_failed" ? (panel.i18n.route_terminal_failed || "")
+            : panel.st.fallback_reason === "submission_unknown" ? (panel.i18n.routing_uncertain || "")
+            : panel.st.fallback_reason === "session_connection_lost" ? (panel.i18n.route_reconnecting || "")
+            : panel.st.session_backend === "legacy" ? (panel.i18n.route_compatibility_notice || "")
+            : (panel.i18n.route_fallback || "")
+        textFormat: Text.PlainText
+        color: panel.amber
+        wrapMode: Text.WordWrap
+        horizontalAlignment: Text.AlignHCenter
+        font.family: panel.fontFamily; font.pixelSize: Style.font.caption
+      }
+      Rectangle {
+        objectName: "openSessionButton"
+        visible: !panel.dictation && panel.st.can_attach === true && !!panel.st.session_id
+        width: panel.sidebarW - panel.pad * 2; height: Style.space(34)
+        anchors.horizontalCenter: parent.horizontalCenter
+        radius: Style.space(6)
+        color: Qt.rgba(panel.accent.r, panel.accent.g, panel.accent.b, 0.18)
+        Text {
+          anchors.centerIn: parent
+          text: panel.i18n.open_session || "Open terminal"
+          color: panel.foreground
+          font.family: panel.fontFamily; font.pixelSize: Style.font.caption
+        }
+        TapHandler { onTapped: panel.openSessionRequested(String(panel.st.session_id)) }
+      }
+
     }
   }
 
@@ -299,10 +364,16 @@ Item {
           model: panel.exchanges
           Column {
             required property var modelData
+            required property int index
             width: chatCol.width
             spacing: Style.space(8)
             Bubble { width: parent.width; mine: true; who: panel.youLabel; body: String(modelData.q || "") }
-            Bubble { width: parent.width; mine: false; who: "Jarvis"; meta: String(modelData.label || ""); body: String(modelData.a || "") }
+            Bubble {
+              objectName: "assistantBubble" + index
+              width: parent.width; mine: false; who: "Jarvis"
+              meta: String(modelData.label || ""); body: String(modelData.a || "")
+              routing: String(modelData.routing_summary || "")
+            }
           }
         }
         Bubble {
@@ -381,13 +452,15 @@ Item {
     property string who: ""
     property string meta: ""
     property string body: ""
+    property string routing: ""
     readonly property color tint: mine ? panel.accent : panel.foreground
     implicitHeight: card.height
 
     Rectangle {
       id: card
-      width: Math.min(bubble.width * 0.88, bodyText.implicitWidth + Style.space(28))
-      height: labelRow.implicitHeight + bodyText.implicitHeight + Style.space(24)
+      width: Math.min(bubble.width * 0.88, Math.max(Style.space(260), bodyText.implicitWidth + Style.space(28)))
+      height: routingText.visible ? routingText.y + routingText.height + Style.space(10)
+                                  : bodyText.y + bodyText.height + Style.space(10)
       x: bubble.mine ? bubble.width - width : 0
       radius: Style.cornerRadius + 4
       color: Qt.rgba(bubble.tint.r, bubble.tint.g, bubble.tint.b, bubble.mine ? 0.13 : 0.05)
@@ -398,17 +471,21 @@ Item {
       Row {
         id: labelRow
         x: Style.space(14); y: Style.space(10)
+        width: card.width - Style.space(28)
         spacing: Style.space(8)
         Text {
+          id: speakerText
           text: bubble.who
           textFormat: Text.PlainText
           color: bubble.mine ? panel.accent : panel.amber
           font.family: panel.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; font.letterSpacing: 1
         }
         Text {
+          width: Math.max(0, labelRow.width - speakerText.implicitWidth - labelRow.spacing)
           visible: bubble.meta !== ""
           text: bubble.meta
           textFormat: Text.PlainText
+          elide: Text.ElideRight
           color: panel.muted
           font.family: panel.fontFamily; font.pixelSize: Style.font.caption
         }
@@ -425,6 +502,18 @@ Item {
         lineHeight: 1.2
         // largura "natural" limitada ao balão: implicitWidth do texto sem quebra
         // não é confiável com wrap, então mede num Text invisível
+      }
+      Text {
+        id: routingText
+        objectName: "messageRouting"
+        x: Style.space(14); y: bodyText.y + bodyText.height + Style.space(8)
+        width: card.width - Style.space(28)
+        visible: bubble.routing !== ""
+        text: bubble.routing
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Qt.rgba(panel.foreground.r, panel.foreground.g, panel.foreground.b, 0.65)
+        font.family: panel.fontFamily; font.pixelSize: Style.font.caption
       }
     }
   }

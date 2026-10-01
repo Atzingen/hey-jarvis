@@ -1,8 +1,27 @@
 -- Omarchy 4 (Hyprland Lua config) — append to ~/.config/hypr/bindings.lua
 
--- Jarvis: toggle the assistant / push-to-talk (talk without saying "hey jarvis")
-o.bind("CTRL + SHIFT + J", "Toggle Jarvis", "jarvis toggle-notify")
-o.bind("CTRL + SHIFT + H", "Jarvis: push-to-talk", "systemctl --user kill -s SIGUSR1 voice-launcher.service")
+-- Talk immediately, starting the service if needed. H remains an alias.
+o.bind("CTRL + SHIFT + J", "Jarvis: talk now", "jarvis talk")
+o.bind("CTRL + SHIFT + H", "Jarvis: push-to-talk", "jarvis talk")
+o.bind("CTRL + ALT + SHIFT + J", "Jarvis: toggle wake-word listening", "jarvis wake toggle")
+
+-- Only consume Escape while polishing; otherwise the focused app receives it.
+o.bind("ESCAPE", "Jarvis: skip dictation polish", function()
+  local runtime = os.getenv("XDG_RUNTIME_DIR")
+  if not runtime then return { pass_event = true } end
+  local marker = io.open(runtime .. "/jarvis-polishing", "r")
+  if not marker then return { pass_event = true } end
+  local pid = marker:read("*l")
+  marker:close()
+  if not pid or not pid:match("^%d+$") then return { pass_event = true } end
+  local process = io.open("/proc/" .. pid .. "/stat", "r")
+  if not process then return { pass_event = true } end
+  process:close()
+  local request = io.open(runtime .. "/jarvis-skip-polish", "w")
+  if not request then return { pass_event = true } end
+  request:close()
+  return { pass_event = false }
+end)
 
 -- Dictation: Ctrl+Shift+K toggles (press to start, press again to transcribe and
 -- paste into the active window). While recording, any other key cancels.

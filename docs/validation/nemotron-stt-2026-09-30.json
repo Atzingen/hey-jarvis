@@ -1,0 +1,155 @@
+{
+  "date": "2026-09-30",
+  "scope": "Isolated local model evaluation; no Jarvis configuration or production code changed.",
+  "hardware": {
+    "cpu": "Intel Core i7-14700KF",
+    "ram_gib": 128,
+    "gpu": "NVIDIA RTX 4090 24 GB",
+    "driver": "610.57.04"
+  },
+  "runtime": {
+    "name": "NVIDIA NeMo-Speech.cpp",
+    "version": "0.1.0",
+    "archive_sha256": "e68628f396489c98fb353e070efaea5bc4977409ae7734fce56c251a79e29147"
+  },
+  "model": {
+    "repo": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+    "revision": "1c8deaecc64b91f034d73e08dd8b64625eb3395d",
+    "quantization": "Q8_0",
+    "bytes": 741548352,
+    "sha256": "a5c435f294eea8f88ce68dd27b8c3bfea7f777cb2fbba04fcd30eaa555f429ae"
+  },
+  "method": {
+    "input_kind": "Synthetic PT-BR Kokoro samples, not microphone recordings",
+    "sample_hashes": {
+      "pm_alex.wav": "1888860012280807e255c0ecb72e12e837f13d27afcc9112bca8621e1e197bd1",
+      "pf_dora.wav": "85964c4b9d12788bb49587b29d90041e984e570be12e6d13c3a3ed7fe992838f"
+    },
+    "language": "pt-BR",
+    "audio_format": "PCM16 mono 16 kHz",
+    "chunk_ms": 160,
+    "rnnt_right_context": 1,
+    "endpointing": false,
+    "batching": false,
+    "automatic_punctuation": true,
+    "OMP_NUM_THREADS": 8,
+    "warmup": "Runtime startup warmup; Dora burst then Alex real-time on each backend",
+    "pacing": "Each chunk sent only after its full recording interval elapsed",
+    "latency_definition": "First partial from first audio interval start, not from word end; final delay after input_audio_buffer.commit. Burst timings are not live latency.",
+    "environment": "Existing desktop services remained running; one measured real-time stream per backend; no statistical performance guarantee"
+  },
+  "nemotron_runs": [
+    {
+      "device": "cuda",
+      "sample": "pf_dora.wav",
+      "paced_at_realtime": false,
+      "audio_seconds": 20.725,
+      "first_partial_seconds": 0.068013191999853,
+      "partial_count": 123,
+      "partials_before_commit": 0,
+      "final_seconds": 0.41299058600088756,
+      "after_commit_seconds": 0.4121135770001274,
+      "final_event": {
+        "audio_processed": 20.725000381469727,
+        "event_id": "event_128",
+        "transcript": "Senhor estou ouvindo bom dia Gustavo o projeto está aberto e tudo está pronto para começar você prefere revisar o código agora ou conversar sobre a próxima melhoria. A reunião será amanhã às quatorze e trinta minutos conclui a análise de vinte e três arquivos. Posso explicar o resultado com mais detalhes.",
+        "type": "conversation.item.input_audio_transcription.completed",
+        "elapsed_seconds": 0.41299058600088756
+      }
+    },
+    {
+      "device": "cuda",
+      "sample": "pm_alex.wav",
+      "paced_at_realtime": true,
+      "audio_seconds": 21.0,
+      "first_partial_seconds": 1.28428478800015,
+      "partial_count": 125,
+      "partials_before_commit": 124,
+      "final_seconds": 21.04427069600024,
+      "after_commit_seconds": 0.04411307900045358,
+      "final_event": {
+        "audio_processed": 21,
+        "event_id": "event_258",
+        "transcript": "Senhor estou ouvindo bom dia Gustavo o projeto está aberto e tudo está pronto para começar você prefere revisar o código agora ou conversar sobre a próxima melhoria a reunião será amanhã às quatorze horas e trinta minutos conclui a análise de vinte e três arquivos posso explicar o resultado com mais detalhes.",
+        "type": "conversation.item.input_audio_transcription.completed",
+        "elapsed_seconds": 21.04427069600024
+      }
+    },
+    {
+      "device": "cpu",
+      "sample": "pf_dora.wav",
+      "paced_at_realtime": false,
+      "audio_seconds": 20.725,
+      "first_partial_seconds": 0.6170196769999166,
+      "partial_count": 123,
+      "partials_before_commit": 0,
+      "final_seconds": 9.028658678000284,
+      "after_commit_seconds": 9.02741030100151,
+      "final_event": {
+        "audio_processed": 20.725000381469727,
+        "event_id": "event_128",
+        "transcript": "Senhor estou ouvindo bom dia Gustavo o projeto está aberto e tudo está pronto para começar você prefere revisar o código agora ou conversar sobre a próxima melhoria. A reunião será amanhã às quatorze e trinta minutos conclui a análise de vinte e três arquivos. Posso explicar o resultado com mais detalhes.",
+        "type": "conversation.item.input_audio_transcription.completed",
+        "elapsed_seconds": 9.028658678000284
+      }
+    },
+    {
+      "device": "cpu",
+      "sample": "pm_alex.wav",
+      "paced_at_realtime": true,
+      "audio_seconds": 21.0,
+      "first_partial_seconds": 1.3437728899989452,
+      "partial_count": 125,
+      "partials_before_commit": 123,
+      "final_seconds": 21.177125431000604,
+      "after_commit_seconds": 0.17684522600029595,
+      "final_event": {
+        "audio_processed": 21,
+        "event_id": "event_258",
+        "transcript": "Senhor estou ouvindo bom dia Gustavo o projeto está aberto e tudo está pronto para começar você prefere revisar o código agora ou conversar sobre a próxima melhoria a reunião será amanhã às quatorze horas e trinta minutos conclui a análise de vinte e três arquivos posso explicar o resultado com mais detalhes.",
+        "type": "conversation.item.input_audio_transcription.completed",
+        "elapsed_seconds": 21.177125431000604
+      }
+    }
+  ],
+  "whisper_baseline": {
+    "model": "whisper large-v3-turbo/cuda",
+    "load_seconds": 1.9686760650001816,
+    "runs": [
+      {
+        "sample": "pm_alex.wav",
+        "audio_seconds": 21.0,
+        "processing_seconds": 0.3103354989998479,
+        "text": "Senhor, estou ouvindo.  Bom dia, Gustavo. O projeto está aberto e tudo está pronto para começar.  Você prefere revisar o código agora ou conversar sobre a próxima melhoria?  A reunião será amanhã, às 14 horas e 30 minutos.  Conclui a análise de 23 arquivos. Posso explicar o resultado com mais detalhes."
+      },
+      {
+        "sample": "pm_alex.wav",
+        "audio_seconds": 21.0,
+        "processing_seconds": 0.17788963800012425,
+        "text": "Senhor, estou ouvindo.  Bom dia, Gustavo. O projeto está aberto e tudo está pronto para começar.  Você prefere revisar o código agora ou conversar sobre a próxima melhoria?  A reunião será amanhã, às 14 horas e 30 minutos.  Conclui a análise de 23 arquivos. Posso explicar o resultado com mais detalhes."
+      },
+      {
+        "sample": "pf_dora.wav",
+        "audio_seconds": 20.725,
+        "processing_seconds": 0.18168136500025867,
+        "text": "Senhor, estou ouvindo.  Bom dia, Gustavo. O projeto está aberto e tudo está pronto para começar.  Você prefere revisar o código agora ou conversar sobre a próxima melhoria?  A reunião será amanhã, às 14 horas e 30 minutos.  Conclui a análise de 23 arquivos. Posso explicar o resultado com mais detalhes."
+      }
+    ],
+    "input_kind": "synthetic Kokoro PT-BR, not user microphone"
+  },
+  "limitations": [
+    "No MacBook measurement",
+    "No test on lower-end PC",
+    "No natural speech or noisy microphone evaluation",
+    "No OpenAI API inference/cost in this evaluation",
+    "No insertion into focused application implemented",
+    "Nemotron punctuation/capitalization inferior to Whisper on these samples; Dora lost the word horas"
+  ],
+  "sources": [
+    "https://github.com/NVIDIA/NeMo-Speech.cpp/releases/tag/v0.1.0",
+    "https://github.com/NVIDIA/NeMo-Speech.cpp/blob/main/docs/install.md",
+    "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b",
+    "https://developers.openai.com/api/docs/guides/realtime-transcription",
+    "https://developers.openai.com/api/docs/models/gpt-live-transcribe"
+  ]
+}

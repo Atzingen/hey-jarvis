@@ -85,9 +85,10 @@ SETTINGS: list[Setting] = [
             "Score mínimo pra disparar (menor = mais sensível, mais falso-positivo).",
             group="Escuta", min=0.2, max=0.95, step=0.05),
     Setting("stt_provider", "auto", "Reconhecimento de fala",
-            "local = whisper na máquina (GPU se houver, senão CPU); openai = Realtime API "
-            "com texto ao vivo (precisa da chave); auto = GPU→local, sem GPU→openai se houver chave.",
-            group="Escuta", choices=["auto", "local", "openai"]),
+            "nemotron = streaming local (instale com jarvis stt install-nemotron); "
+            "openai = streaming por API com chave; local = Whisper. "
+            "auto mantém a seleção antiga: GPU→Whisper; sem GPU→API se houver chave, senão Whisper CPU.",
+            group="Escuta", choices=["auto", "local", "nemotron", "openai"]),
     Setting("openai_api_key", "", "Chave da OpenAI (API)",
             "Usada pelo reconhecimento openai. Vazio = variável de ambiente OPENAI_API_KEY.",
             group="Escuta", secret=True),
@@ -98,7 +99,48 @@ SETTINGS: list[Setting] = [
             "Tempo ouvindo sem wake word depois de cada resposta.",
             group="Escuta", min=5.0, max=90.0, step=5.0),
 
-    Setting("quick_provider", "codex", "Provedor das perguntas rápidas",
+    Setting("routing_mode", "agent", "Modo de atendimento",
+            "agent = assinatura, sem roteador; assistant = modelo inicial por API; jev = Jev; "
+            "local = classificador opcional na CPU. Sem configuração válida, usa a assinatura.",
+            group="Roteamento", choices=["agent", "assistant", "jev", "local"]),
+    Setting("api_provider", "none", "Respostas por API (opcional)",
+            "none mantém respostas por assinatura. openai habilita chamadas pagas separadas; "
+            "ter chave de transcrição não ativa esta opção.", group="Roteamento", choices=["none", "openai"]),
+    Setting("api_model", "", "Modelo da API",
+            "Identificador do modelo autorizado para respostas por API; vazio desativa essa rota.", group="Roteamento"),
+    Setting("api_effort", "low", "Esforço da API",
+            "Esforço suportado pelo modelo escolhido. Vazio omite o parâmetro.",
+            group="Roteamento", choices=["", "none", "minimal", "low", "medium", "high", "xhigh"]),
+    Setting("api_web_search", True, "Busca web pela API",
+            "Permite busca web na API de respostas habilitada. Precisa de suporte do modelo; "
+            "pode consumir créditos adicionais.", group="Roteamento"),
+    Setting("jev_api_key", "", "Chave do Jev",
+            "Usada somente no modo jev. Vazio usa JEV_API_KEY; sem chave, usa a assinatura.",
+            group="Roteamento", secret=True),
+    Setting("agent_strong_model", "", "Modelo do agente para tarefas complexas",
+            "Opcional, do mesmo provedor do agente. Vazio mantém o modelo atual.", group="Roteamento"),
+    Setting("agent_strong_effort", "", "Esforço do agente para tarefas complexas",
+            "Vazio mantém o esforço atual. Usado pelo roteador se o modelo forte estiver configurado.",
+            group="Roteamento", choices=["", "low", "medium", "high", "xhigh", "max"]),
+    Setting("api_strong_model", "", "Modelo da API para tarefas complexas",
+            "Opcional; vazio impede escalar para outra API.", section="advanced", group="Roteamento"),
+    Setting("api_strong_effort", "high", "Esforço da API para tarefas complexas",
+            "Precisa ser suportado pelo modelo configurado; vazio omite o parâmetro.",
+            section="advanced", group="Roteamento", choices=["", "none", "minimal", "low", "medium", "high", "xhigh"]),
+    Setting("router_timeout_seconds", 5.0, "Limite da classificação (s)",
+            "Prazo do Jev ou classificador local; ultrapassado, usa o agente.",
+            section="advanced", group="Roteamento", min=0.2, max=30.0, step=0.5),
+    Setting("api_timeout_seconds", 30.0, "Limite da resposta por API (s)",
+            "Prazo por chamada. Uma execução de estado incerto não é reenviada automaticamente.",
+            section="advanced", group="Roteamento", min=1.0, max=300.0, step=1.0),
+    Setting("local_router_idle_seconds", 300, "Descarregar classificador ocioso (s)",
+            "Libera a memória do classificador local após inatividade.",
+            section="advanced", group="Roteamento", min=10, max=3600, step=10),
+    Setting("agent_session_mode", "auto", "Sessões do agente",
+            "auto usa sessão nativa quando todas as capacidades estiverem disponíveis; "
+            "legacy mantém o executor de compatibilidade.",
+            group="Roteamento", choices=["auto", "legacy"]),
+    Setting("quick_provider", "codex", "Agente por assinatura",
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
     Setting("system_access", "ask", "Acesso ao computador",
@@ -167,12 +209,18 @@ SETTINGS: list[Setting] = [
             "paste = copia e cola na janela ativa (Ctrl+V; Ctrl+Shift+V em terminais); "
             "type = digita o texto; clipboard = só copia (fica no topo do histórico).",
             group="Ditado", choices=["paste", "type", "clipboard"]),
+    Setting("dictation_live", False, "Escrever durante o ditado",
+            "Mostra palavras provisórias na janela e digita trechos confirmados nas pausas. "
+            "Não revisa com IA nem cola tudo de novo ao terminar. Se trocar de janela, "
+            "interrompe a escrita e mantém o texto completo no clipboard. Saída clipboard só copia ao final.",
+            group="Ditado"),
     Setting("dictation_duck", 0.5, "Abaixar a música ao ditar (fator)",
             "Multiplica o volume do som enquanto o ditado por toggle grava e restaura ao parar "
             "(0.5 = cai pela metade; 1 = não mexe). Só no atalho de toggle, não no push-to-talk.",
             group="Ditado", min=0.0, max=1.0, step=0.05),
-    Setting("dictation_polish", False, "Revisar o ditado (Ollama)",
-            "Passa o texto por um modelo local só pra pontuar e tirar hesitações. Precisa do Ollama.",
+    Setting("dictation_polish", False, "Revisar texto com IA após ditar",
+            "Desligado: entrega o texto bruto. Ligado: revisa com Ollama local; "
+            "Esc durante a revisão interrompe e entrega o texto bruto, já disponível no clipboard.",
             group="Ditado"),
     Setting("dictation_polish_model", "gemma3:4b", "Modelo da revisão",
             "Modelo do Ollama usado na revisão do ditado.",
@@ -192,6 +240,10 @@ SETTINGS: list[Setting] = [
     Setting("whisper_device", "auto", "Dispositivo do Whisper",
             "auto detecta CUDA; force cpu se a GPU estiver ocupada.",
             section="advanced", group="Reconhecimento", choices=["auto", "cuda", "cpu"]),
+    Setting("nemotron_device", "auto", "Dispositivo do Nemotron",
+            "auto escolhe o acelerador do runtime instalado; cpu funciona sem GPU; "
+            "cuda usa NVIDIA; metal usa Apple Silicon. Falhas voltam ao Whisper.",
+            section="advanced", group="Reconhecimento", choices=["auto", "cpu", "cuda", "metal"]),
     Setting("openai_stt_model", "gpt-live-transcribe", "Modelo OpenAI (tempo real)",
             "gpt-live-transcribe = streaming com deltas (recomendado); gpt-realtime-whisper = alternativa.",
             section="advanced", group="Reconhecimento",
@@ -281,9 +333,16 @@ SETTINGS: list[Setting] = [
             section="advanced", group="Sistema"),
 ]
 
+LEGACY_KEYS = {"deep_model", "deep_effort", "handoff_seconds_deep", "narration_interval_deep"}
+for _setting in SETTINGS:
+    if _setting.key in LEGACY_KEYS:
+        _setting.section = "legacy"
+        _setting.label = "Configuração legada: " + _setting.key
+        _setting.help = "Preservada para reversão; não controla o roteamento atual."
+
 BY_KEY = {s.key: s for s in SETTINGS}
 
-GROUP_EN = {"Geral": "General", "Escuta": "Listening", "Modelos": "Models", "Voz": "Voice",
+GROUP_EN = {"Roteamento": "Routing", "Geral": "General", "Escuta": "Listening", "Modelos": "Models", "Voz": "Voice",
             "Interface": "Interface", "Reconhecimento": "Recognition", "Conversa": "Conversation",
             "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation"}
 
@@ -451,6 +510,8 @@ def main(argv: list[str]) -> int:
         lang = cfg["language"]
         section = None
         for s in SETTINGS:
+            if s.section == "legacy":
+                continue
             if s.section != section:
                 section = s.section
                 print(f"\n[{jarvis_i18n.T(lang, 'cfg_main' if section == 'main' else 'cfg_advanced')}]")

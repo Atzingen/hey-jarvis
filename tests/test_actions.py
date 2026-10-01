@@ -70,7 +70,7 @@ class MatchApplicationTest(unittest.TestCase):
 class BuildAskCallTest(unittest.TestCase):
     def test_claude_ask_has_no_builtin_tools(self) -> None:
         vl.SYSTEM_ACCESS = "ask"
-        cmd, provider, popen = vl._build_ask_call("q", True, Path("/dev/null"), "q", "jarvis-model-t-1")
+        cmd, provider, popen = vl._build_ask_call("q", vl.jarvis_routing.build_profiles(vl.CFG | {"quick_provider": "claude", "system_access": vl.SYSTEM_ACCESS})["agent_default"], Path("/dev/null"), "q", "jarvis-model-t-1")
         self.assertEqual(provider, "claude")
         joined = " ".join(cmd)
         for flag in ("--restricted", "--strict-mcp-config", "--no-session-persistence",
@@ -84,7 +84,7 @@ class BuildAskCallTest(unittest.TestCase):
 
     def test_claude_off_has_no_mcp(self) -> None:
         vl.SYSTEM_ACCESS = "off"
-        cmd, _, popen = vl._build_ask_call("q", True, Path("/dev/null"), "q", "u")
+        cmd, _, popen = vl._build_ask_call("q", vl.jarvis_routing.build_profiles(vl.CFG | {"quick_provider": "claude", "system_access": vl.SYSTEM_ACCESS})["agent_default"], Path("/dev/null"), "q", "u")
         self.assertIn('{"mcpServers": {}}', cmd)
         self.assertNotIn("--allowedTools", cmd)
         self.assertEqual(cmd[cmd.index("--tools") + 1], "")
@@ -93,7 +93,7 @@ class BuildAskCallTest(unittest.TestCase):
     def test_codex_ask_disables_shell(self) -> None:
         vl.SYSTEM_ACCESS = "ask"
         vl.QUICK_PROVIDER = "codex"
-        cmd, provider, popen = vl._build_ask_call("q", False, Path("/dev/null"), "q", "jarvis-model-t-2")
+        cmd, provider, popen = vl._build_ask_call("q", vl.default_agent_profile(), Path("/dev/null"), "q", "jarvis-model-t-2")
         self.assertEqual(provider, "codex")
         joined = " ".join(cmd)
         for flag in ("--ignore-user-config", "--ignore-rules", "--sandbox read-only",
@@ -106,7 +106,7 @@ class BuildAskCallTest(unittest.TestCase):
 
     def test_full_keeps_bypass(self) -> None:
         vl.SYSTEM_ACCESS = "full"
-        cmd, _, _ = vl._build_ask_call("q", True, Path("/dev/null"), "q", "u")
+        cmd, _, _ = vl._build_ask_call("q", vl.jarvis_routing.build_profiles(vl.CFG | {"quick_provider": "claude", "system_access": vl.SYSTEM_ACCESS})["agent_default"], Path("/dev/null"), "q", "u")
         self.assertIn("--dangerously-skip-permissions", cmd)
         self.assertNotIn("--restricted", cmd)
 
@@ -185,10 +185,10 @@ class WatchdogIntegrationTest(unittest.TestCase):
             vl.HANDOFF_SECONDS_QUICK = 30
             vl.MODEL_MAX_EVENTS_BYTES = 200_000
             vl.cli_supports_safe_mode = lambda provider: True
-            vl._build_ask_call = lambda q, deep, ans, spoken="", unit="": (
+            vl._build_ask_call = lambda q, profile, ans, spoken="", unit="": (
                 ["bash", "-c", "while true; do echo '{\"type\":\"flood\"}'; done"], "claude", {})
             t0 = vl.time.monotonic()
-            answer, handoff = vl.ask_model("flood", deep=False)
+            answer, handoff = vl.ask_model("flood")
             elapsed = vl.time.monotonic() - t0
         finally:
             (vl._build_ask_call, vl.cli_supports_safe_mode, vl.MODEL_MAX_EVENTS_BYTES,

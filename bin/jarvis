@@ -3,15 +3,18 @@
 #
 # uso:
 #   jarvis on | off | toggle
+#   jarvis talk               # liga se necessário e inicia uma conversa
 #   jarvis status             # JSON pro waybar
 #   jarvis status-short       # 'on' ou 'off'
 #   jarvis pause <duração>    # off agora, on depois (ex: jarvis pause 45m)
 #   jarvis wake on|off|toggle|status   # só a escuta do "hey jarvis" (mic fecha; atalhos seguem)
 #   jarvis log                # journalctl -f no serviço
-#   jarvis dictate [toggle|start|stop|cancel]   # ditado: transcreve e cola na janela ativa
+#   jarvis dictate [toggle|start|stop|cancel|skip]   # skip pula a revisão do ditado
 #   jarvis app                # tela principal (status, guia, ditado, ações) em terminal flutuante
 #   jarvis config             # tela de configuração (terminal flutuante)
 #   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
+#   jarvis router status|install-local # roteamento opcional
+#   jarvis session open|status <id>     # sessão exata do agente
 #   jarvis picoh [probe|demo|reset|fake]   # robô Picoh: procura, percorre as fases, repouso
 #
 #   jarvis pause-meeting         # (uso interno do watcher de reunião)
@@ -37,14 +40,24 @@ cancel_pending_resume() {
 
 cmd_on() {
     cancel_pending_resume
-    systemctl --user start "$UNIT"
+    systemctl --user start "$UNIT" || return $?
     rm -f "$MARKER"
 }
 
 cmd_off() {
     cancel_pending_resume
     systemctl --user stop "$UNIT"
+    rm -f "$STATE_DIR/jarvis-talk"
     rm -f "$MARKER"
+}
+
+cmd_talk() {
+    # Não envia SIGUSR1 antes de o launcher registrar seu handler no início.
+    (umask 077; touch "$STATE_DIR/jarvis-talk")
+    if ! cmd_on; then
+        rm -f "$STATE_DIR/jarvis-talk"
+        return 1
+    fi
 }
 
 cmd_toggle() {
@@ -174,6 +187,7 @@ cmd_wake() {
     else
         rm -f "$WAKE_OFF"
         python3 "$bindir/jarvis_config.py" set wake_word_enabled true >/dev/null
+        cmd_on
         echo "wake word on — escutando \"hey jarvis\""
     fi
 }
@@ -182,6 +196,12 @@ cmd_dictate() {
     # ditado: start | stop | toggle | cancel  (Ctrl+Shift+K/L nos binds do Hyprland)
     local action="${1:-toggle}"
     local rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ "$action" = skip ]; then
+        if [ -f "$rt/jarvis-polishing" ]; then
+            (umask 077; touch "$rt/jarvis-skip-polish")
+        fi
+        return 0
+    fi
     case "$action" in start|stop|toggle|cancel) ;; *) echo "uso: jarvis dictate start|stop|toggle|cancel" >&2; return 2 ;; esac
     if [ "$action" = start ] && [ -f "$rt/jarvis-dictating" ]; then return 0; fi
     if [ "$action" = stop ] || [ "$action" = cancel ]; then [ -f "$rt/jarvis-dictating" ] || return 0; fi
@@ -277,6 +297,7 @@ cmd_picoh() {
 
 case "${1:-}" in
     on)                   cmd_on ;;
+    talk)                 cmd_talk ;;
     off)                  cmd_off ;;
     toggle)               cmd_toggle ;;
     toggle-notify)        cmd_toggle_notify ;;
@@ -291,9 +312,12 @@ case "${1:-}" in
     config)               shift; cmd_config "$@" ;;
     wake)                 cmd_wake "${2:-toggle}" ;;
     dictate)              cmd_dictate "${2:-toggle}" ;;
+    router)               shift; exec "$(env_python)" "$(dirname "$(readlink -f "$0")")/jarvis-router.py" "$@" ;;
+    stt)                  shift; exec "$(env_python)" "$(dirname "$(readlink -f "$0")")/jarvis_nemotron.py" "$@" ;;
+    session)              shift; exec "$(env_python)" "$(dirname "$(readlink -f "$0")")/jarvis_sessions.py" "$@" ;;
     picoh)                cmd_picoh "${2:-probe}" ;;
     *)
-        sed -n '2,14p' "$0" | sed 's/^# \?//'
+        sed -n '2,15p' "$0" | sed 's/^# \?//'
         exit 2
         ;;
 esac

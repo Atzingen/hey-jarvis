@@ -13,6 +13,7 @@ detects, and states exactly what is written, executed, and contacted.
 | Voice service (`voice-launcher.py`) | `voice-launcher.service`, a **user** systemd unit | `install.sh` (opt-in — see below) |
 | Conversation / dictation window, settings screen, `jarvis app` | floating terminal or window | the user (hotkey, click, or CLI) |
 | Picoh robot face (`jarvis_picoh.py`, optional) | child process of the voice service; idle unless a Picoh answers on a USB serial port | the voice service, when `picoh = auto` (default) |
+| Nemotron STT (`jarvis_nemotron.py`, optional) | owned native child, loopback only, random port and per-process bearer token | the voice service, only with `stt_provider = "nemotron"` and prior installation |
 
 Adding the plugin (`omarchy plugin add`) installs **only the bar widget**.
 The voice service is a separate, explicit step: the **Install** button on the
@@ -86,17 +87,27 @@ not logged** unless `log_transcripts = true`.
 
 ## Network endpoints
 
+`jarvis stt install-nemotron` is a separate, explicit installation. It downloads
+NeMo-Speech.cpp 0.1.0 and the Q8_0 Nemotron 3.5 ASR model into
+`~/.local/share/jarvis/nemotron/`. Both downloads have fixed versions/revisions,
+SHA-256 checks and streamed size limits. Regular installation and service startup
+never download Nemotron. The server is a child of the voice service, bypasses
+HTTP proxies on loopback and stops with the service. Missing installation or a
+failed transcription falls back to local Whisper; selecting Nemotron never
+implicitly selects a paid API.
+
 | Endpoint | When |
 |---|---|
 | `pypi.org` | install only — hash-locked `requirements.lock` (`--require-hashes --no-deps`) |
+| `github.com/NVIDIA/NeMo-Speech.cpp/releases`, `huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b` | only `jarvis stt install-nemotron` — pinned, checksummed native runtime and model |
 | `huggingface.co/rhasspy/piper-voices` | install only — **pinned to an immutable revision, every file verified against its sha256** before use |
 | `github.com/dscripka/openWakeWord/releases` | install only — the ONNX wake-word/feature models, **fixed release `v0.5.1`, every file verified against its sha256** before use (openwakeword's own unpinned `download_models()` is never called) |
 | `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **first conversation** — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`; the hub verifies each file's sha256 against that commit) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
-| Anthropic / OpenAI backends of the **user's own** `claude` / `codex` CLIs | every question — the question, the conversation history and (in `ask`/`full`) whatever the model reads on the machine go to the provider the user is logged into |
+| Anthropic / OpenAI backends of the **user's own** `claude` / `codex` CLIs | requests routed to the agent — the question, the conversation history and (in `ask`/`full`) whatever the model reads on the machine go to the provider the user is logged into |
 | `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio; (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
 | `127.0.0.1:11434` (Ollama) | `dictation_polish`, and progress narration when `narration = "local"`/`auto` with a local model + GPU (a warm-up request at conversation start) |
 
-The OpenAI Realtime transcription socket treats the server as untrusted input
+The OpenAI and Nemotron transcription sockets treat the server as untrusted input
 (`jarvis_stt.OpenAISession._handle_frame`): the WebSocket keeps a finite
 `max_size` (256 KiB per frame), and every frame is checked *before* anything is
 retained — text frames only, a valid JSON object with string fields, at most
@@ -112,6 +123,76 @@ fires, and with the default local STT the audio never leaves the machine.
 `jarvis wake off` (or the “hey jarvis” switch on the panel) disables the
 continuous listening entirely: the microphone stream is **closed** while idle
 and only opens on an explicit user action — push-to-talk or dictation hotkeys.
+
+With optional `dictation_live`, provisional words remain in the overlay and
+confirmed phrases are inserted into the original active window using the selected
+paste/type mode, with newlines converted to spaces. Modifier keys must be released
+before insertion; an unavailable key-state query or a 10-second wait stops insertion.
+The window identity is checked again immediately before insertion. A focus
+change blocks further insertion for that dictation; the complete transcript is
+still copied to the clipboard at the end. Cancellation stops pending insertion
+but does not erase text already inserted. This guard identifies a window, not
+an individual input field within it.
+
+## Optional routing and persistent sessions
+
+`routing_mode = "agent"` and `api_provider = "none"` are the defaults for new
+and existing configurations. The direct route never constructs a Jev, response
+API or local-classifier backend. A key configured for speech recognition or
+narration does not enable response API calls. Those existing subsystems retain
+their own settings.
+
+| Additional endpoint/process | When |
+|---|---|
+| `https://api.typesafe.ai/v1/systemone` | Explicit `jev` mode plus Jev key; receives the current text and conversation context for closed-category classification. It returns no executable commands. |
+| `https://api.openai.com/v1/responses` | Explicit `api_provider = "openai"`, configured model and key, with an API route selected. Optional web search uses the provider's search tool. Responses do not execute launcher action markers. |
+| Hugging Face `fastino/GLiNER2.5-multi-Decide` | Only `jarvis router install-local`; fixed revision `a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f`, downloaded to the separate classifier environment. |
+| CPU classifier child | Explicit `local` mode and prior installation. `CUDA_VISIBLE_DEVICES` is empty; PyTorch is a CPU wheel; model loading uses local files with Hugging Face offline mode. The process exits after inactivity. |
+| Local Codex app-server / Claude background session and tmux | Native agent execution using the existing subscription login. No response API credential is required. Sessions have explicit provider, conversation, directory and permission identities. |
+
+The optional classifier environment has its own complete hash-locked dependency
+set, `requirements-router-local.lock`; it is not installed by `install.sh` and
+does not modify the voice environment. The installer supports Python 3.11 on
+Linux x86_64. Local classification is experimental; measured routing mistakes
+are documented in `docs/routing-validation.md`, and cannot elevate permissions.
+
+Routing selects only configured execution profiles. It never supplies arbitrary
+model names, changes `system_access`, rewrites the original user request, or
+adds tools. API text containing action markers remains text. Only a validated
+handoff can reach the agent executor. HTTP bodies/responses are bounded;
+credentials are passed to the cancellable HTTP child over stdin, not argv or
+error messages. Cancellation stops the child.
+
+Missing optional dependencies and definitive pre-execution failures may fall
+back to the selected subscription agent. Every native submission records its
+request ID before calling the CLI. Once submission is attempted, an ambiguous
+connection loss does not trigger resubmission or a different executor. The
+same native session is queried by ID; an unresolved outcome is shown as
+uncertain. Opening a terminal only attaches; it does not send the prompt again.
+
+Session records live under `~/.local/share/jarvis/sessions` (directories 0700,
+files 0600), with atomic replacement and per-session locks. The CLI also stores
+its normal conversation history. Restricted Codex sessions use an isolated
+`CODEX_HOME`, linked only to the user's subscription authentication file, an
+empty work directory, disabled native execution tools and project instruction
+loading disabled. Full-access sessions keep the user's normal CLI setup.
+Claude uses invocation-scoped hooks and the same restricted tool configuration
+as the legacy path. It never uses `--bare`; native background IDs are resolved
+exactly, and it never resumes a running background session by creating a copy.
+Voice input is literal bracketed paste over a private tmux socket; terminal
+control characters are escaped and text never becomes shell code. Voice waits
+while an attached terminal owns the input.
+
+The consent broker resolves the **current native turn** before authorizing a
+command. Grants belong to that turn, and a lost/changed turn cancels consent and
+kills a running brokered command group. Independent user watchdog units enforce
+turn deadlines across voice-service restarts, without expiring idle sessions.
+`jarvis session stop <id>` stops only that identified Jarvis session.
+
+`agent_session_mode = "legacy"` remains an explicit rollback option. A CLI
+without all required native capabilities also uses that path before the first
+request is sent. See the main README for configuration and the validation
+matrix for which integrations were exercised live.
 
 ## Model machine access (`system_access`)
 
@@ -171,7 +252,7 @@ sub-directory (no symlink) of `dev_dir`, and `dev-layout` re-checks that
 before opening anything. In `off` mode every marker except `<<FIM>>` is
 ignored.
 
-Process bounds: each model call runs in its **own named systemd scope**
+Legacy process bounds: each model call runs in its **own named systemd scope**
 (`jarvis-model-<pid>-<n>.scope`), and authorized commands run inside it.
 When the answer is delivered the scope is stopped, so nothing an authorized
 command left in the background outlives the question. Cancelling the question
@@ -182,7 +263,7 @@ open consent request and revokes the grant. Restarting
 behaviour; the grant does not survive (revoked at hand-off and at start), so
 every further command in that scope needs a fresh `y`.
 
-Output bounds: the CLI and everything it runs are treated as an untrusted
+Legacy output bounds: the CLI and everything it runs are treated as an untrusted
 producer. Its stdout (events JSONL) and stderr are **pipes** read by the
 launcher, which writes them to the call's files only up to their ceilings —
 32 MiB and 4 MiB (`pump()`). At the ceiling the launcher closes the pipe (the

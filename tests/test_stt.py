@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 import sys
+import json
+import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -162,6 +165,77 @@ class RealtimeCeilings(unittest.TestCase):
     def test_frame_size_ceiling_is_finite(self):
         self.assertGreater(jarvis_stt.OPENAI_MAX_FRAME_BYTES, 0)
         self.assertLess(jarvis_stt.OPENAI_MAX_FRAME_BYTES, jarvis_stt.OPENAI_MAX_SESSION_BYTES)
+
+
+class StreamingProtocolTest(unittest.TestCase):
+    def test_cancel_during_final_wait_does_not_load_whisper(self) -> None:
+        calls = []
+        fallback = SimpleNamespace(label='whisper', transcribe=lambda audio: calls.append(len(audio)) or 'late')
+        backend = jarvis_stt.OpenAIRealtime('key', fallback=fallback, final_timeout=1)
+        with patch.object(jarvis_stt.OpenAISession, '_run'):
+            session = backend.begin()
+        session.chunks.append(np.ones(8000, np.int16))
+        session.ready.set()
+        session.ws = SimpleNamespace(send=lambda data: session.close(), close=lambda: None)
+        self.assertEqual(session.finish(), '')
+        self.assertEqual(calls, [])
+
+    def test_protocol_failure_still_retains_later_audio_for_fallback(self) -> None:
+        backend = jarvis_stt.OpenAIRealtime('key')
+        with patch.object(jarvis_stt.OpenAISession, '_run'):
+            session = backend.begin()
+        session.feed(np.full(4000, 1, np.int16))
+        session._handle_frame('invalid JSON')
+        session.feed(np.full(4000, 2, np.int16))
+        self.assertEqual(len(session.audio()), 8000)
+
+    def test_live_model_sends_languages_and_no_legacy_language(self) -> None:
+        sent = []
+        socket = SimpleNamespace(send=lambda text: sent.append(json.loads(text)), close=lambda: None)
+        backend = jarvis_stt.OpenAIRealtime('test-key', language='pt', terms=['Jarvis'])
+        with patch('websockets.sync.client.connect', return_value=socket):
+            backend.connect()
+        settings = sent[0]['session']['audio']['input']
+        self.assertEqual(settings['transcription']['languages'], ['pt'])
+        self.assertNotIn('language', settings['transcription'])
+        self.assertEqual(settings['transcription']['keywords'], ['Jarvis'])
+        self.assertIsNone(settings['turn_detection'])
+
+    def test_nemotron_failure_transcribes_all_audio_locally(self) -> None:
+        audio_seen = []
+        fallback = SimpleNamespace(label='whisper small/cpu', transcribe=lambda audio:
+                                   audio_seen.append(audio.copy()) or 'texto recuperado')
+        backend = SimpleNamespace(name='nemotron', label='nemotron/cpu',
+                                  connect_timeout=0.1, final_timeout=0.1, fallback=fallback,
+                                  connect=lambda: (_ for _ in ()).throw(ConnectionError('offline')))
+        session = jarvis_stt.OpenAISession(backend, None)
+        first = np.full(4000, 1000, np.int16)
+        second = np.full(4000, 2000, np.int16)
+        session.feed(first)
+        session.feed(second)
+        self.assertEqual(session.finish(), 'texto recuperado')
+        np.testing.assert_array_equal(audio_seen[0], np.concatenate([first, second]) / 32768.0)
+        self.assertEqual(session.label, 'whisper small/cpu')
+
+    def test_cancel_while_connecting_closes_late_connection(self) -> None:
+        release = threading.Event()
+        socket = FakeSocket()
+        def connect():
+            release.wait(1)
+            return socket
+        backend = SimpleNamespace(name='nemotron', label='nemotron/cpu', connect=connect,
+                                  connect_timeout=1, final_timeout=1)
+        session = jarvis_stt.OpenAISession(backend, None)
+        session.close()
+        release.set()
+        session.thread.join(2)
+        self.assertTrue(socket.closed)
+        self.assertIsNone(session.ws)
+
+    def test_explicit_nemotron_does_not_select_paid_api(self) -> None:
+        with patch.object(jarvis_stt, 'cuda_available', return_value=False):
+            provider, _ = jarvis_stt.resolve_provider({'stt_provider': 'nemotron', 'openai_api_key': 'key'})
+        self.assertEqual(provider, 'nemotron')
 
 
 if __name__ == "__main__":

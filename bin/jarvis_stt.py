@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Reconhecimento de fala do Jarvis: backends atrás de uma interface comum.
 
-    stt = build_transcriber(cfg, terms=[...])   # resolve provider (auto/local/openai)
+    stt = build_transcriber(cfg, terms=[...])   # auto/local/nemotron/openai
     session = stt.begin(on_partial=lambda txt: ...)
     session.feed(chunk_int16_16k)                # a cada chunk do mic
     text = session.finish()                      # transcript final (str)
@@ -12,6 +12,7 @@ Backends:
   OpenAIRealtime    Realtime API (intent=transcription): envia o áudio enquanto
                     você fala, recebe deltas (texto provisório) e o transcript
                     final no commit. Guarda o áudio e cai pro local se falhar.
+  NemotronLocal    NeMo-Speech.cpp local; CPU, CUDA ou Metal. Mesmo fallback.
 
 O voice-launcher decide início/fim da fala (VAD + energia); os backends só
 recebem os chunks e devolvem texto. Um único consumidor do mic continua.
@@ -230,6 +231,97 @@ class OpenAIRealtime:
     def begin(self, on_partial: PartialCallback | None = None) -> "OpenAISession":
         return OpenAISession(self, on_partial)
 
+    def connect(self):
+        from websockets.sync.client import connect
+
+        ws = connect(self.url, additional_headers={"Authorization": f"Bearer {self.api_key}"},
+                     open_timeout=self.connect_timeout, max_size=OPENAI_MAX_FRAME_BYTES)
+        transcription = {"model": self.model}
+        if self.model.startswith("gpt-live-transcribe"):
+            transcription.update(languages=[self.language], delay="low")
+            keywords = [term for term in self.terms if not any(c in term for c in "<>\r\n")]
+            if keywords:
+                transcription["keywords"] = keywords[:100]
+        else:
+            transcription["language"] = self.language
+        try:
+            ws.send(json.dumps({"type": "session.update", "session": {
+                "type": "transcription", "audio": {"input": {
+                    "format": {"type": "audio/pcm", "rate": OPENAI_RATE},
+                    "transcription": transcription, "turn_detection": None,
+                    "noise_reduction": {"type": "near_field"},
+                }},
+            }}))
+        except Exception:
+            ws.close()
+            raise
+        return ws
+
+    def send_audio(self, ws, chunk: np.ndarray) -> None:
+        pcm = resample_16k_to_24k(chunk).tobytes()
+        ws.send(json.dumps({"type": "input_audio_buffer.append",
+                            "audio": base64.b64encode(pcm).decode("ascii")}))
+
+
+class NemotronLocal:
+    name = "nemotron"
+    streaming = True
+    connect_timeout = 6.0
+    final_timeout = 15.0
+
+    def __init__(self, device: str, fallback, language: str = "pt"):
+        from jarvis_nemotron import NemotronServer
+
+        self.server = NemotronServer(device=device)
+        self.server.start()
+        self.fallback = fallback
+        self.language = {"pt": "pt-BR", "en": "en-US"}.get(language, language)
+        self.label = f"nemotron 3.5 0.6b/{self.server.device}"
+
+    def begin(self, on_partial: PartialCallback | None = None) -> "OpenAISession":
+        return OpenAISession(self, on_partial)
+
+    def connect(self):
+        from websockets.sync.client import connect
+
+        ws = connect(self.server.url, additional_headers={"Authorization": f"Bearer {self.server.token}"},
+                     open_timeout=self.connect_timeout, max_size=OPENAI_MAX_FRAME_BYTES, proxy=None)
+        try:
+            if json.loads(ws.recv(timeout=self.connect_timeout)).get("type") != "session.created":
+                raise RuntimeError("Nemotron não criou a sessão")
+            ws.send(json.dumps({"type": "session.update", "session": {
+                "sample_rate": SAMPLE_RATE, "language": self.language,
+                "automatic_punctuation": True,
+            }}))
+            if json.loads(ws.recv(timeout=self.connect_timeout)).get("type") != "session.updated":
+                raise RuntimeError("Nemotron recusou a configuração")
+        except Exception:
+            ws.close()
+            raise
+        return ws
+
+    def send_audio(self, ws, chunk: np.ndarray) -> None:
+        ws.send(chunk.astype("<i2", copy=False).tobytes())
+
+
+class LazyWhisper:
+    """Carrega o fallback somente quando necessário, sem reservar duas GPUs/modelos."""
+
+    def __init__(self, cfg: dict, terms: list[str] | None, language: str):
+        self.cfg, self.terms, self.language = cfg, terms, language
+        self.backend: LocalWhisper | None = None
+        self.label = "whisper local"
+        self.lock = threading.Lock()
+
+    def transcribe(self, audio: np.ndarray) -> str:
+        with self.lock:
+            if self.backend is None:
+                self.backend = LocalWhisper(self.cfg.get("whisper_model", "auto"),
+                                            self.cfg.get("whisper_device", "auto"), self.terms,
+                                            language=self.language)
+                self.label = self.backend.label
+            return self.backend.transcribe(audio)
+
 
 class OpenAISession:
     """Uma fala: conecta, envia chunks, commit, espera o transcript final.
@@ -239,8 +331,9 @@ class OpenAISession:
     ficar pronta. Todo chunk também é guardado em memória para o fallback local.
     """
 
-    def __init__(self, backend: OpenAIRealtime, on_partial: PartialCallback | None):
+    def __init__(self, backend: OpenAIRealtime | NemotronLocal, on_partial: PartialCallback | None):
         self.b = backend
+        self.label = backend.label
         self.on_partial = on_partial
         self.chunks: list[np.ndarray] = []
         self.pending: list[np.ndarray] = []
@@ -251,54 +344,36 @@ class OpenAISession:
         self.ready = threading.Event()
         self.done = threading.Event()
         self.closed = False
+        self.cancelled = False
         self.session_bytes = 0
         self.events = 0
         self.lock = threading.Lock()
-        self.thread = threading.Thread(target=self._run, daemon=True, name="openai-stt")
+        self.thread = threading.Thread(target=self._run, daemon=True, name=f"{backend.name}-stt")
         self.thread.start()
 
     # -- thread de rede --------------------------------------------------
 
     def _run(self) -> None:
         try:
-            from websockets.sync.client import connect
-        except ImportError:
-            self.error = "pacote websockets ausente (pip install websockets)"
-            self.done.set()
-            return
-        headers = {"Authorization": f"Bearer {self.b.api_key}"}
-        try:
-            self.ws = connect(self.b.url, additional_headers=headers,
-                              open_timeout=self.b.connect_timeout, max_size=OPENAI_MAX_FRAME_BYTES)
-            transcription = {"model": self.b.model, "language": self.b.language}
-            if self.b.terms:
-                transcription["keywords"] = self.b.terms[:100]
-            self.ws.send(json.dumps({
-                "type": "session.update",
-                "session": {
-                    "type": "transcription",
-                    "audio": {"input": {
-                        "format": {"type": "audio/pcm", "rate": OPENAI_RATE},
-                        "transcription": transcription,
-                        "turn_detection": None,
-                        "noise_reduction": {"type": "near_field"},
-                    }},
-                },
-            }))
+            ws = self.b.connect()
+            with self.lock:
+                if self.closed:
+                    ws.close()
+                    return
+                self.ws = ws
+                # A fila inicial sai antes de qualquer novo chunk do microfone.
+                for chunk in self.pending:
+                    self._send_audio(chunk)
+                self.pending.clear()
+                self.ready.set()
         except Exception as e:
             self.error = f"conexão falhou: {type(e).__name__}: {str(e)[:120]}"
             self.done.set()
             return
 
-        with self.lock:
-            self.ready.set()
-            backlog, self.pending = self.pending, []
-        for chunk in backlog:
-            self._send_audio(chunk)
-
         try:
-            for raw in self.ws:
-                if not self._handle_frame(raw) or self.closed:
+            for raw in ws:
+                if self.closed or not self._handle_frame(raw):
                     return
         except Exception as e:
             if not self.closed:
@@ -308,7 +383,7 @@ class OpenAISession:
     def _fail(self, reason: str) -> bool:
         """Sessão encerrada por violação de um teto: erro, socket fechado, done."""
         self.error = reason
-        self.close()
+        self.close(cancel=False)
         self.done.set()
         return False
 
@@ -360,11 +435,7 @@ class OpenAISession:
 
     def _send_audio(self, chunk_i16: np.ndarray) -> None:
         try:
-            pcm = resample_16k_to_24k(chunk_i16).tobytes()
-            self.ws.send(json.dumps({
-                "type": "input_audio_buffer.append",
-                "audio": base64.b64encode(pcm).decode("ascii"),
-            }))
+            self.b.send_audio(self.ws, chunk_i16)
         except Exception as e:
             self.error = f"envio falhou: {type(e).__name__}"
             self.done.set()
@@ -372,6 +443,8 @@ class OpenAISession:
     # -- API da sessão -----------------------------------------------------
 
     def feed(self, chunk_i16: np.ndarray) -> None:
+        if self.cancelled or (self.closed and not self.error):
+            return
         self.chunks.append(chunk_i16)
         if self.error:
             return
@@ -379,7 +452,7 @@ class OpenAISession:
             if not self.ready.is_set():
                 self.pending.append(chunk_i16)
                 return
-        self._send_audio(chunk_i16)
+            self._send_audio(chunk_i16)
 
     def audio(self) -> np.ndarray:
         if not self.chunks:
@@ -387,9 +460,11 @@ class OpenAISession:
         return np.concatenate(self.chunks).astype(np.float32) / 32768.0
 
     def finish(self) -> str:
+        if self.cancelled:
+            return ""
         audio = self.audio()
         if len(audio) < SAMPLE_RATE * 0.3:
-            self.close()
+            self.close(cancel=False)
             return ""
         text: str | None = None
         if not self.error and self.ready.wait(timeout=self.b.connect_timeout):
@@ -401,16 +476,23 @@ class OpenAISession:
                 text = self.final
             elif not self.error:
                 self.error = "sem transcript final no prazo"
-        self.close()
+        self.close(cancel=False)
+        if self.cancelled:
+            return ""
         if text is not None:
             return text
-        log(f"openai indisponível ({self.error}) — fallback local")
+        log(f"{self.b.name} indisponível ({self.error}) — fallback local")
         if self.b.fallback is None:
             return ""
-        return self.b.fallback.transcribe(audio)
+        text = self.b.fallback.transcribe(audio)
+        self.label = self.b.fallback.label
+        return text
 
-    def close(self) -> None:
+    def close(self, cancel: bool = True) -> None:
+        if cancel:
+            self.cancelled = True
         self.closed = True
+        self.done.set()
         ws, self.ws = self.ws, None
         if ws is not None:
             try:
@@ -427,6 +509,8 @@ def resolve_provider(cfg: dict) -> tuple[str, str]:
     key = cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
     if want == "local":
         return "local", "configurado"
+    if want == "nemotron":
+        return "nemotron", "configurado (local, sem API)"
     if want == "openai":
         if key:
             return "openai", "configurado"
@@ -442,13 +526,23 @@ def resolve_provider(cfg: dict) -> tuple[str, str]:
 
 def build_transcriber(cfg: dict, terms: list[str] | None = None, language: str = "pt"):
     provider, why = resolve_provider(cfg)
-    local = LocalWhisper(cfg.get("whisper_model", "auto"), cfg.get("whisper_device", "auto"), terms,
-                         language=language)
-    log(f"provider={provider} ({why}); local={local.label}")
+    fallback = LazyWhisper(cfg, terms, language)
     if provider == "openai":
         key = cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
-        return OpenAIRealtime(key, cfg.get("openai_stt_model", "gpt-live-transcribe"),
-                              terms=terms, fallback=local, language=language)
+        backend = OpenAIRealtime(key, cfg.get("openai_stt_model", "gpt-live-transcribe"),
+                                 terms=terms, fallback=fallback, language=language)
+        log(f"provider={provider} ({why}); {backend.label}")
+        return backend
+    if provider == "nemotron":
+        try:
+            backend = NemotronLocal(cfg.get("nemotron_device", "auto"), fallback, language)
+            log(f"provider=nemotron; {backend.label}")
+            return backend
+        except (OSError, RuntimeError, TimeoutError) as error:
+            log(f"Nemotron indisponível ({error}); usando Whisper local")
+    local = LocalWhisper(cfg.get("whisper_model", "auto"), cfg.get("whisper_device", "auto"), terms,
+                         language=language)
+    log(f"provider=local ({why}); local={local.label}")
     return local
 
 

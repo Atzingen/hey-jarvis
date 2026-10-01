@@ -75,26 +75,53 @@ def reply_error(req_id, code: int, message: str) -> None:
     send({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
 
 
+def current_context() -> dict | None:
+    context = _load_ctx()
+    if not context.get('session_id'):
+        return {'call_id': CALL_ID, 'question': QUESTION, 'lang': LANG, 'timeout': TIMEOUT, 'native': False}
+    try:
+        import jarvis_sessions
+        jarvis_sessions.SESSIONS_DIR = Path(context['sessions_dir'])
+        session = jarvis_sessions.load_session(context['session_id'])
+        if session.system_access != 'ask':
+            return None
+        active = jarvis_sessions.adapter_for(session.provider).consent_context(session)
+        if not active.get('call_id'):
+            return None
+        return context | active | {'native': True}
+    except Exception:
+        return None
+
+
 def run_tool(args: dict) -> str:
     """Consentimento → execução → texto pro modelo."""
     cmd = args.get("command")
     if not isinstance(cmd, str) or not cmd.strip():
         return "error: 'command' must be a non-empty string"
-    if jarvis_consent.has_grant(CALL_ID):
+    context = current_context()
+    if context is None:
+        return 'DENIED: no verified active agent turn.'
+    call_id = context.get('call_id', '')
+    def cancelled() -> bool:
+        if not context.get('native'):
+            return False
+        current = current_context()
+        return current is None or current.get('call_id') != call_id
+    if jarvis_consent.has_grant(call_id):
         decision = "allow"
         log(f"grant → {cmd[:120]!r}")
     else:
         req = jarvis_consent.new_request("command", "bash", {"command": cmd}, cmd,
-                                         question=QUESTION, lang=LANG)
+                                         question=context.get('question', ''), lang=context.get('lang', LANG))
         log(f"asking user: {cmd[:120]!r}")
-        decision = jarvis_consent.ask(req, timeout=TIMEOUT)
+        decision = jarvis_consent.ask(req, timeout=context.get('timeout', TIMEOUT), should_cancel=cancelled)
         log(f"decision: {decision}")
-        if decision == "allow_all" and CALL_ID:
-            jarvis_consent.grant_allow_all(CALL_ID)
+        if decision == "allow_all" and call_id:
+            jarvis_consent.grant_allow_all(call_id)
     if not decision.startswith("allow"):
         return (f"$ {cmd}\n→ DENIED: the user did not authorize this command on screen. "
                 "Do not retry it; answer without it and say the action was not authorized.")
-    rc, out = jarvis_consent.execute_brokered(cmd)
+    rc, out = jarvis_consent.execute_brokered(cmd, should_cancel=cancelled if context.get("native") else None)
     log(f"ran (exit {rc}): {cmd[:120]!r}")
     return f"$ {cmd}\n→ exit {rc}\n{out}".rstrip() + "\n"
 

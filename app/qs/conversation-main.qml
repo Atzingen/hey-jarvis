@@ -20,5 +20,7 @@ Window {
     state: bridge.state
     tts: bridge.tts
     onQuitRequested: bridge.quit()
+    onSkipPolishRequested: bridge.skipPolish()
+    onOpenSessionRequested: function(sessionId) { bridge.openSession(sessionId) }
   }
 }

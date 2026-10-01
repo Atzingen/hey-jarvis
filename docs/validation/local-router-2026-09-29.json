@@ -1,0 +1,619 @@
+{
+  "mode": "local",
+  "cases": [
+    {
+      "id": "simple-01",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 304.43
+    },
+    {
+      "id": "simple-02",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 278.58
+    },
+    {
+      "id": "simple-03",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 280.12
+    },
+    {
+      "id": "simple-04",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 290.79
+    },
+    {
+      "id": "simple-05",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 281.56
+    },
+    {
+      "id": "simple-06",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 266.06
+    },
+    {
+      "id": "simple-07",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 277.17
+    },
+    {
+      "id": "simple-08",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 280.47
+    },
+    {
+      "id": "simple-09",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 294.35
+    },
+    {
+      "id": "simple-10",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 271.37
+    },
+    {
+      "id": "web-01",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 281.53
+    },
+    {
+      "id": "web-02",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 273.04
+    },
+    {
+      "id": "web-03",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 286.1
+    },
+    {
+      "id": "web-04",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 272.86
+    },
+    {
+      "id": "web-05",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 274.77
+    },
+    {
+      "id": "web-06",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 269.49
+    },
+    {
+      "id": "web-07",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 282.25
+    },
+    {
+      "id": "web-08",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 282.5
+    },
+    {
+      "id": "web-09",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 298.95
+    },
+    {
+      "id": "web-10",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 301.98
+    },
+    {
+      "id": "project-01",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 331.5
+    },
+    {
+      "id": "project-02",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 326.22
+    },
+    {
+      "id": "project-03",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 303.31
+    },
+    {
+      "id": "project-04",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 283.86
+    },
+    {
+      "id": "project-05",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 296.92
+    },
+    {
+      "id": "project-06",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 282.35
+    },
+    {
+      "id": "project-07",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "high",
+      "latency_ms": 281.38
+    },
+    {
+      "id": "project-08",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 278.54
+    },
+    {
+      "id": "project-09",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 277.52
+    },
+    {
+      "id": "project-10",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 280.77
+    },
+    {
+      "id": "deep-01",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "high",
+      "latency_ms": 302.74
+    },
+    {
+      "id": "deep-02",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 357.21
+    },
+    {
+      "id": "deep-03",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 311.35
+    },
+    {
+      "id": "deep-04",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 290.16
+    },
+    {
+      "id": "deep-05",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 302.43
+    },
+    {
+      "id": "deep-06",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 293.4
+    },
+    {
+      "id": "deep-07",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "high",
+      "latency_ms": 292.66
+    },
+    {
+      "id": "deep-08",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "high",
+      "latency_ms": 293.71
+    },
+    {
+      "id": "deep-09",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 288.77
+    },
+    {
+      "id": "deep-10",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 288.95
+    },
+    {
+      "id": "continuation-01",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "active_session",
+      "complexity": "low",
+      "latency_ms": 0.12
+    },
+    {
+      "id": "continuation-02",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 413.36
+    },
+    {
+      "id": "continuation-03",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 449.58
+    },
+    {
+      "id": "continuation-04",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "active_session",
+      "complexity": "low",
+      "latency_ms": 0.01
+    },
+    {
+      "id": "continuation-05",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 424.35
+    },
+    {
+      "id": "continuation-06",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "active_session",
+      "complexity": "low",
+      "latency_ms": 0.01
+    },
+    {
+      "id": "continuation-07",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 439.28
+    },
+    {
+      "id": "continuation-08",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 854.05
+    },
+    {
+      "id": "continuation-09",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 766.84
+    },
+    {
+      "id": "continuation-10",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 581.2
+    },
+    {
+      "id": "ambiguity-01",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "low",
+      "latency_ms": 325.52
+    },
+    {
+      "id": "ambiguity-02",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 291.92
+    },
+    {
+      "id": "ambiguity-03",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "medium",
+      "latency_ms": 304.29
+    },
+    {
+      "id": "ambiguity-04",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "low",
+      "latency_ms": 300.8
+    },
+    {
+      "id": "ambiguity-05",
+      "route": "api",
+      "expected": "api",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_api",
+      "complexity": "low",
+      "latency_ms": 342.62
+    },
+    {
+      "id": "ambiguity-06",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 288.52
+    },
+    {
+      "id": "ambiguity-07",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 289.85
+    },
+    {
+      "id": "ambiguity-08",
+      "route": "agent",
+      "expected": "agent",
+      "correct": true,
+      "unsafe_api": false,
+      "reason": "classified_agent",
+      "complexity": "medium",
+      "latency_ms": 277.2
+    },
+    {
+      "id": "ambiguity-09",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 275.38
+    },
+    {
+      "id": "ambiguity-10",
+      "route": "api",
+      "expected": "agent",
+      "correct": false,
+      "unsafe_api": true,
+      "reason": "classified_web",
+      "complexity": "medium",
+      "latency_ms": 474.78
+    }
+  ],
+  "executors_called": 0,
+  "fixture": "tests/fixtures/routing_pt_br.json",
+  "classifier": "GLiNER2.5-multi-Decide/CPU",
+  "model_revision": "a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f",
+  "cold_result": "local_warming",
+  "cold_fallback_ms": 0.46,
+  "cold_load_seconds": 10.41,
+  "status": "completed",
+  "correct": 51,
+  "total": 60,
+  "unsafe_api": 9,
+  "p50_ms": 289.85,
+  "p95_ms": 474.78,
+  "confidence_evaluated": false
+}

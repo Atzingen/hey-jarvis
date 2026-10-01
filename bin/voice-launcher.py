@@ -6,8 +6,8 @@ Não há palavras-chave: tudo que você diz vai pro modelo, que entende a
 intenção e responde falando e/ou acionando marcadores que o launcher executa
 (ver ACTION_PROTOCOL): <<ABRIR_PROJETO: x>>, <<ABRIR_APP: x>>, <<DORMIR>>,
 <<FIM>>. Pedidos livres sobre a máquina ele executa sozinho (system_access).
-Exceções mínimas, locais: "fim"/"pausa" como palavra solta e o prefixo
-"pense bem", que só escolhe o modelo mais forte.
+Exceções mínimas, locais: "fim"/"pausa" como palavra solta. O roteamento é
+opcional; por padrão, toda pergunta segue para o agente por assinatura.
 
 A captura de fala é por VAD (silero, embutido no faster-whisper): grava
 enquanto você fala e encerra após END_SILENCE_SECONDS de silêncio contínuo,
@@ -55,6 +55,8 @@ import jarvis_narrate
 import jarvis_picoh
 import jarvis_i18n
 import jarvis_stt
+import jarvis_routing
+import jarvis_conversation_routing
 from jarvis_i18n import T
 
 # Tudo que é ajustável vem de ~/.config/jarvis/config.toml (UI: `jarvis config`);
@@ -110,6 +112,7 @@ _RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"
 STATE_FILE = _RUNTIME_DIR / "jarvis-state.json"
 QUIT_FLAG = _RUNTIME_DIR / "jarvis-quit"
 WAKE_OFF_FILE = _RUNTIME_DIR / "jarvis-wake-off"  # existe = sem escuta da wake word (só atalhos)
+TALK_REQUEST_FILE = _RUNTIME_DIR / "jarvis-talk"
 VIEWER_SCRIPT = Path(__file__).resolve().parent / "jarvis-window.py"
 
 # Acesso do modelo à máquina: "ask" (default) roda o CLI sem bypass e cada ação
@@ -154,7 +157,6 @@ NARRATION_INTERVAL_DEEP = CFG["narration_interval_deep"]
 CLAUDE_SYSTEM = jarvis_i18n.system_prompt(LANG, CFG["system_prompt"])
 
 # Perguntas rápidas (não-deep): "codex" (Codex CLI) ou "claude" (Claude Code CLI).
-# "pense bem" sempre usa o Claude Code CLI com deep_model/deep_effort.
 QUICK_PROVIDER = CFG["quick_provider"]
 
 # Executor pra rodar ask_model em paralelo com o ack falado.
@@ -414,8 +416,7 @@ def match_application(query: str) -> tuple[str, list[str], bool] | None:
 def parse_command(text: str):
     """
     Roteamento mínimo do texto transcrito. Quem entende a intenção é o modelo
-    (ver ACTION_PROTOCOL); aqui só ficam os dois comandos de uma palavra e o
-    prefixo "pense bem", que escolhe o modelo mais forte.
+    (ver ACTION_PROTOCOL); aqui só ficam os comandos locais de uma palavra.
 
     Retorna (kind, payload):
         ("ask",   ("<fala>", deep: bool))
@@ -427,16 +428,12 @@ def parse_command(text: str):
         return ("noop", None)
 
     t_norm = _norm(text)
-    t_low = text.lower().strip()
 
     if t_norm in ("fim", "encerrar", "encerra", "chega", "fimdaconversa"):
         return ("end", None)
     if t_norm in ("pausa", "pause", "para", "pare", "quieto", "silencio", "calado"):
         return ("hush", None)
 
-    if re.search(r"\bpense[\s\-]?bem\b", t_low):
-        q = re.sub(r"\bpense[\s\-]?bem\b[,\s]*", "", t_low, count=1).strip()
-        return ("ask", (q or text, True))
     return ("ask", (text, False))
 
 
@@ -530,7 +527,10 @@ def window_strings(lang: str) -> dict:
     table = jarvis_i18n.STRINGS.get(jarvis_i18n.norm_lang(lang), jarvis_i18n.STRINGS["pt-BR"])
     phases = {k[3:]: list(T(lang, k)) for k, v in table.items() if k.startswith("ph_") and isinstance(v, tuple)}
     return {"you": T(lang, "you"), "empty": T(lang, "empty"), "dict_empty": T(lang, "dict_empty"),
-            "phases": phases, "address": jarvis_i18n.address(lang)}
+            "phases": phases, "address": jarvis_i18n.address(lang),
+            **{key: T(lang, key) for key in ("route_agent", "route_api", "route_native", "route_legacy",
+                                             "open_session", "route_fallback", "route_queued", "routing_uncertain",
+                                             "route_reconnecting", "route_terminal_failed", "route_compatibility_notice")}}
 
 
 def app_dir() -> Path:
@@ -576,6 +576,8 @@ class JarvisWindow:
 
     def __init__(self, enabled: bool | None = None):
         self.state: dict = {}
+        self.closed = False
+        self.lock = threading.RLock()
         self.enabled = WINDOW_ENABLED if enabled is None else enabled
 
     def open(self, mode: str = "conversation", phase: str = "listening") -> None:
@@ -618,12 +620,39 @@ class JarvisWindow:
         if not self.enabled:
             return
         self.update(phase="closed")
+        self.closed = True
+
+    def set_answer_at(self, index: int, answer: str, label: str) -> None:
+        with self.lock:
+            exchanges = self.state.get("exchanges", [])
+            if 0 <= index < len(exchanges):
+                exchanges[index].update(a=answer, label=label)
+                self._write()
+
+    def update_routing_at(self, index: int, **fields: object) -> None:
+        if not self.enabled:
+            return
+        with self.lock:
+            exchanges = self.state.get("exchanges", [])
+            if not 0 <= index < len(exchanges):
+                return
+            if "detail" in fields:
+                exchanges[index]["label"] = fields["detail"]
+            if "routing_summary" in fields:
+                exchanges[index]["routing_summary"] = fields["routing_summary"]
+            if index == len(exchanges) - 1:
+                self.state.update(fields)
+            self._write()
 
     def _write(self) -> None:
         try:
-            tmp = STATE_FILE.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.state))
-            tmp.replace(STATE_FILE)
+            with self.lock:
+                if self.closed:
+                    return
+                fd, name = tempfile.mkstemp(prefix="jarvis-state-", dir=STATE_FILE.parent)
+                with os.fdopen(fd, "w") as output:
+                    json.dump(self.state, output)
+                os.replace(name, STATE_FILE)
         except OSError as e:
             print(f"   [janela: falha escrevendo estado: {e}]")
 
@@ -638,13 +667,13 @@ def consume_quit() -> None:
 
 # --- modelo ----------------------------------------------------------
 
-def model_label(deep: bool) -> str:
-    if deep:
-        return f"claude {CFG['deep_model']}/{CFG['deep_effort']}"
-    if QUICK_PROVIDER == "codex":
-        fast = "/fast" if CFG["codex_fast"] else ""
-        return f"codex {CFG['codex_model'] or 'default'}/{CFG['codex_effort']}{fast}"
-    return f"claude {CFG['claude_quick_model']}/{CFG['claude_quick_effort']}"
+def default_agent_profile() -> jarvis_routing.ExecutionProfile:
+    return jarvis_routing.build_profiles(CFG | {"quick_provider": QUICK_PROVIDER,
+                                               "system_access": SYSTEM_ACCESS})["agent_default"]
+
+
+def model_label(profile: jarvis_routing.ExecutionProfile | None = None) -> str:
+    return jarvis_conversation_routing.profile_label(profile or default_agent_profile())
 
 
 # Features do Codex desligadas fora do modo `full` (codex features list).
@@ -671,7 +700,7 @@ def cli_supports_safe_mode(provider: str) -> bool:
     return ok
 
 
-def _build_ask_call(question: str, deep: bool, ans: Path,
+def _build_ask_call(question: str, profile: jarvis_routing.ExecutionProfile, ans: Path,
                     spoken_question: str = "", unit: str = "") -> tuple[list[str], str, dict]:
     """Monta o comando do CLI. Retorna (cmd, provider, kwargs extras do Popen).
 
@@ -687,7 +716,7 @@ def _build_ask_call(question: str, deep: bool, ans: Path,
              comandos pela tool `run` do servidor MCP (consentimento por comando).
       off  — os dois sem tool nenhuma (Codex ainda dentro do sandbox read-only).
     """
-    access = SYSTEM_ACCESS
+    access = profile.system_access
     popen: dict = {}
     mcp_ctx = None
     if access == "ask":
@@ -698,10 +727,10 @@ def _build_ask_call(question: str, deep: bool, ans: Path,
                                       ensure_ascii=False))
         popen["cwd"] = str(ASK_WORKDIR)
         popen["env"] = {**os.environ, "JARVIS_CTX": str(mcp_ctx)}
-    if deep or QUICK_PROVIDER == "claude":
+    if profile.provider == "claude":
         system = CLAUDE_SYSTEM + action_protocol(access, "claude")
-        model = CFG["deep_model"] if deep else CFG["claude_quick_model"]
-        effort = CFG["deep_effort"] if deep else CFG["claude_quick_effort"]
+        model = profile.model
+        effort = profile.effort
         # a pergunta vem logo depois de -p: --tools / --allowedTools são
         # variádicos e engoliriam um argumento posicional que viesse depois
         cmd = ["claude", "-p", question,
@@ -732,8 +761,8 @@ def _build_ask_call(question: str, deep: bool, ans: Path,
            "--skip-git-repo-check",
            "--ephemeral",
            "--json",
-           "-c", f"model_reasoning_effort={CFG['codex_effort']}",
-           "-c", f"service_tier={'fast' if CFG['codex_fast'] else 'default'}"]
+           "-c", f"model_reasoning_effort={profile.effort}",
+           "-c", f"service_tier={'fast' if profile.fast else 'default'}"]
     if access == "full":
         cmd += ["--dangerously-bypass-approvals-and-sandbox"]
     else:
@@ -753,8 +782,8 @@ def _build_ask_call(question: str, deep: bool, ans: Path,
                     "-c", 'mcp_servers.jarvis.default_tools_approval_mode="approve"']
         ASK_WORKDIR.mkdir(parents=True, exist_ok=True)
         cmd += ["-C", str(ASK_WORKDIR)]
-    if CFG["codex_model"]:
-        cmd += ["-m", CFG["codex_model"]]
+    if profile.model:
+        cmd += ["-m", profile.model]
     cmd += ["-o", str(ans), prompt]
     return cmd, "codex", popen
 
@@ -803,7 +832,8 @@ def run_action(kind: str, arg: str, args, window) -> tuple[str, bool]:
     return "", False
 
 
-def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
+def ask_model(question: str, profile: jarvis_routing.ExecutionProfile | None = None,
+              cancel: threading.Event | None = None,
               on_status=None, spoken_question: str = "", on_event=None):
     """Roda o CLI do modelo; eventos em streaming vão pra `on_status(texto)`
     (rótulo pronto pra janela) e `on_event(kind, texto)` (evento cru, narração).
@@ -813,16 +843,17 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
     rodando e handoff tem proc/answer_file/events_file/provider/label;
     ("", None) quando cancelado (o scope inteiro do CLI é parado).
     """
-    label = model_label(deep)
+    profile = profile or default_agent_profile()
+    label = model_label(profile)
     unit = f"jarvis-model-{os.getpid()}-{int(time.time() * 1000) % 10**8}"
-    provider_guess = "claude" if (deep or QUICK_PROVIDER == "claude") else "codex"
-    if SYSTEM_ACCESS != "full" and not cli_supports_safe_mode(provider_guess):
+    provider_guess = profile.provider
+    if profile.system_access != "full" and not cli_supports_safe_mode(provider_guess):
         return (T(LANG, "access_unavailable", cli=provider_guess), None)
     ans = private_tmp("jarvis-ans-", ".txt")
     ev = private_tmp("jarvis-ev-", ".jsonl")
     err = private_tmp("jarvis-err-", ".txt")
 
-    cmd, provider, popen_kwargs = _build_ask_call(question, deep, ans, spoken_question, unit)
+    cmd, provider, popen_kwargs = _build_ask_call(question, profile, ans, spoken_question, unit)
     ctx = Path(popen_kwargs.get("env", {}).get("JARVIS_CTX", "")) if popen_kwargs.get("env") else None
 
     def cleanup():
@@ -922,7 +953,7 @@ def ask_model(question: str, deep: bool, cancel: threading.Event | None = None,
                                              max_line=MODEL_MAX_LINE_BYTES)
         return out
 
-    limit = HANDOFF_SECONDS_DEEP if deep else HANDOFF_SECONDS_QUICK
+    limit = HANDOFF_SECONDS_QUICK
     deadline = time.monotonic() + limit
     try:
         while True:
@@ -984,6 +1015,12 @@ def open_handoff_terminal(handoff: dict) -> None:
                          "-e", "bash", "-c", shell_cmd])
     except FileNotFoundError:
         print("   [rascunho: alacritty não encontrado]")
+
+
+def legacy_routed_call(request: jarvis_routing.RouteRequest, profile: jarvis_routing.ExecutionProfile,
+                       cancel: threading.Event, on_status, on_event):
+    return ask_model(with_context(request.text, list(request.context)), profile, cancel,
+                     on_status, request.text, on_event)
 
 
 # --- áudio -----------------------------------------------------------
@@ -1321,6 +1358,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             jarvis_narrate.warm_up(CFG)
 
         history: list[tuple[str, str]] = []
+        history_lock = threading.Lock()
+        executor = jarvis_conversation_routing.ConversationExecutor(CFG, Path.cwd(), legacy_routed_call)
         followup = False
         pending_audio: np.ndarray | None = None  # fala capturada por barge-in
         pending_chunks: list[np.ndarray] = []     # a mesma fala, em chunks int16 (pro stt)
@@ -1374,6 +1413,7 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             print(f"[cmd]  {kind}")
 
             if kind == "end":
+                jarvis_conversation_routing.forget_active_session()
                 print("[conv] encerrada por comando de voz")
                 chime(660, 440, ms=100, vol=0.12)
                 return
@@ -1393,9 +1433,9 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 return
 
             # kind == "ask"
-            question, deep = payload
-            label = model_label(deep)
-            print(f"[ask]  provider={label} q={_txt(question)}")
+            question, _unused = payload
+            label = ""
+            print(f"[ask]  router={CFG.get('routing_mode', 'agent')} q={_txt(question)}")
             t0 = time.time()
 
             if args.test:
@@ -1406,24 +1446,43 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 flush_stream(stream)
                 continue
 
-            question_ctx = with_context(question, history)
             cancel = threading.Event()
             thoughts: list[str] = []
             narrator = jarvis_narrate.Narrator(
                 narr_mode, LANG,
-                NARRATION_INTERVAL_DEEP if deep else NARRATION_INTERVAL_QUICK, question,
+                NARRATION_INTERVAL_QUICK, question,
                 generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG))
 
             def on_status(status: str) -> None:
+                if status in ("terminal_owns_input", "agent_turn_running"):
+                    status = T(LANG, "route_queued")
+                elif status == "session_reconnecting":
+                    status = T(LANG, "route_reconnecting")
                 thoughts.append(status)
                 window.update(thoughts=thoughts[-4:])
 
-            fut = claude_executor.submit(ask_model, question_ctx, deep, cancel, on_status,
-                                         question, narrator.feed)
-
-            # a pergunta entra na janela já na transcrição; a resposta preenche depois
+            exchange_index = len(window.state.get("exchanges", []))
             window.add_exchange(question, "…", label)
-            window.update(phase="thinking", detail=label, thoughts=[])
+            window.update(phase="thinking", detail="", thoughts=[], routing_summary="",
+                          effective_route="", fallback_reason="", session_backend="", session_id="", can_attach=False)
+
+            def on_route(index: int = exchange_index, **fields: object) -> None:
+                window.update_routing_at(index, **fields)
+
+            def on_late(result, original_question=question, index=exchange_index) -> None:
+                answer = result.text
+                if result.allow_actions:
+                    answer, late_actions = parse_actions(answer)
+                    for action, argument in allowed_actions(late_actions, original_question, result.profile.system_access):
+                        run_action(action, argument, args, window)
+                with history_lock:
+                    history.append((original_question, answer))
+                window.set_answer_at(index, answer, model_label(result.profile))
+
+            with history_lock:
+                context = tuple(history[-MAX_HISTORY_EXCHANGES:])
+            fut = claude_executor.submit(executor.ask, question, context, cancel, on_status,
+                                         narrator.feed, on_route, on_late)
 
             # fase busy: listener assume leitura do mic (wake word OU fala = barge-in)
             listener = BargeInListener(
@@ -1432,12 +1491,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             )
             listener.start()
 
-            # ack curto no lugar de repetir a pergunta: chime pra rápida, aviso pra deep
-            if deep:
-                interrupted = tts(T(LANG, "thinking"), listener)
-            else:
-                chime(880, 1320, ms=100, vol=0.15)
-                interrupted = listener.fired
+            chime(880, 1320, ms=100, vol=0.15)
+            interrupted = listener.fired
             narrator.spoke()
 
             consent_seen: str | None = None  # id do pedido de autorização já anunciado
@@ -1458,13 +1513,13 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 if pend is not None and pend.get("id") != consent_seen:
                     consent_seen = pend.get("id")
                     print(f"[ask]  autorização pendente: {_txt(pend.get('summary', ''), 120)}")
-                    window.update(phase="consent", detail=label)
+                    window.update(phase="consent")
                     if tts(T(LANG, "consent_needed"), listener):
                         interrupted = True
                         break
                     narrator.spoke()
                 elif pend is None and consent_seen is not None and window.state.get("phase") == "consent":
-                    window.update(phase="thinking", detail=label)
+                    window.update(phase="thinking")
                 elif pend is None:
                     # narração de progresso: uma frase curta do que o modelo está fazendo
                     phrase = narrator.poll()
@@ -1483,24 +1538,31 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             handoff = None
             if not interrupted:
                 try:
-                    resposta, handoff = fut.result(timeout=5)
-                except Exception as e:
-                    resposta, handoff = f"Erro inesperado: {e}", None
+                    result = fut.result(timeout=5)
+                    resposta, handoff = result.text, result.handoff
+                    label = model_label(result.profile)
+                    allow_actions = result.allow_actions
+                except jarvis_routing.RouterCancelled:
+                    resposta, handoff, allow_actions = "", None, False
+                except (jarvis_routing.ExecutionUncertain, jarvis_conversation_routing.sessions.SubmissionUnknown):
+                    resposta, handoff, allow_actions = T(LANG, "routing_uncertain"), None, False
+                except Exception:
+                    resposta, handoff, allow_actions = T(LANG, "routing_error"), None, False
                 elapsed = time.time() - t0
 
                 if handoff is not None:
                     # estourou o prazo: o trabalho segue num terminal rascunho
                     print(f"[ans]  handoff após {elapsed:.0f}s [{label}] — terminal rascunho")
-                    open_handoff_terminal(handoff)
-                    window.set_last_answer(T(LANG, "handoff_window"))
+                    if not handoff.get("native"):
+                        open_handoff_terminal(handoff)
+                    window.set_answer_at(exchange_index, T(LANG, "native_handoff" if handoff.get("native") else "handoff_window"), label)
                     window.update(phase="handoff", detail=label)
-                    history.append((question, T(LANG, "handoff_history")))
-                    interrupted = tts(T(LANG, "handoff"), listener)
+                    interrupted = tts(T(LANG, "native_handoff_voice" if handoff.get("native") else "handoff"), listener)
                 else:
-                    resposta, actions = parse_actions(resposta)
+                    resposta, actions = parse_actions(resposta) if allow_actions else (resposta, [])
                     actions = allowed_actions(actions, question, SYSTEM_ACCESS)
                     print(f"[ans]  {elapsed:.1f}s [{label}] {actions or ''} :: {_txt(resposta)}")
-                    window.set_last_answer(resposta or T(LANG, "action"))
+                    window.set_answer_at(exchange_index, resposta or T(LANG, "action"), label)
                     # executa o que o modelo decidiu; avisos (ex.: projeto não achado) entram na fala
                     end_requested = False
                     notices: list[str] = []
@@ -1515,7 +1577,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                     if not spoken_answer and actions:
                         spoken_answer = T(LANG, "done")
                     window.update(phase="speaking", detail=label)
-                    history.append((question, resposta or T(LANG, "action_done")))
+                    with history_lock:
+                        history.append((question, resposta or T(LANG, "action_done")))
                     interrupted = tts(spoken_answer, listener) if spoken_answer else False
                     if interrupted:
                         print("[int]  resposta interrompida")
@@ -1569,14 +1632,38 @@ def dictate_requested() -> bool:
     return DICT.is_set()
 
 
-def run_dictation(stream, stt, args, duck: bool = False) -> None:
+def run_dictation(stream, stt, args, duck: bool = False, vad_model=None) -> None:
     """Grava até o comando de parar, transcreve, revisa (opcional) e cola na janela ativa."""
+    import jarvis_dictation_stream
+
+    live = CFG.get("dictation_live", False)
+    destination = jarvis_dictation_stream.LiveOutput(
+        CFG["dictation_output"], jarvis_dictation_stream.active_window_id(), dry_run=args.test,
+    ) if live else None
     window = JarvisWindow(enabled=CFG["dictation_window"])
+    QUIT_FLAG.unlink(missing_ok=True)
+    jarvis_dictate.POLISHING_FILE.unlink(missing_ok=True)
+    jarvis_dictate.SKIP_POLISH_FILE.unlink(missing_ok=True)
     window.open(mode="dictation", phase="dictating")
+    window.update(detail=getattr(stt, "label", ""),
+                  dictation_notice=T(LANG, "dict_live_hint") if live else "")
     # Abaixa a música enquanto grava (só no toggle) e restaura assim que parar de falar.
     ducked_from = jarvis_dictate.duck_volume(CFG["dictation_duck"]) if duck and CFG["dictation_duck"] < 1.0 else None
     jarvis_dictate.set_recording(True)
-    session = stt.begin(on_partial=lambda t: window.update(partial=t))
+    if live:
+        def confirmed(text: str) -> None:
+            window.update(detail=session.label)
+            destination.deliver(text)
+            if destination.blocked:
+                window.update(dictation_notice=T(LANG, "dict_live_blocked"))
+        session = jarvis_dictation_stream.LiveDictation(
+            stt, vad_model if vad_model is not None else get_vad_model(),
+            on_partial=lambda text: window.update(partial=text, detail=session.label), on_confirmed=confirmed,
+            threshold=VAD_SPEECH_THRESHOLD,
+        )
+        destination.should_cancel = lambda: session.cancelled.is_set() or QUIT_FLAG.exists()
+    else:
+        session = stt.begin(on_partial=lambda t: window.update(partial=t))
     levels: deque = deque(maxlen=120)
     outcome = "stop"
     t0 = time.monotonic()
@@ -1585,6 +1672,9 @@ def run_dictation(stream, stt, args, duck: bool = False) -> None:
     chime(880, 1320, ms=60, vol=0.12)
     try:
         while True:
+            if QUIT_FLAG.exists():
+                outcome = "cancel"
+                break
             if DICT.is_set():
                 DICT.clear()
                 cmd = jarvis_dictate.take_command()
@@ -1604,12 +1694,19 @@ def run_dictation(stream, stt, args, duck: bool = False) -> None:
             if now - last_ui > 0.1:
                 window.update(levels=list(levels))
                 last_ui = now
+    except BaseException:
+        session.close()
+        window.close()
+        raise
     finally:
         jarvis_dictate.set_recording(False)
         jarvis_dictate.restore_volume(ducked_from)
 
     if outcome == "cancel":
         session.close()
+        if live:
+            destination.finish(" ".join(session.parts))
+            window.update(dictation_notice=T(LANG, "dict_live_cancelled"))
         print("[dict] cancelado")
         window.update(phase="cancelled")
         time.sleep(0.8)
@@ -1618,19 +1715,58 @@ def run_dictation(stream, stt, args, duck: bool = False) -> None:
 
     window.update(phase="transcribing")
     t1 = time.time()
-    text = session.finish()
+    def cancelled_while_finishing() -> bool:
+        if QUIT_FLAG.exists():
+            return True
+        if DICT.is_set() and jarvis_dictate.CMD_FILE.exists():
+            if jarvis_dictate.CMD_FILE.read_text().strip() == "cancel":
+                DICT.clear()
+                jarvis_dictate.take_command()
+                return True
+        return False
+    try:
+        text = session.finish(should_cancel=cancelled_while_finishing) if live else session.finish()
+    except BaseException:
+        session.close()
+        window.close()
+        raise
+    window.update(detail=getattr(session, "label", getattr(stt, "label", "")))
     print(f"[dict] {time.monotonic()-t0:.1f}s de áudio -> {len(text)} chars em {time.time()-t1:.1f}s :: {_txt(text, 120)}")
-    if text and CFG["dictation_polish"]:
+    if live:
+        result = destination.finish(text)
+        was_cancelled = session.cancelled.is_set()
+        notice = (T(LANG, "dict_live_cancelled") if was_cancelled else
+                  T(LANG, "dict_live_blocked") if destination.blocked else "")
+        window.update(phase="cancelled" if was_cancelled or not text else result,
+                      final=text, partial="", dictation_notice=notice)
+        chime(1320, 880, ms=60, vol=0.10)
+        time.sleep(1.5)
+        window.close()
+        return
+    if text and CFG["dictation_polish"] and not QUIT_FLAG.exists():
+        raw_text = text
+        jarvis_dictate.paste_text(text, "clipboard", dry_run=args.test)
+        jarvis_dictate.POLISHING_FILE.write_text(str(os.getpid()))
         window.update(phase="polishing", final=text, partial="")
         t2 = time.time()
-        text = jarvis_dictate.polish(text, LANG, CFG["dictation_polish_model"])
+        try:
+            text = jarvis_dictate.polish_interruptible(
+                text, LANG, CFG["dictation_polish_model"],
+                should_skip=lambda: jarvis_dictate.SKIP_POLISH_FILE.exists() or QUIT_FLAG.exists(),
+            )
+        finally:
+            window.update(phase="delivering")
+            jarvis_dictate.POLISHING_FILE.unlink(missing_ok=True)
+            if jarvis_dictate.SKIP_POLISH_FILE.exists():
+                text = raw_text
+            jarvis_dictate.SKIP_POLISH_FILE.unlink(missing_ok=True)
         print(f"[dict] revisão em {time.time()-t2:.1f}s :: {_txt(text, 120)}")
-    if not text:
+    if not text or QUIT_FLAG.exists():
         window.update(phase="cancelled", final="", partial="")
         time.sleep(1.0)
         window.close()
         return
-    window.update(final=text, partial="")
+    window.update(phase="delivering", final=text, partial="")
     result = jarvis_dictate.paste_text(text, CFG["dictation_output"], dry_run=args.test)
     print(f"[dict] saída: {result}")
     window.update(phase="pasted" if result in ("pasted", "typed", "dry-run") else "copied")
@@ -1641,8 +1777,17 @@ def run_dictation(stream, stt, args, duck: bool = False) -> None:
 
 # --- push-to-talk ----------------------------------------------------
 # SIGUSR1 dispara a escuta como se a wake word tivesse sido detectada
-# (bind de teclado: systemctl --user kill -s SIGUSR1 voice-launcher.service).
+# O CLI `jarvis talk` deixa um pedido consumido quando o serviço está pronto.
 PTT = threading.Event()
+
+
+def take_talk_request() -> bool:
+    """Consome a chamada do atalho, inclusive se chegou antes do serviço iniciar."""
+    try:
+        TALK_REQUEST_FILE.unlink()
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def _on_sigusr1(signum, frame):
@@ -1655,7 +1800,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test", action="store_true", help="dry-run (nao abre layouts nem suspende)")
     ap.add_argument("--whisper-model", default=None, help="sobrescreve whisper_model do config")
-    ap.add_argument("--stt", default=None, choices=["auto", "local", "openai"], help="sobrescreve stt_provider")
+    ap.add_argument("--stt", default=None, choices=["auto", "local", "nemotron", "openai"], help="sobrescreve stt_provider")
     ap.add_argument("--wake-threshold", type=float, default=WAKE_THRESHOLD)
     args = ap.parse_args()
     if args.whisper_model:
@@ -1681,13 +1826,15 @@ def main() -> None:
     print(">> script de layout:", LAYOUT_SCRIPT, "(existe)" if LAYOUT_SCRIPT.exists() else "(AUSENTE!)")
     print(">> viewer da janela:", VIEWER_SCRIPT, "(existe)" if VIEWER_SCRIPT.exists() else "(AUSENTE!)")
     print(">> voz:", VOICE, "(existe)" if VOICE.exists() else "(AUSENTE!)")
-    print(f">> perguntas rápidas: {model_label(False)} | pense bem: {model_label(True)}")
+    print(f">> roteamento: {CFG['routing_mode']} | agente: {model_label()}")
     print(f">> modo: {'TEST (dry-run)' if args.test else 'REAL'}")
     signal.signal(signal.SIGUSR1, _on_sigusr1)
     signal.signal(signal.SIGUSR2, _on_sigusr2)
     picoh_daemon = jarvis_picoh.spawn_daemon(PICOH_PORT) if PICOH_ENABLED else None
     print(f">> picoh: {'daemon iniciado (procura o robô nas portas USB)' if picoh_daemon else 'off'}")
     jarvis_dictate.set_recording(False)
+    jarvis_dictate.POLISHING_FILE.unlink(missing_ok=True)
+    jarvis_dictate.SKIP_POLISH_FILE.unlink(missing_ok=True)
     jarvis_consent.revoke_grants()   # nenhum "permitir o resto" sobrevive a um restart
     jarvis_consent.cancel_all()
     sweep_model_tmp()
@@ -1718,6 +1865,8 @@ def main() -> None:
     try:
         wake_was_off = False
         while True:
+            if take_talk_request():
+                PTT.set()
             # Modo manual (marcador jarvis-wake-off): sem escuta da wake word — o
             # mic fica FECHADO enquanto ocioso; só o push-to-talk (SIGUSR1) e o
             # ditado (SIGUSR2) abrem o stream, que volta a fechar em seguida.
@@ -1757,7 +1906,7 @@ def main() -> None:
                 cmd = jarvis_dictate.take_command()
                 if cmd in ("start", "toggle"):
                     try:
-                        run_dictation(stream, stt, args, duck=(cmd == "toggle"))
+                        run_dictation(stream, stt, args, duck=(cmd == "toggle"), vad_model=vad_model)
                     except Exception as e:
                         print(f"[dict erro: {type(e).__name__}: {e}]")
                         jarvis_dictate.set_recording(False)
@@ -1774,7 +1923,7 @@ def main() -> None:
             if ptt or score > args.wake_threshold:
                 try:
                     if ptt:
-                        print("[wake] push-to-talk (SIGUSR1)")
+                        print("[wake] push-to-talk (atalho)")
                     else:
                         print(f"[wake] hey_jarvis detectado (score={score:.2f})")
                     run_conversation(stream, wake, stt, vad_model, args)
