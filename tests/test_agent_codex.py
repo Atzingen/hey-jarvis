@@ -50,6 +50,22 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertFalse(rpc.call_args_list[0].args[2]['includeTurns'])
 
     @patch('jarvis_agent_codex.rpc')
+    def test_each_turn_reapplies_the_jarvis_access_policy(self, rpc: Mock) -> None:
+        for access, expected in [('full', 'dangerFullAccess'), ('ask', 'readOnly'), ('off', 'readOnly')]:
+            for status in ('idle', 'notLoaded'):
+                with self.subTest(access=access, status=status):
+                    profile = ExecutionProfile('agent_default', 'agent', 'codex', 'model', 'low', access)
+                    session = sessions.new_session(self.request, profile, 'native-policy')
+                    replies = [{'thread': {'status': {'type': status}, 'turns': []}}]
+                    if status == 'notLoaded':
+                        replies.append({'thread': {'status': {'type': 'idle'}, 'turns': []}})
+                    rpc.side_effect = replies + [{'turn': {'id': 'turn-policy'}}]
+                    self.assertEqual(codex.submit(session, self.request), 'turn-policy')
+                    params = rpc.call_args.args[2]
+                    self.assertEqual(params.get('sandboxPolicy'), {'type': expected})
+                    self.assertEqual(params.get('approvalPolicy'), 'never')
+
+    @patch('jarvis_agent_codex.rpc')
     def test_unloaded_thread_is_resumed_before_sending_new_request(self, rpc: Mock) -> None:
         rpc.side_effect = [
             {'thread': {'id': 'native-id', 'status': {'type': 'notLoaded'}, 'turns': []}},

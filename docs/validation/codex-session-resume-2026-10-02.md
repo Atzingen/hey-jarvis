@@ -39,3 +39,27 @@ python -m unittest tests.test_agent_codex tests.test_sessions tests.test_convers
 ```
 
 A validação acima exercita a sessão e a resposta do agente. Não simula fala pelo microfone.
+
+## Complemento: preservar a política de acesso ao retomar
+
+O primeiro teste validava resposta e memória, mas não execução de ferramentas. O teste
+posterior do usuário com Docker revelou que `thread/resume` sem política explícita
+reaplicava `workspace-write` do config global, com rede desativada, embora o Jarvis estivesse
+configurado como `system_access=full`. O processo Linux tinha o grupo `docker`; não era
+uma falha de login nem da permissão do socket.
+
+O adaptador agora aplica `approvalPolicy=never` e `sandboxPolicy` em **cada `turn/start`**,
+conforme a política da sessão Jarvis: `dangerFullAccess` para `full`, `readOnly` para
+`ask`/`off`. Assim corrige também uma conversa já carregada com a política errada, sem
+mudar a configuração global do Codex ou elevar uma sessão configurada como restrita.
+
+- Teste de regressão falhou nos seis casos antes da mudança: `full`/`ask`/`off`, com
+  conversa `idle` ou `notLoaded`. Os 48 testes relevantes passaram após a correção.
+- Adaptador instalado atualizado com backup e serviço Jarvis reiniciado.
+- Teste pelo `ConversationExecutor` instalado, na conversa real: resposta
+  “Senhor, temos 23 containers rodando agora.”
+- O rollout nativo confirmou o comando `set -o pipefail; docker ps -q | wc -l`, saída
+  `23` e código 0. O `turn_context` confirmou `danger-full-access` e `never`.
+- O comando apareceu como `custom_tool_call` no rollout. A projeção de
+  `thread/turns/list` não o expôs como `commandExecution`; por isso a primeira asserção
+  do verificador falhou, e a confirmação foi feita no registro nativo do mesmo turno.

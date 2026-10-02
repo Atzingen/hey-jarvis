@@ -184,6 +184,8 @@ def submit(session: SessionRef, request: RouteRequest) -> str:
         raise SessionBusy('agent_turn_running')
     profile = read_record(session.id)['profile']
     params = {'threadId': session.native_id, 'clientUserMessageId': request.request_id,
+              'approvalPolicy': 'never',
+              'sandboxPolicy': {'type': 'dangerFullAccess' if session.system_access == 'full' else 'readOnly'},
               'input': [{'type': 'text', 'text': input_text(request), 'text_elements': []}],
               'effort': profile['effort'], 'serviceTier': 'fast' if profile['fast'] else 'default'}
     if profile['model']:
