@@ -495,6 +495,9 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "language": ("Language", "Language Jarvis speaks and understands. Also picks the default voice and the speech-recognition language."),
     "stt_provider": ("Speech recognition", "nemotron = local streaming (jarvis stt install-nemotron); openai = API streaming with a key; local = Whisper. auto preserves GPU→Whisper, otherwise API with a key or Whisper CPU."),
     "nemotron_device": ("Nemotron device", "auto uses the installed runtime accelerator; cpu needs no GPU; cuda uses NVIDIA; metal uses Apple Silicon. Failures fall back to Whisper."),
+    "stt_vocabulary_enabled": ("Use recognition vocabulary", "Bias transcription toward names and technical terms. Disable to compare without hints."),
+    "stt_vocabulary": ("Personal vocabulary", "One word or phrase per line (or comma-separated), up to 100 entries. Replaces the automatic list; empty uses built-in terms and project names. Whisper uses up to 223 tokens. OpenAI mode sends these words to the API."),
+    "nemotron_vocabulary_boost": ("Nemotron vocabulary strength", "0 disables Nemotron hints; start at 0.5. Higher values may insert unwanted words. Older installations need a model update with jarvis stt install-nemotron."),
     "dictation_live": ("Write while dictating", "Preview provisional words and type confirmed segments at pauses. Skips AI polishing and does not paste again at the end. Changing windows stops typing; the full transcript stays on the clipboard. Clipboard output copies only at the end."),
     "openai_api_key": ("OpenAI API key", "Used by the openai speech recognition. Empty = OPENAI_API_KEY environment variable."),
     "wake_word_enabled": (

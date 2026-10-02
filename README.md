@@ -348,6 +348,47 @@ systemctl --user restart voice-launcher.service
 [Validação da integração e limites dos testes](docs/validation/stt-streaming-2026-09-30.md),
 com referência à avaliação anterior de CPU/GPU.
 
+### Palavras e nomes que o ditado costuma errar
+
+Em **Configuração → Escuta → Vocabulário pessoal**, coloque uma palavra ou expressão
+por linha, por exemplo `Claude Code`, `README` e `Hyprland`. Vírgulas também separam
+entradas. A lista pessoal substitui a lista automática; se estiver vazia, o Jarvis
+continua usando seus termos básicos e os nomes dos projetos. **Usar vocabulário no
+reconhecimento** permite desligar todas as pistas sem apagar a lista.
+
+As pistas favorecem a grafia durante o reconhecimento; não são substituições
+automáticas nem memória pessoal do assistente. A lista fica no seu `config.toml`,
+não no repositório. Ao escolher OpenAI, os termos são enviados junto à configuração
+da transcrição. O caminho Nemotron/Whisper continua inteiramente local.
+
+| Opção | Como usa o vocabulário |
+|---|---|
+| Nemotron | `speech_contexts` antes do áudio; ajuste **Avançado → Reconhecimento → Força do vocabulário no Nemotron**. Comece com 0.5; 0 desliga e valores altos podem inserir palavras indevidas. |
+| OpenAI `gpt-live-transcribe` | `keywords`, até 100 entradas válidas e sem duplicatas. Outros modelos OpenAI não recebem esse campo. |
+| Whisper / fallback local | `hotwords`, limitado pelo faster-whisper a 223 tokens (pedaços de palavras). O excedente é truncado pelo reconhecedor. |
+
+O Jarvis limita a lista a 100 entradas. Prefira uma lista curta de termos relevantes
+ao assunto; nomes em inglês e siglas podem consumir vários tokens no Whisper.
+
+**Nemotron instalado antes deste suporte:** depois de atualizar os scripts do Jarvis,
+rode novamente `jarvis stt install-nemotron` (ou `--device cpu`, conforme sua instalação).
+O modelo atualizado inclui o tokenizador necessário para as pistas, com revisão e
+SHA-256 verificados. Uma instalação antiga continua transcrevendo, mas registra no
+log que o vocabulário exige a atualização; nenhum modelo é baixado ao iniciar o serviço.
+
+Exemplo pelo terminal:
+
+```bash
+jarvis config set stt_vocabulary 'Claude Code, README, Hyprland'
+jarvis config set stt_vocabulary_enabled true
+jarvis config set nemotron_vocabulary_boost 0.5
+systemctl --user restart voice-launcher.service
+```
+
+Ao salvar pela tela de configuração, o serviço é reiniciado automaticamente.
+O streaming e o fallback para Whisper permanecem disponíveis com ou sem vocabulário.
+[Resultados da comparação de áudio e validação](docs/validation/stt-vocabulary-2026-10-02.md).
+
 ## Interface, áudio e Picoh
 
 `jarvis app` abre o painel da barra como aplicativo. A janela acompanha transcrição, andamento, autorizações e resposta, com o avatar e o anel de voz. O mesmo QML roda no Quickshell ou no host PySide6; há alternativa em terminal quando Qt não está disponível.
