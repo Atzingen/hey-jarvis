@@ -208,9 +208,11 @@ Everything is configurable, three ways:
 | `max_utterance_seconds` | `45.0` | hard cap per utterance |
 | `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
 | `max_history_exchanges` | `4` | previous exchanges sent as context |
-| `handoff_seconds_quick` | `45` | Opens the same native session in a terminal; legacy mode uses its progress viewer |
+| `handoff_seconds_quick` | `45` | Opens the same native session in a terminal; legacy mode uses its progress viewer. When the native session finishes later, Jarvis speaks the answer at the next pause (start of a listening window or while waiting for the wake word) |
 | `handoff_max_minutes` | `30` | maximum active turn duration, including after terminal handoff; idle sessions remain available |
 | `narration_interval_quick` | `8` | Seconds of silence before a progress sentence (3–60) |
+| `narration_first_seconds` | `3` | Shortest wait before the first progress sentence, which is spoken as soon as the model starts acting (runs a command, reads something); later ones follow `narration_interval_quick` |
+| `agent_session_max_hours` | `12` | A native session older than this is stopped and the next conversation opens a new one; it is also replaced when the system prompt or the context file change |
 | `narration_local_model` | `gemma3:4b` | Ollama model that writes the sentence (`narration = local`/`auto`) |
 | `narration_openai_model` | `gpt-5.4-nano` | Responses API model for `narration = openai` (uses `openai_api_key`) |
 | `system_prompt` | `""` | style instructions; empty = language default (edit in `$EDITOR`) |

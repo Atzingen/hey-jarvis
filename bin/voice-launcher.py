@@ -29,6 +29,7 @@ um terminal rascunho separado, onde segue executando até terminar.
 import argparse
 import json
 import os
+import queue
 import signal
 import difflib
 import re
@@ -38,6 +39,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import wave
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -1195,8 +1197,9 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
         except subprocess.TimeoutExpired:
             proc.kill()
 
+    seconds = wav_seconds(wav_path) + 5
     if listener is None:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + max(30, seconds)
         while proc.poll() is None:
             if (stop_when is not None and stop_when()) or time.monotonic() > deadline:
                 cut()
@@ -1206,7 +1209,7 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
 
     listener.tts_playing = True
     try:
-        deadline = time.monotonic() + 60  # hard cap: TTS nunca deveria passar disso
+        deadline = time.monotonic() + max(60, seconds)  # teto: um paplay travado não segura a conversa
         while proc.poll() is None:
             if stop_when is not None and stop_when():
                 cut()
@@ -1226,6 +1229,33 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
         return listener.fired
     finally:
         listener.tts_playing = False
+
+
+def wav_seconds(path: Path) -> float:
+    try:
+        with wave.open(str(path)) as audio:
+            return audio.getnframes() / float(audio.getframerate())
+    except (OSError, EOFError, wave.Error, ZeroDivisionError):
+        return 0.0
+
+
+# Respostas que chegaram depois do aviso de trabalho longo. Quem fala é a thread principal,
+# num ponto em que o microfone não está em uso: o início de uma escuta ou a espera da wake word.
+LATE_ANSWERS: "queue.SimpleQueue[str]" = queue.SimpleQueue()
+
+
+def speak_late_answers() -> bool:
+    """Fala as respostas tardias pendentes. True se falou alguma."""
+    spoke = False
+    while True:
+        try:
+            answer = LATE_ANSWERS.get_nowait()
+        except queue.Empty:
+            return spoke
+        print(f"[late] resposta do trabalho longo :: {_txt(answer)}")
+        chime(880, 1320, ms=100, vol=0.15)
+        tts(T(LANG, "late_answer") + " " + answer)
+        spoke = True
 
 
 def _unlink_after(proc: subprocess.Popen, path: Path) -> None:
@@ -1369,6 +1399,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
         pending_chunks: list[np.ndarray] = []     # a mesma fala, em chunks int16 (pro stt)
 
         while True:
+            if pending_audio is None and speak_late_answers():
+                flush_stream(stream)
             # sessão de reconhecimento por fala: abre já (a conexão da API fica
             # pronta enquanto você começa a falar); o texto provisório vai pra janela
             session = stt.begin(on_partial=lambda t: window.update(partial=t))
@@ -1417,7 +1449,7 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             print(f"[cmd]  {kind}")
 
             if kind == "end":
-                jarvis_conversation_routing.forget_active_session()
+                jarvis_conversation_routing.retire_active_session()
                 print("[conv] encerrada por comando de voz")
                 chime(660, 440, ms=100, vol=0.12)
                 return
@@ -1455,7 +1487,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             narrator = jarvis_narrate.Narrator(
                 narr_mode, LANG,
                 NARRATION_INTERVAL_QUICK, question,
-                generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG))
+                generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG),
+                first_interval=CFG["narration_first_seconds"])
 
             def on_status(status: str) -> None:
                 if status in ("terminal_owns_input", "agent_turn_running"):
@@ -1482,6 +1515,9 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 with history_lock:
                     history.append((original_question, answer))
                 window.set_answer_at(index, answer, model_label(result.profile))
+                spoken = re.split(r"\n\s*-{3,}\s*\n", answer, maxsplit=1)[0].strip()
+                if spoken:
+                    LATE_ANSWERS.put(spoken)
 
             with history_lock:
                 context = tuple(history[-MAX_HISTORY_EXCHANGES:])
@@ -1871,6 +1907,9 @@ def main() -> None:
         while True:
             if take_talk_request():
                 PTT.set()
+            if not (PTT.is_set() or DICT.is_set()) and speak_late_answers() and stream is not None:
+                wake.reset()
+                flush_stream(stream)
             # Modo manual (marcador jarvis-wake-off): sem escuta da wake word — o
             # mic fica FECHADO enquanto ocioso; só o push-to-talk (SIGUSR1) e o
             # ditado (SIGUSR2) abrem o stream, que volta a fechar em seguida.

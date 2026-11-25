@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -51,20 +52,58 @@ def remember_session(session: sessions.SessionRef) -> None:
     os.replace(temporary, ACTIVE_FILE)
 
 
+def prompt_fingerprint(access: str) -> str:
+    from jarvis_agent_policy import system_prompt
+    return hashlib.sha256(system_prompt(access).encode()).hexdigest()
+
+
 def restore_active_session(cfg: dict, cwd: Path) -> sessions.SessionRef | None:
     if cfg.get('agent_session_mode', 'auto') == 'legacy':
         return None
     try:
         session = sessions.load_session(json.loads(ACTIVE_FILE.read_text())['session_id'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    try:
         dev = Path(cfg.get('dev_dir', str(cwd))).expanduser().resolve()
         known_project = (session.cwd.parent == dev and session.cwd.is_dir()
                          and not session.cwd.is_symlink() and not session.cwd.name.startswith('.'))
+        record = sessions.read_record(session.id)
+        age = time.time() - float(record['created_at'])
+        # A native session keeps the system prompt it started with, and a long one piles up
+        # stale answers: reuse it only while both still describe the current setup.
         if (session.provider == cfg['quick_provider'] and session.system_access == cfg['system_access']
-                and (session.cwd == cwd.resolve() or known_project)):
+                and (session.cwd == cwd.resolve() or known_project)
+                and age < float(cfg.get('agent_session_max_hours', 12)) * 3600
+                and record['backend'].get('prompt_sha256') == prompt_fingerprint(session.system_access)):
             return session
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    retire_session(session)
     return None
+
+
+def retire_session(session: sessions.SessionRef) -> None:
+    """Forgets a session that will not be reused and stops it, unless a turn still runs in it."""
+    forget_active_session()
+
+    def stop() -> None:
+        try:
+            adapter = sessions.adapter_for(session.provider)
+            if not adapter.active_turns(session):
+                adapter.stop(session)
+        except Exception:
+            pass
+    threading.Thread(target=stop, daemon=True, name='jarvis-session-retire').start()
+
+
+def retire_active_session() -> None:
+    try:
+        session = sessions.load_session(json.loads(ACTIVE_FILE.read_text())['session_id'])
+    except (OSError, ValueError, KeyError, TypeError):
+        forget_active_session()
+        return
+    retire_session(session)
 
 
 def forget_active_session() -> None:
@@ -250,6 +289,8 @@ class ConversationExecutor:
                 on_state(session_id=self.session.id, session_backend='native', can_attach=True,
                          fallback_reason='submission_unknown')
                 reconcile_submission(self.session, request, cancel, on_status)
+            self.session = sessions.update_backend(
+                self.session, {'prompt_sha256': prompt_fingerprint(self.session.system_access)})
             remember_session(self.session)
         elif (self.session.provider != profile.provider or self.session.system_access != profile.system_access
               or self.session.cwd != request.cwd):

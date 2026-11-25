@@ -5,6 +5,7 @@ from dataclasses import asdict
 import sys
 import threading
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -120,9 +121,12 @@ class ConversationRoutingTest(unittest.TestCase):
         read.return_value = {'profile': asdict(profiles['agent_default'])}
         start.return_value = SessionRef('b'*32, executor.conversation_id, 'claude', 'new-native', Path('/tmp'), 'ask')
         request = RouteRequest('r', executor.conversation_id, 'A new hard task', (), Path('/tmp'))
-        with patch.object(executor, 'wait_for_turn', return_value=conversation.Answer('Done', profiles['agent_strong'], 'agent')):
+        with patch.object(executor, 'wait_for_turn', return_value=conversation.Answer('Done', profiles['agent_strong'], 'agent')), \
+                patch.object(conversation, 'prompt_fingerprint', return_value='atual'), \
+                patch.object(conversation.sessions, 'update_backend', side_effect=lambda session, values: session) as stamp:
             executor.native(request, profiles['agent_strong'], '', self.cancel, Mock(), Mock(), Mock(), Mock())
         start.assert_called_once_with(request, profiles['agent_strong'], cancel=self.cancel)
+        stamp.assert_called_once_with(start.return_value, {'prompt_sha256': 'atual'})
         self.assertNotEqual(executor.session.native_id, old.native_id)
 
     def test_project_directory_requires_one_real_explicit_project(self) -> None:
@@ -150,11 +154,39 @@ class ConversationRoutingTest(unittest.TestCase):
             load.return_value = session
             # Exercise the original function, bypassing the default test stub.
             self.persist.stop()
-            with patch.object(conversation, 'ACTIVE_FILE', pointer):
+            record = {'created_at': time.time(), 'backend': {'prompt_sha256': 'atual'}}
+            with patch.object(conversation, 'ACTIVE_FILE', pointer), \
+                    patch.object(conversation, 'prompt_fingerprint', return_value='atual'), \
+                    patch.object(conversation.sessions, 'read_record', return_value=record), \
+                    patch.object(conversation, 'retire_session') as retire:
                 cfg = self.cfg | {'agent_session_mode': 'auto', 'dev_dir': str(root)}
                 self.assertEqual(conversation.restore_active_session(cfg, Path('/tmp')), session)
+                retire.assert_not_called()
                 self.assertIsNone(conversation.restore_active_session(cfg | {'system_access': 'off'}, Path('/tmp')))
+                # A session keeps the prompt it started with: after the context changes, or
+                # after a day of piled-up answers, the next conversation must open a new one.
+                record['backend']['prompt_sha256'] = 'antigo'
+                self.assertIsNone(conversation.restore_active_session(cfg, Path('/tmp')))
+                record['backend']['prompt_sha256'] = 'atual'
+                record['created_at'] = time.time() - 13 * 3600
+                self.assertIsNone(conversation.restore_active_session(cfg, Path('/tmp')))
+                self.assertEqual(retire.call_count, 3)
             self.persist.start()
+
+    def test_retiring_a_session_spares_a_running_turn(self) -> None:
+        # Stopping the session while the handed-off task still runs would kill the user's work.
+        session = SessionRef('a'*32, 'c', 'claude', 'native', Path('/tmp'), 'full')
+        for running, stops in (([('turn', 1.0)], 0), ([], 1)):
+            adapter = Mock()
+            adapter.active_turns.return_value = running
+            with patch.object(conversation.sessions, 'adapter_for', return_value=adapter), \
+                    patch.object(conversation, 'forget_active_session') as forget:
+                conversation.retire_session(session)
+                for thread in threading.enumerate():
+                    if thread.name == 'jarvis-session-retire':
+                        thread.join(timeout=5)
+            forget.assert_called_once()
+            self.assertEqual(adapter.stop.call_count, stops)
 
 
 class NativeSubmissionIntegrationTest(unittest.TestCase):

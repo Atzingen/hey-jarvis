@@ -50,6 +50,16 @@ class ClaudeAdapterTest(unittest.TestCase):
         self.assertEqual(claude.unwrap_paste(wrapped), text)
         self.assertEqual(claude.unwrap_paste(text), text)
 
+    def test_tool_event_carries_what_the_tool_is_doing(self) -> None:
+        # The progress narration is written from this text; the bare tool name ("Bash") made
+        # the narrator guess from the question.
+        label = claude.tool_label({'tool_name': 'Bash', 'tool_input': {
+            'command': 'docker ps', 'description': 'Listar os containers em execução'}})
+        self.assertEqual(label, 'Bash: Listar os containers em execução')
+        self.assertEqual(claude.tool_label({'tool_name': 'Read', 'tool_input': {'file_path': '/etc/hosts'}}),
+                         'Read: /etc/hosts')
+        self.assertEqual(claude.tool_label({'tool_name': 'TaskList'}), 'TaskList')
+
     def test_prompt_ready_accepts_placeholder_input_line(self) -> None:
         # Claude Code 2.1.33x shows a placeholder on the empty input line; the old check
         # waited for a bare prompt, timed out and forced the compatibility mode.

@@ -225,6 +225,20 @@ def append_event(session: SessionRef, turn_id: str, kind: str, text: str, reques
         stream.write(json.dumps(data, ensure_ascii=False) + '\n')
 
 
+def tool_label(data: dict) -> str:
+    # What the tool is doing, for the progress narration: the agent's own description when
+    # there is one (Bash), else the command, file or query.
+    name = str(data.get('tool_name', 'tool'))
+    tool_input = data.get('tool_input')
+    if not isinstance(tool_input, dict):
+        return name
+    for key in ('description', 'command', 'file_path', 'pattern', 'query', 'url'):
+        detail = tool_input.get(key)
+        if isinstance(detail, str) and detail.strip():
+            return (name + ': ' + ' '.join(detail.split()))[:500]
+    return name
+
+
 def record_hook(session: SessionRef, data: dict) -> None:
     incoming = data.get('session_id')
     if not session.native_id and data.get('hook_event_name') == 'SessionStart':
@@ -252,7 +266,8 @@ def record_hook(session: SessionRef, data: dict) -> None:
                            pending_text_sha256='', started_at=time.time())
             append_event(session, turn_id, 'user', prompt, request_id)
         elif event in ('PreToolUse', 'PostToolUse') and turn_id:
-            append_event(session, turn_id, 'tool', str(data.get('tool_name', 'tool')))
+            append_event(session, turn_id, 'tool', tool_label(data) if event == 'PreToolUse'
+                         else str(data.get('tool_name', 'tool')))
         elif event in ('Stop', 'StopFailure') and turn_id:
             backend['running'] = False
             kind = 'result' if event == 'Stop' else 'failed'

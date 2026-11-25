@@ -140,6 +140,10 @@ SETTINGS: list[Setting] = [
             "auto usa sessão nativa quando todas as capacidades estiverem disponíveis; "
             "legacy mantém o executor de compatibilidade.",
             group="Roteamento", choices=["auto", "legacy"]),
+    Setting("agent_session_max_hours", 12, "Sessões do agente — vida máxima (h)",
+            "Uma sessão nativa mais velha que isso é encerrada e a próxima conversa abre outra. "
+            "A sessão também é trocada quando o prompt de sistema ou o arquivo de contexto mudam.",
+            section="advanced", group="Roteamento", min=1, max=168, step=1),
     Setting("quick_provider", "codex", "Agente por assinatura",
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
@@ -283,6 +287,10 @@ SETTINGS: list[Setting] = [
     Setting("narration_interval_deep", 15, "Narração — intervalo pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Narração", min=3, max=60, step=1),
+    Setting("narration_first_seconds", 3.0, "Narração — primeira frase (s)",
+            "Espera mínima até a primeira frase de progresso, que sai assim que o modelo começa "
+            "a agir (roda um comando, lê algo). As seguintes respeitam o intervalo normal.",
+            section="advanced", group="Narração", min=1.0, max=30.0, step=0.5),
     Setting("narration_local_model", "gemma3:4b", "Narração — modelo local (Ollama)",
             "Modelo do Ollama que gera a frase de progresso.",
             section="advanced", group="Narração"),
