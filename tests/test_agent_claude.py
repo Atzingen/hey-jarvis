@@ -42,6 +42,14 @@ class ClaudeAdapterTest(unittest.TestCase):
             else:
                 self.assertIn('--dangerously-skip-permissions', argv)
 
+    def test_long_paste_wrapper_does_not_hide_the_request(self) -> None:
+        # A follow-up with conversation context is long enough to be wrapped; without
+        # unwrapping, the turn got a random id and Jarvis waited until the 45 s handoff.
+        text = 'User request:\nConversation context (reference only):\n[{"user": "a\\nb"}]\n\nCurrent user request:\nOk.'
+        wrapped = '\n\n<pasted_content id="931a">\n' + text + '\n</pasted_content id="931a">\n'
+        self.assertEqual(claude.unwrap_paste(wrapped), text)
+        self.assertEqual(claude.unwrap_paste(text), text)
+
     def test_prompt_ready_accepts_placeholder_input_line(self) -> None:
         # Claude Code 2.1.33x shows a placeholder on the empty input line; the old check
         # waited for a bare prompt, timed out and forced the compatibility mode.

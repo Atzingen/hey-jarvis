@@ -71,6 +71,15 @@ def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, 
     return argv
 
 
+PASTE_WRAPPER = re.compile(r'\s*<pasted_content id="([^"]+)">\n(.*)\n</pasted_content id="\1">\s*', re.DOTALL)
+
+
+def unwrap_paste(prompt: str) -> str:
+    # Claude Code 2.1.33x hands a long pasted input to hooks inside <pasted_content> tags.
+    match = PASTE_WRAPPER.fullmatch(prompt)
+    return match.group(2) if match else prompt
+
+
 def prompt_ready(pane: str) -> bool:
     # The input line may be empty or show a dimmed placeholder ("❯ Try ...", Claude Code 2.1.33x).
     return re.search(r'^❯(?:\s|$)', pane, re.MULTILINE) is not None
@@ -236,7 +245,7 @@ def record_hook(session: SessionRef, data: dict) -> None:
             backend['ready'] = True
         elif event == 'UserPromptSubmit':
             prompt = str(data.get('prompt', ''))
-            digest = hashlib.sha256(prompt.strip().encode()).hexdigest()
+            digest = hashlib.sha256(unwrap_paste(prompt).strip().encode()).hexdigest()
             request_id = backend.get('pending_request_id', '') if digest == backend.get('pending_text_sha256') else ''
             turn_id = request_id or uuid.uuid4().hex
             backend.update(current_turn=turn_id, running=True, question=prompt, pending_request_id='',
