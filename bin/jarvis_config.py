@@ -162,6 +162,10 @@ SETTINGS: list[Setting] = [
             "service_tier=fast: processamento prioritário, respostas mais rápidas "
             "(consome mais do plano). Desligado usa o tier padrão.",
             group="Modelos"),
+    Setting("claude_fast", False, "Claude em modo rápido (fast)",
+            "fastMode do Claude Code: respostas mais rápidas no modelo que suporta, com preço "
+            "por token maior. Desligado usa o modo normal.",
+            group="Modelos"),
     Setting("claude_quick_model", "sonnet", "Claude — modelo rápido",
             "Usado nas perguntas rápidas quando o provedor é claude.",
             group="Modelos", choices=CLAUDE_MODELS),
@@ -286,6 +290,10 @@ SETTINGS: list[Setting] = [
             "Modelo da Responses API usado quando a narração roda pela OpenAI (chave openai_api_key).",
             section="advanced", group="Narração",
             choices=["gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.6-luna"], free_choices=True),
+    Setting("context_file", "~/.config/jarvis/contexto.md", "Arquivo de contexto pessoal",
+            "Texto anexado ao prompt de sistema quando o modelo tem acesso ao computador: onde "
+            "ficam seus dados, que ferramentas consultar. Arquivo ausente não muda nada.",
+            section="advanced", group="Conversa"),
     Setting("system_prompt", "", "Prompt de sistema",
             "Instruções de estilo enviadas ao modelo (edite no $EDITOR). Vazio = padrão do idioma.",
             section="advanced", group="Conversa", multiline=True),
@@ -411,6 +419,15 @@ def _read_toml(path: Path) -> dict:
         except ValueError as e:
             print(f"[config] valor inválido ignorado — {e}", file=sys.stderr)
     return out
+
+
+def user_context(cfg: dict) -> str:
+    """Conteúdo do arquivo de contexto pessoal (opção context_file), ou vazio se não houver."""
+    path = Path(str(cfg.get("context_file", "")).strip() or "/nonexistent").expanduser()
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def load(path: Path = CONFIG_FILE) -> dict:

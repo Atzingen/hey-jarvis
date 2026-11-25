@@ -438,6 +438,12 @@ ENVIRONMENT_NOTES = {
 # Como o modelo pode tocar na máquina, por system_access × provedor. Vai depois
 # das AÇÕES (e das notas de AMBIENTE, quando há acesso) e prevalece sobre a
 # frase "tem acesso ao computador" do prompt de sistema.
+USER_CONTEXT_HEADER = {
+    "pt-BR": "\n\nCONTEXTO DO USUÁRIO. Vale para entender os pedidos e saber onde buscar a resposta:\n",
+    "en": "\n\nUSER CONTEXT. Use it to understand requests and to know where to look for answers:\n",
+}
+
+
 ACCESS_NOTES = {
     "pt-BR": {
         "ask": (
@@ -511,6 +517,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "codex_model": ("Codex model", "Empty uses the Codex CLI default. Only with the codex provider."),
     "codex_effort": ("Codex effort", "model_reasoning_effort for fast questions."),
     "codex_fast": ("Codex fast mode", "service_tier=fast: priority processing, faster answers (uses more of the plan). Off = default tier."),
+    "claude_fast": ("Claude fast mode", "Claude Code fastMode: faster answers on models that support it, at a higher price per token. Off = normal mode."),
     "claude_quick_model": ("Claude — fast model", "Used for fast questions when the provider is claude."),
     "claude_quick_effort": ("Claude — fast effort", "Reasoning effort for fast questions via claude."),
     "deep_model": ("Legacy model (retained for rollback)", "Always via Claude Code CLI. fable = Claude Fable 5 (most capable)."),

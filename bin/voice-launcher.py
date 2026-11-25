@@ -457,6 +457,9 @@ def action_protocol(access: str, provider: str) -> str:
     text = jarvis_i18n.ACTIONS_PROTOCOL[LANG].format(projects=projects)
     if access in ("full", "ask"):
         text += jarvis_i18n.ENVIRONMENT_NOTES[LANG]
+        context = jarvis_config.user_context(CFG)
+        if context:
+            text += jarvis_i18n.USER_CONTEXT_HEADER[LANG] + context
     if access == "ask":
         text += jarvis_i18n.ACCESS_NOTES[LANG]["ask"]
     elif access == "off":
@@ -737,7 +740,8 @@ def _build_ask_call(question: str, profile: jarvis_routing.ExecutionProfile, ans
                "--model", model,
                "--effort", effort,
                "--output-format", "stream-json", "--verbose",
-               "--append-system-prompt", system]
+               "--append-system-prompt", system,
+               "--settings", json.dumps({"fastMode": profile.fast})]
         if access == "full":
             cmd += ["--dangerously-skip-permissions"]   # roda comandos sem confirmar
         else:

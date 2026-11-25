@@ -85,7 +85,8 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     events = ('SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'StopFailure', 'SessionEnd')
     settings = directory / 'claude-settings.json'
     settings.write_text(json.dumps({'hooks': {event: [{'hooks': [{'type': 'command', 'command': hook_command}]}]
-                                                   for event in events}}))
+                                                   for event in events},
+                                    'fastMode': profile.fast}))
     settings.chmod(0o600)
     context = directory / 'consent.json'
     context.write_text(json.dumps({'session_id': session.id, 'sessions_dir': str(directory.parent),
