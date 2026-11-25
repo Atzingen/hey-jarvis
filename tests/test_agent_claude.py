@@ -42,6 +42,14 @@ class ClaudeAdapterTest(unittest.TestCase):
             else:
                 self.assertIn('--dangerously-skip-permissions', argv)
 
+    def test_prompt_ready_accepts_placeholder_input_line(self) -> None:
+        # Claude Code 2.1.33x shows a placeholder on the empty input line; the old check
+        # waited for a bare prompt, timed out and forced the compatibility mode.
+        pane = "  Opus 5.5 with low effort\n\u2500\u2500\u2500\n\u276f\u00a0Try \"refactor <filepath>\"\n\u2500\u2500\u2500\n"
+        self.assertTrue(claude.prompt_ready(pane))
+        self.assertTrue(claude.prompt_ready("\u276f \n"))
+        self.assertFalse(claude.prompt_ready("  Claude Code starting...\n"))
+
     @patch('jarvis_agent_claude.tmux')
     def test_attached_keyboard_queues_voice_without_touching_input(self, tmux: Mock) -> None:
         tmux.return_value = '/dev/pts/99'

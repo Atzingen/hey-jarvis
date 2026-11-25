@@ -71,12 +71,20 @@ def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, 
     return argv
 
 
+def prompt_ready(pane: str) -> bool:
+    # The input line may be empty or show a dimmed placeholder ("❯ Try ...", Claude Code 2.1.33x).
+    return re.search(r'^❯(?:\s|$)', pane, re.MULTILINE) is not None
+
+
 def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     session = sessions.new_session(request, profile)
     directory = sessions.session_dir(session.id)
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     socket = runtime / ('jarvis-claude-' + session.id + '.sock')
-    work = request.cwd if profile.system_access == 'full' else jarvis_consent.WORKDIR
+    # Claude Code only trusts the home directory one interactive session at a time, so a
+    # background session started from ~ is refused; Jarvis's own folder is trusted once.
+    work = (request.cwd if profile.system_access == 'full' and request.cwd.resolve() != Path.home().resolve()
+            else jarvis_consent.WORKDIR)
     work.mkdir(parents=True, exist_ok=True)
     session = sessions.update_backend(session, {'socket': str(socket), 'effective_cwd': str(work),
                                                 'ready': False, 'running': False, 'current_turn': '', 'native_monitor': True})
@@ -126,7 +134,7 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
             state = sessions.read_record(session.id)['backend']
             if state.get('ready') and socket.exists():
                 pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
-                if re.search(r'^❯\s*$', pane, re.MULTILINE):
+                if prompt_ready(pane):
                     return session
             time.sleep(.1)
     except Exception:
@@ -190,7 +198,7 @@ def ensure_connected(session: SessionRef) -> None:
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         state = sessions.read_record(session.id)['backend']
-        if state.get('ready') and re.search(r'^❯\s*$', tmux(session, 'capture-pane', '-p', '-t', 'jarvis'), re.MULTILINE):
+        if state.get('ready') and prompt_ready(tmux(session, 'capture-pane', '-p', '-t', 'jarvis')):
             sessions.update_backend(session, {'stopped': False})
             return
         time.sleep(.1)
