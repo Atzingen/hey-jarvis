@@ -89,10 +89,11 @@ class Protocol(unittest.TestCase):
         self.robot.colour(255, 0, 128)
         self.assertEqual(self.link.sent, ["l00,255,0,128\n", "l01,255,0,128\n"])
 
-    def test_eye_brightness_quadratic(self):
+    def test_eye_brightness_quadratic_with_low_cap(self):
+        # olhos sempre fracos: pedir 10 fica no teto MAX_BRIGHT (1.5 -> 0.15² * 255 = 6)
         self.robot.eye_brightness(10)
-        self.robot.eye_brightness(5)
-        self.assertEqual(self.link.sent, ["FI,255\n", "FI,64\n"])
+        self.robot.eye_brightness(1)
+        self.assertEqual(self.link.sent, ["FI,6\n", "FI,3\n"])
 
     def test_eyes_reduced_scale(self):
         self.robot.eyes(5, 5)
@@ -196,11 +197,11 @@ class Choreography(unittest.TestCase):
         self.assertEqual(self._cmds("m05"), [])                   # já fechado: nada a enviar
 
     def test_conversation_phases_are_all_distinct(self):
+        # ouvir, gravar e continuação compartilham "glasses"; a cor separa as fases
         conv = ["listening", "recording", "transcribing", "thinking", "consent",
                 "speaking", "followup", "handoff"]
         shapes = [picoh.LOOKS[p]["shape"] for p in conv]
         colours = [picoh.LOOKS[p]["colour"] for p in conv]
-        self.assertEqual(len(set(shapes)), len(conv))
         self.assertEqual(len(set(colours)), len(conv))
         self.assertNotIn(picoh.IDLE["shape"], shapes)
         for shape in shapes:
