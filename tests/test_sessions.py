@@ -37,6 +37,22 @@ class SessionTest(unittest.TestCase):
         self.root_patch.stop()
         self.folder.cleanup()
 
+    def test_opening_a_terminal_ends_the_session_grants_even_if_it_fails(self) -> None:
+        # The window's button and `jarvis session open` reach the terminal without the voice
+        # handoff; "allow the rest" has to end there too.
+        import jarvis_consent
+        session = sessions.new_session(self.request, self.profile, 'native-1')
+        other = sessions.new_session(replace(self.request, request_id='r2'), self.profile, 'native-2')
+        with patch.object(jarvis_consent, 'CONSENT_DIR', self.root / 'consent'):
+            jarvis_consent.grant_allow_all(session.id + '-turn-1')
+            jarvis_consent.grant_allow_all(other.id + '-turn-1')
+            self.adapter.ensure_connected.side_effect = RuntimeError('reconnect failed')
+            with self.assertRaises(RuntimeError):
+                sessions.open_terminal(session)
+            self.assertFalse(jarvis_consent.has_grant(session.id + '-turn-1'))
+            self.assertTrue(jarvis_consent.has_grant(other.id + '-turn-1'))
+        self.assertEqual(sessions.read_record(session.id)['state'], 'handed_off')
+
     def test_start_once_and_attach_never_resends(self) -> None:
         session = sessions.start_session(self.request, self.profile)
         self.assertEqual(sessions.submit_turn(session, self.request), 'turn-1')

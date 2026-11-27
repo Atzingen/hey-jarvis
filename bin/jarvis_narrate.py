@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import jarvis_dictate  # noqa: E402
 import jarvis_events  # noqa: E402
+from jarvis_http import RefuseRedirects  # noqa: E402
 from jarvis_i18n import NARRATOR_PROMPT, T  # noqa: E402
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -298,7 +299,8 @@ def openai_generate(api_key: str, model: str, lang: str) -> Generate:
                                      headers={"Content-Type": "application/json",
                                               "Authorization": f"Bearer {api_key}"})
         try:
-            with urllib.request.urlopen(req, timeout=OPENAI_TIMEOUT) as r:
+            # sem seguir redirect: o urllib reenviaria a chave para o novo endereço
+            with urllib.request.build_opener(RefuseRedirects).open(req, timeout=OPENAI_TIMEOUT) as r:
                 return openai_text(json.loads(r.read().decode()))
         except urllib.error.HTTPError as e:
             log(f"openai HTTP {e.code}: {e.read()[:200]!r}")

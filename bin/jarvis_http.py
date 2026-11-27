@@ -52,7 +52,7 @@ def post_json(url: str, key: str, body: dict, timeout: float, cancel: threading.
             raise ExecutionUncertain('invalid_http_response') from None
         if result.get('error'):
             status = result.get('status')
-            if status in (301, 302, 303, 307, 308, 400, 401, 403, 404, 413, 422, 429):
+            if status in (400, 401, 403, 404, 413, 422, 429) or (isinstance(status, int) and 300 <= status < 400):
                 raise RouterUnavailable(f'http_{status}')
             raise ExecutionUncertain('http_failure')
         data = result.get('data')

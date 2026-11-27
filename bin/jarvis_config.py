@@ -16,6 +16,7 @@ Uso como CLI (chamado por `jarvis config ...`):
 from __future__ import annotations
 
 import os
+import tempfile
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -493,13 +494,16 @@ def dump_toml(cfg: dict, only_changed: bool = True) -> str:
 
 
 def write_private(path: Path, text: str) -> None:
-    """Troca atômica com o temporário já nascendo 0600: config e perfis levam chaves de API."""
-    tmp = path.with_suffix(".tmp")
-    tmp.unlink(missing_ok=True)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as output:
-        output.write(text)
-    tmp.replace(path)
+    """Troca atômica com temporário exclusivo que já nasce 0600: config e perfis levam chaves
+    de API, e dois salvamentos ao mesmo tempo não disputam o mesmo arquivo."""
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as output:
+            output.write(text)
+        os.replace(name, path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
 
 
 def save(cfg: dict, path: Path = CONFIG_FILE) -> None:

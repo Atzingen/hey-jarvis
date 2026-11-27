@@ -697,10 +697,11 @@ _cli_ok_cache: dict[str, bool] = {}
 
 
 def cli_supports_safe_mode(provider: str) -> bool:
-    if _cli_ok_cache.get(provider):
-        return True
+    # a política vem antes do cache: um MCP posto em /etc/codex com o serviço no ar também vale
     if provider == "codex" and jarvis_agent_policy.codex_system_mcp_servers():
         return False   # /etc/codex/config.toml traria tools fora do consentimento
+    if _cli_ok_cache.get(provider):
+        return True
     args = [provider, "--help"] if provider == "claude" else ["codex", "exec", "--help"]
     try:
         # arquivo, não pipe: o Claude Code pode sair antes de despejar o help num pipe
@@ -887,6 +888,9 @@ def ask_model(question: str, profile: jarvis_routing.ExecutionProfile | None = N
         # em voo, e cancelar para o scope inteiro (CLI + filhos).
         # stdin fechado: o codex fica esperando entrada se herdar um stdin aberto.
         # stdout/stderr são pipes: o launcher grava nos arquivos até o teto (pump).
+        # a chave do Jev é só do roteador; os CLIs dos agentes não a recebem
+        popen_kwargs = {**popen_kwargs, "env": {k: v for k, v in popen_kwargs.get("env", os.environ).items()
+                                                if k not in ("JEV_API_KEY", "CLAUDECODE")}}
         proc = subprocess.Popen(scoped(cmd, unit), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
     except Exception as e:

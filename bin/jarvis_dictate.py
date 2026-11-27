@@ -294,7 +294,7 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False,
             # wl-copy deixa um filho servindo o clipboard: sem DEVNULL ele herda nossos fds
             subprocess.run(["wl-copy", "--", text], check=True, timeout=5, **_QUIET)  # topo do histórico
         except Exception as e:
-            print(f"[dictate] wl-copy falhou: {e}")
+            print(f"[dictate] wl-copy falhou: {type(e).__name__}")   # a exceção traz o texto ditado
     if mode == "clipboard" or not shutil.which("wtype"):
         return "clipboard"
     time.sleep(0.3)  # deixa o usuário soltar Ctrl/Shift do atalho antes de colar
@@ -324,7 +324,7 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False,
             subprocess.run(["wtype", "-M", "ctrl", "v", "-m", "ctrl"], check=True, timeout=5, **_QUIET)
         return "pasted"
     except Exception as e:
-        print(f"[dictate] wtype falhou ({e}); texto ficou no clipboard")
+        print(f"[dictate] wtype falhou ({type(e).__name__}); texto ficou no clipboard")
         return "clipboard"
 
 

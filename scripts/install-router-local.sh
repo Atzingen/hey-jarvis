@@ -18,7 +18,9 @@ mkdir -p "$PREFIX"
 "$PREFIX/venv/bin/python" -m pip install --extra-index-url https://download.pytorch.org/whl/cpu --require-hashes --no-deps -r "$HERE/requirements-router-local.lock"
 "$PREFIX/venv/bin/python" - "$PREFIX" <<'PY'
 import hashlib
+import os
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -44,25 +46,26 @@ def fetch(name: str, size: int, sha256: str, model_dir: Path) -> None:
         if digest.hexdigest() == sha256:
             return
     target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + '.part')
+    fd, partial = tempfile.mkstemp(dir=target.parent, prefix=target.name + '.', suffix='.part')
     url = f'https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{name}'
     digest = hashlib.sha256()
     received = 0
-    with urllib.request.urlopen(url, timeout=60) as response, partial.open('wb') as output:
-        while True:
-            block = response.read(1 << 20)
-            if not block:
-                break
-            received += len(block)
-            if received > size:
-                partial.unlink()
-                raise SystemExit(f'{name}: larger than the expected {size} bytes')
-            digest.update(block)
-            output.write(block)
-    if received != size or digest.hexdigest() != sha256:
-        partial.unlink()
-        raise SystemExit(f'{name}: size or SHA-256 does not match revision {REVISION}')
-    partial.replace(target)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response, os.fdopen(fd, 'wb') as output:
+            while True:
+                block = response.read(1 << 20)
+                if not block:
+                    break
+                received += len(block)
+                if received > size:
+                    raise SystemExit(f'{name}: larger than the expected {size} bytes')
+                digest.update(block)
+                output.write(block)
+        if received != size or digest.hexdigest() != sha256:
+            raise SystemExit(f'{name}: size or SHA-256 does not match revision {REVISION}')
+        os.replace(partial, target)
+    finally:
+        Path(partial).unlink(missing_ok=True)
 
 
 model_dir = Path(sys.argv[1]) / 'model'

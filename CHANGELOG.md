@@ -69,6 +69,8 @@ explained in [RELEASING.md](RELEASING.md).
   escape the turn deadline; watchdog units stop with their session instead of running until reboot.
 - Write while dictating decides the target window and the paste shortcut from one focus query, so
   a focus change in between can no longer paste into another window.
+- An OpenAI final transcript in an unexpected shape falls back to local Whisper instead of
+  dropping the speech.
 - The voice service no longer turns off the restricted Claude path until its next restart when
   `claude --help` is read incompletely at boot; `jarvis` without a known command lists every command.
 
@@ -76,15 +78,18 @@ explained in [RELEASING.md](RELEASING.md).
 
 - In `ask` and `off`, Codex is refused when `/etc/codex/config.toml` defines MCP servers: Codex
   merges that file into every run, and its tools would bypass the consent window.
-- "Allow the rest of this question" is revoked when a native session is handed to a terminal, as it
-  already was for the legacy viewer.
+- "Allow the rest of this question" now ends for native sessions as it did for the legacy viewer:
+  when the answer arrives, on cancel, and whenever a terminal is opened on the session; a decision
+  still pending at that moment allows only once.
 - An answer that arrives after the long-task notice runs no desktop action unless
   `system_access = "full"`.
-- Authenticated API calls (answers API, Jev) refuse redirects, so the key never reaches another URL.
+- Authenticated API calls (answers API, Jev, OpenAI narration) refuse redirects, so the key never
+  reaches another URL.
 - `config.toml` and profiles are written through a temporary file created `0600` (the key was
   briefly readable with a `022` umask); the native Claude system prompt, personal context
   included, and the Nemotron bearer token no longer appear on any command line; `JEV_API_KEY`
-  is not passed to the agent CLIs.
+  is not passed to the agent CLIs (native or legacy); a failed clipboard or paste no longer writes
+  the dictated text to the journal.
 - `jarvis router install-local` downloads a fixed list of model files, each checked against its
   size and SHA-256.
 - `SECURITY.md` describes the native and legacy invocations separately and matches the code on

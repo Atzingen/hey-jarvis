@@ -227,6 +227,10 @@ def ensure_connected(session: SessionRef) -> None:
             pane = ''   # the tmux session is not up yet
         if prompt_ready(pane):
             sessions.update_backend(session, {'stopped': False})
+            # its watchdog left when the session stopped; turns typed from now on need one again
+            unit = 'jarvis-watch-' + session.id + '.service'
+            if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit]).returncode:
+                sessions.start_watchdog(session)
             return
         time.sleep(.1)
     raise RuntimeError('claude_reconnect_failed')
@@ -346,17 +350,30 @@ def stop(session: SessionRef) -> None:
     backend = sessions.read_record(session.id)['backend']
     failed = False
     if backend.get('background_id'):
-        result = subprocess.run(['claude', 'stop', backend['background_id']], capture_output=True, timeout=8,
-                                env=subscription_env())
-        failed = result.returncode != 0   # e.g. the worker already exited
+        try:
+            result = subprocess.run(['claude', 'stop', backend['background_id']], capture_output=True, timeout=8,
+                                    env=subscription_env())
+            failed = result.returncode != 0
+        except (OSError, subprocess.TimeoutExpired):
+            failed = True
     try:
         tmux(session, 'kill-server')
     except Exception:
         pass
     sessions.update_backend(session, {'stopped': True, 'ready': False, 'running': False,
                                       'pending_request_id': '', 'pending_text_sha256': ''})
-    if failed:
+    # A worker that already exited makes `claude stop` fail too: only one still listed is an error.
+    if failed and background_listed(backend):
         raise RuntimeError('claude_stop_failed')
+
+
+def background_listed(backend: dict) -> bool:
+    try:
+        listed = subprocess.run(['claude', 'agents', '--json', '--cwd', backend['effective_cwd']],
+                                env=subscription_env(), capture_output=True, text=True, timeout=5, check=True)
+        return any(item.get('id') == backend['background_id'] for item in json.loads(listed.stdout))
+    except Exception:
+        return True   # unknown: report the failure
 
 
 def main() -> None:

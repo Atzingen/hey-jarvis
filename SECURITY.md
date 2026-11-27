@@ -32,9 +32,10 @@ by hand. Nothing is installed silently.
 
 It never edits Hyprland or Omarchy configuration; keybindings and the
 bar-accent hook are opt-in snippets the user adds themselves.
-`install.sh --uninstall [--purge]` removes everything above except the root-owned
-udev rule, which it never touches without the user: when the rule exists it prints
-the `sudo` command that removes it.
+`install.sh --uninstall` removes everything above except `~/.config/jarvis`
+(settings and profiles) and the Piper voices, which `--purge` also removes, and the
+root-owned udev rule, which it never touches without the user: when the rule exists
+it prints the `sudo` command that removes it.
 
 ### The Picoh robot is optional
 
@@ -104,7 +105,7 @@ implicitly selects a paid API.
 | `github.com/NVIDIA/NeMo-Speech.cpp/releases`, `huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b` | only `jarvis stt install-nemotron` — pinned, checksummed native runtime and model |
 | `huggingface.co/rhasspy/piper-voices` | install only — **pinned to an immutable revision, every file verified against its sha256** before use |
 | `github.com/dscripka/openWakeWord/releases` | install only — the ONNX wake-word/feature models, **fixed release `v0.5.1`, every file verified against its sha256** before use (openwakeword's own unpinned `download_models()` is never called) |
-| `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **when the voice service starts** with local recognition, or the first time Nemotron/OpenAI fall back to it — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`; the hub verifies each file's sha256 against that commit) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
+| `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **when the voice service starts** with local recognition, or the first time Nemotron/OpenAI fall back to it — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
 | Anthropic / OpenAI backends of the **user's own** `claude` / `codex` CLIs | requests routed to the agent — the question, the conversation history and (in `ask`/`full`) whatever the model reads on the machine go to the provider the user is logged into |
 | `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio, plus the vocabulary hints as `keywords` (only with `gpt-live-transcribe` and while `stt_vocabulary_enabled` is on): the user's `stt_vocabulary`, or, when it is empty, the built-in terms and the names of the project folders in `dev_dir`; (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
 | `127.0.0.1:11434` (Ollama) | `dictation_polish`, and progress narration when `narration = "local"`/`auto` with a local model + GPU (a warm-up request at conversation start) |
@@ -131,7 +132,9 @@ With optional `dictation_live`, provisional words remain in the overlay and
 confirmed phrases are inserted into the original active window using the selected
 paste/type mode, with newlines converted to spaces. Modifier keys must be released
 before insertion; an unavailable key-state query or a 10-second wait stops insertion.
-The window identity is checked again immediately before insertion. A focus
+The window identity and the paste shortcut come from one query made immediately
+before insertion; a focus change between that query and the key event itself
+remains possible. A focus
 change blocks further insertion for that dictation; the complete transcript is
 still copied to the clipboard at the end. Cancellation stops pending insertion
 but does not erase text already inserted. This guard identifies a window, not
@@ -166,7 +169,10 @@ adds tools. API text containing action markers remains text. Only a validated
 handoff can reach the agent executor. HTTP bodies/responses are bounded;
 credentials are passed to the cancellable HTTP child over stdin, not argv or
 error messages, and redirects are refused, so the bearer never reaches another
-URL. Cancellation stops the child.
+URL (the OpenAI narration call refuses them too, and the realtime WebSocket client
+drops the `Authorization` header on a cross-origin redirect). The Jev key goes only
+to that HTTP child: the agent CLIs never receive `JEV_API_KEY`. Cancellation stops
+the child.
 
 Missing optional dependencies and definitive pre-execution failures may fall
 back to the selected subscription agent. Every native submission records its
@@ -265,7 +271,9 @@ Consent mechanics (`bin/jarvis_consent.py`, `bin/jarvis-consent.py`):
 - "Allow the rest of this question" is a grant file bound to the model call's
   scope name, valid for 15 minutes at most, revoked when the answer is
   delivered, when the question is cancelled, when a long answer is handed to
-  a terminal (the legacy viewer or the native session), and at service start. **Nothing is ever persisted** —
+  a terminal (the legacy viewer, a native session, the window's button or
+  `jarvis session open`), and at service start. A decision still pending when a
+  native turn is handed off counts as allow-once: it creates no grant. **Nothing is ever persisted** —
   no allow rules are written to any settings file, and the CLIs cannot write
   their own settings (they have no write tool).
 - Jarvis announces a pending request by voice and switches the conversation

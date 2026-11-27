@@ -13,6 +13,7 @@ from typing import Callable
 import uuid
 
 import jarvis_consent
+from jarvis_agent_policy import codex_system_mcp_servers
 import jarvis_sessions as sessions
 from jarvis_i18n import T
 from jarvis_routing import (RouteRequest, RouteDecision, ExecutionProfile, RouterUnavailable, RouterCancelled,
@@ -91,7 +92,11 @@ def retire_session(session: sessions.SessionRef) -> None:
     def stop() -> None:
         try:
             adapter = sessions.adapter_for(session.provider)
-            if not adapter.active_turns(session):
+            try:
+                busy = adapter.active_turns(session)
+            except Exception:
+                busy = []   # a dead backend runs nothing; still stop it and its watchdog
+            if not busy:
                 sessions.stop_session(session)
         except Exception:
             pass
@@ -278,6 +283,11 @@ class ConversationExecutor:
             # A dead app-server/tmux would fail every following request before submission.
             retire_session(self.session)
             self.session = None
+        if (self.session and self.session.provider == 'codex' and self.session.system_access != 'full'
+                and codex_system_mcp_servers()):
+            # Started before /etc/codex gained MCP servers: never reuse it in a restricted mode.
+            retire_session(self.session)
+            self.session = None
         self.cwd = request.cwd
         if self.session and self.session.provider == 'claude':
             previous = sessions.read_record(self.session.id)['profile']
@@ -313,18 +323,16 @@ class ConversationExecutor:
                'started': time.monotonic()}
         on_state(session_id=self.session.id, session_backend='native', can_attach=True,
                  fallback_reason=reason)
-        result = self.wait_for_turn(job, profile, reason, cancel, on_status, on_event, background=False)
+        try:
+            result = self.wait_for_turn(job, profile, reason, cancel, on_status, on_event, background=False)
+        except BaseException:
+            jarvis_consent.revoke_session_grants(self.session.id)   # cancelled or lost
+            raise
         if result is not None:
+            jarvis_consent.revoke_session_grants(self.session.id)   # answer delivered
             return result
-        # "Allow the rest of this question" ends at the handoff, as in the legacy path.
         try:
-            turn = sessions.adapter_for(self.session.provider).consent_context(self.session).get('call_id')
-            if turn:
-                jarvis_consent.revoke_grants(turn)
-        except Exception:
-            pass
-        try:
-            sessions.open_terminal(self.session)
+            sessions.open_terminal(self.session)   # also ends the turn's grants
         except (OSError, sessions.SessionUnsupported):
             on_state(fallback_reason='terminal_open_failed')
         def finish() -> None:

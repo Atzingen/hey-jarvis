@@ -230,6 +230,14 @@ def interrupt_turn(session: SessionRef, turn_id: str) -> None:
 
 
 def open_terminal(session: SessionRef) -> None:
+    # Handing a turn to a terminal ends "allow the rest of this question", whoever opens it
+    # (the long-task handoff, the window's button or `jarvis session open`).
+    with locked(session.id):
+        record = read_record(session.id)
+        record['state'] = 'handed_off'
+        write_record(session.id, record)
+    import jarvis_consent
+    jarvis_consent.revoke_session_grants(session.id)
     adapter = adapter_for(session.provider)
     if hasattr(adapter, 'ensure_connected'):
         adapter.ensure_connected(session)
@@ -240,10 +248,6 @@ def open_terminal(session: SessionRef) -> None:
                       '--working-directory', str(session.cwd), '-e', *argv],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
-    with locked(session.id):
-        record = read_record(session.id)
-        record['state'] = 'handed_off'
-        write_record(session.id, record)
 
 
 def enforce_deadlines(session: SessionRef, maximum: float, now: float | None = None) -> list[str]:
@@ -262,8 +266,12 @@ def stop_session(session: SessionRef) -> None:
     try:
         adapter_for(session.provider).stop(session)
     finally:
-        subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        if shutil.which('systemctl'):
+            try:
+                subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
 
 
 def start_watchdog(session: SessionRef) -> None:
