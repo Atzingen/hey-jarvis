@@ -53,6 +53,16 @@ class SessionTest(unittest.TestCase):
             self.assertTrue(jarvis_consent.has_grant(other.id + '-turn-1'))
         self.assertEqual(sessions.read_record(session.id)['state'], 'handed_off')
 
+    def test_watchdog_retries_a_stop_that_failed(self) -> None:
+        # An expired turn whose stop fails must not end the watchdog: the turn would run on
+        # with no time limit.
+        session = sessions.new_session(self.request, self.profile, 'native-1')
+        self.adapter.active_turns.return_value = [('turn-1', 0.0)]
+        self.adapter.stop.side_effect = [RuntimeError('still running'), None]
+        with patch.object(sessions.time, 'sleep'):
+            sessions.watch_session(session, maximum=10)
+        self.assertEqual(self.adapter.stop.call_count, 2)
+
     def test_a_failed_stop_keeps_the_watchdog(self) -> None:
         # The backend may still be running a turn: its time limit must stay enforced.
         session = sessions.new_session(self.request, self.profile, 'native-1')

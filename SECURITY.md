@@ -210,9 +210,11 @@ A native session is replaced when the system prompt or the context file change,
 and after `agent_session_max_hours` (12 by default), and a session whose
 app-server or terminal died is retired before the next request. The replaced
 session is stopped when nothing is running in it; a running turn keeps its own
-deadline. A confirmed stop also stops the session's watchdog unit (a stop that
-fails while the backend still lists the session keeps it), and a watchdog exits
-by itself once its session is gone with nothing running.
+deadline. A confirmed stop also stops the session's watchdog unit; a stop that
+fails while the backend still runs keeps the turn monitored and the watchdog
+retries it. A watchdog exits by itself once its session is gone with nothing
+running, and retiring a session whose state can't be read leaves it to its
+watchdog.
 
 The consent broker resolves the **current native turn** before authorizing a
 command. Grants belong to that turn, and a lost/changed turn cancels consent and
@@ -274,8 +276,9 @@ Consent mechanics (`bin/jarvis_consent.py`, `bin/jarvis-consent.py`):
   delivered, when the question is cancelled, when a long answer is handed to
   a terminal (the legacy viewer, a native session, the window's button or
   `jarvis session open`), and at service start. A native turn that started before
-  the session's last handoff gets no new grant (a decision still pending then
-  counts as allow-once); the handoff and the grant check share the session lock. **Nothing is ever persisted** —
+  the session's last handoff, or whose start the CLI does not report, gets no new
+  grant (a decision still pending then counts as allow-once); the handoff and the
+  grant check share the session lock. **Nothing is ever persisted** —
   no allow rules are written to any settings file, and the CLIs cannot write
   their own settings (they have no write tool).
 - Jarvis announces a pending request by voice and switches the conversation

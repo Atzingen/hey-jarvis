@@ -289,6 +289,15 @@ def start_watchdog(session: SessionRef) -> None:
         raise SessionUnsupported('native_watchdog_unavailable')
 
 
+def stop_confirmed(adapter, session: SessionRef) -> bool:
+    """A stop that fails leaves the watchdog running: it retries on the next cycle."""
+    try:
+        adapter.stop(session)
+        return True
+    except Exception:
+        return False
+
+
 def watch_session(session: SessionRef, maximum: float) -> None:
     adapter = adapter_for(session.provider)
     failures = 0
@@ -303,14 +312,13 @@ def watch_session(session: SessionRef, maximum: float) -> None:
             if expired:
                 time.sleep(.5)
                 remaining = {turn for turn, _ in adapter.active_turns(session)}
-                if remaining.intersection(expired):
-                    adapter.stop(session)
+                if remaining.intersection(expired) and stop_confirmed(adapter, session):
                     return
         except Exception:
             failures += 1
             if failures >= 3:
-                if not adapter.alive(session) or time.monotonic() - last_success > maximum:
-                    adapter.stop(session)
+                if ((not adapter.alive(session) or time.monotonic() - last_success > maximum)
+                        and stop_confirmed(adapter, session)):
                     return
         time.sleep(.5)
 

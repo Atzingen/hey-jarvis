@@ -163,9 +163,16 @@ class CodexAdapterTest(unittest.TestCase):
 
     @patch('jarvis_agent_codex.subprocess.run')
     def test_stop_escalates_only_its_own_scope_when_graceful_shutdown_stalls(self, run: Mock) -> None:
-        run.side_effect = [subprocess.TimeoutExpired('stop', 8), Mock(returncode=0)]
+        run.side_effect = [subprocess.TimeoutExpired('stop', 8), Mock(returncode=0), Mock(stdout='inactive\n')]
         codex.stop(self.session)
-        argv = run.call_args.args[0]
+        argv = run.call_args_list[1].args[0]
         self.assertIn('kill', argv)
         self.assertIn('--signal=SIGKILL', argv)
         self.assertEqual(argv[-1], 'jarvis-session-' + self.session.id + '.scope')
+
+    @patch('jarvis_agent_codex.subprocess.run')
+    def test_stop_reports_a_scope_that_is_still_running(self, run: Mock) -> None:
+        # stop_session keeps the watchdog only when the adapter reports the failure.
+        run.side_effect = [Mock(returncode=1), Mock(stdout='active\n')]
+        with self.assertRaises(RuntimeError):
+            codex.stop(self.session)

@@ -242,9 +242,9 @@ def consent_context(session: SessionRef) -> dict:
             questions = [block.get('text', '') for item in turn.get('items', [])
                          if item.get('type') == 'userMessage' for block in item.get('content', [])
                          if block.get('type') == 'text']
-            started = turn.get('startedAt') or read_record(session.id)['backend'].get('turn_started', {}).get(turn['id'])
+            # Only the start Codex reports: the watchdog's first-seen time may come after a handoff.
             return {'call_id': session.id + '-' + turn['id'], 'question': '\n'.join(questions),
-                    'started_at': started}
+                    'started_at': turn.get('startedAt')}
     return {}
 
 
@@ -282,3 +282,8 @@ def stop(session: SessionRef) -> None:
     except subprocess.TimeoutExpired:
         subprocess.run(['systemctl', '--user', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    # Confirmed only when the scope is gone; otherwise the caller keeps the watchdog.
+    state = subprocess.run(['systemctl', '--user', 'is-active', unit], capture_output=True, text=True,
+                           timeout=5).stdout.strip()
+    if state in ('active', 'activating', 'deactivating', 'reloading'):
+        raise RuntimeError('codex_stop_failed')

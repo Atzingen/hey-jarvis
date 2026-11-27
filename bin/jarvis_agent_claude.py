@@ -197,12 +197,11 @@ def interrupt(session: SessionRef, turn_id: str) -> None:
         if (record['backend'].get('current_turn') != turn_id
                 and record['backend'].get('pending_request_id') != turn_id):
             return
-        record['backend']['running'] = False
-        record['backend']['interrupted_turn'] = turn_id
-        sessions.write_record(session.id, record)
     # Escape in an attached background TUI is not a reliable cancellation.
-    # Native stop terminates the worker; attach later restores this exact ID.
+    # Native stop terminates the worker; attach later restores this exact ID. Until the stop is
+    # confirmed the turn stays running, so the watchdog keeps trying.
     stop(session)
+    sessions.update_backend(session, {'interrupted_turn': turn_id})
     append_event(session, turn_id, 'interrupted', '')
 
 
