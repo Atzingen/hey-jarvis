@@ -1,39 +1,41 @@
-# Jarvis — converse com seu computador
+# Jarvis — talk to your computer
 
-Diga **“hey jarvis”**, faça uma pergunta ou peça uma ação. O Jarvis transcreve sua fala, responde em voz alta e mantém a conversa na tela. Também oferece ditado para qualquer aplicativo, integração com a barra do Omarchy e suporte opcional ao robô Picoh.
+**Language:** English · [Português](README.pt-BR.md)
 
-**Uma assinatura do Claude Code ou do Codex é suficiente para o agente.** Chave de API, Jev e classificador local são opcionais. Instalações novas e configurações antigas continuam começando em `routing_mode = "agent"`, com respostas por API desabilitadas.
+Say **“hey jarvis”**, ask a question or ask for something to be done. Jarvis transcribes your speech, answers out loud and keeps the conversation on screen. It also dictates into any app, lives in the Omarchy bar and can optionally drive a Picoh robot as its face.
 
-![Janela de conversa do Jarvis](docs/screenshots/window-answering.png)
+**A Claude Code or Codex subscription is all the agent needs.** API keys, Jev and the local classifier are optional. New installs and existing configurations start in `routing_mode = "agent"`, with API answers disabled.
 
-[Instalação](#instalação) · [Fluxo](#como-um-pedido-é-atendido) · [Roteamento](#roteamento-opcional) · [Configuração](#como-configurar) · [Terminal](#conversa-no-terminal) · [Ditado](#ditado-e-atalhos) · [Diagnóstico](#diagnóstico) · [Referência detalhada em inglês](docs/reference.en.md)
+![Jarvis conversation window](docs/screenshots/window-answering.png)
 
-## O que você pode fazer
+[Installation](#installation) · [Flow](#how-a-request-is-handled) · [Routing](#optional-routing) · [Configuration](#configuration) · [Terminal](#terminal-conversations) · [Dictation](#dictation-and-keybindings) · [Troubleshooting](#troubleshooting) · [What's new](CHANGELOG.md) · [Detailed reference](docs/reference.en.md)
 
-| Você pede | O Jarvis faz |
+## What you can do
+
+| You say | Jarvis |
 |---|---|
-| “Explique a diferença entre RAM e armazenamento.” | Responde pela assinatura ou pela API que você habilitou. |
-| “Qual é a previsão do tempo para amanhã?” | Usa busca web na rota API habilitada, ou encaminha ao agente e às ferramentas permitidas. |
-| “Quantos containers estão rodando aqui?” | Encaminha ao agente, respeitando a configuração de acesso ao computador. |
-| “Abra o projeto X.” | Abre o ambiente do projeto: terminais, editor e navegador. |
-| “Continue de onde parou.” | Mantém a sessão identificada do agente. |
-| Aperta `Ctrl+Shift+K`, fala e aperta novamente | Transcreve e entrega o texto para colar no aplicativo ativo. |
+| “Explain the difference between RAM and storage.” | Answers through your subscription, or through the API you enabled. |
+| “What's the weather tomorrow?” | Uses web search on an enabled API route, or hands it to the agent and the tools it is allowed to use. |
+| “How many containers are running here?” | Hands it to the agent, within your computer-access setting. |
+| “Open project X.” | Opens the project workspace: terminals, editor and browser. |
+| “Pick up where you left off.” | Keeps the agent's identified session. |
+| Press `Ctrl+Shift+K`, talk, press it again | Transcribes and pastes the text into the active app. |
 
-O Jarvis fala português do Brasil e inglês. A captura usa detecção de fala, com encerramento após silêncio; depois da resposta, a janela de continuação permite falar novamente sem repetir a palavra-chave. Falar por cima interrompe a resposta. A voz é sintetizada localmente pelo Piper.
+Jarvis speaks English and Brazilian Portuguese. Capture uses voice activity detection and ends after silence; after each answer a follow-up window lets you keep talking without the wake word. Talking over an answer interrupts it. The voice is synthesized locally by Piper.
 
-## Instalação
+## Installation
 
-Você precisa de Linux, microfone, áudio funcionando e **um** agente autenticado: [Codex CLI](https://github.com/openai/codex) ou [Claude Code](https://code.claude.com/docs/en/overview). Faça o login desse CLI com sua assinatura antes de usar o Jarvis. A API de respostas é uma contratação/configuração separada.
+You need Linux, a microphone, working audio and **one** authenticated agent: [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://code.claude.com/docs/en/overview). Log that CLI in with your subscription before using Jarvis. The answers API is a separate, optional setup.
 
-No Omarchy, adicione o painel à barra:
+On Omarchy, add the panel to the bar:
 
 ```bash
 omarchy plugin add https://github.com/Atzingen/hey-jarvis --enable
 ```
 
-Clique no ícone e em **Instalar** para instalar o serviço de voz. Adicionar o plugin sozinho instala o painel.
+Click the icon and then **Install** to set up the voice service. Adding the plugin alone installs only the panel.
 
-Para instalar a partir do repositório:
+To install from the repository:
 
 ```bash
 git clone https://github.com/Atzingen/hey-jarvis.git
@@ -41,111 +43,111 @@ cd hey-jarvis
 bash install.sh
 ```
 
-O instalador prepara o ambiente Python de voz, os modelos de reconhecimento, as vozes Piper, os scripts, a interface e o serviço de usuário `voice-launcher.service`. As dependências Python e os downloads de voz têm versões/verificações fixadas. Fora do Omarchy, instale os pacotes de sistema que ele indicar e execute novamente.
+The installer prepares the voice Python environment, the speech-recognition models, the Piper voices, the scripts, the interface and the `voice-launcher.service` user unit. Python dependencies and voice downloads are pinned and verified. Outside Omarchy, install the system packages it lists and run it again.
 
-**A instalação normal não baixa o classificador de roteamento, não instala seu PyTorch e não ativa respostas pagas por API.** Uma GPU pode acelerar o reconhecimento de fala existente; o classificador opcional descrito abaixo roda somente na CPU.
+**The regular install does not download the routing classifier, does not install its PyTorch and does not enable paid API answers.** A GPU speeds up the existing speech recognition; the optional classifier below runs on the CPU only.
 
-Escolha o agente e o idioma:
+Pick the agent and the language:
 
 ```bash
-jarvis config set language pt-BR
-jarvis config set quick_provider codex   # ou claude
+jarvis config set language en
+jarvis config set quick_provider codex   # or claude
 jarvis config
 jarvis talk
 ```
 
-A tela `jarvis config` salva e reinicia o serviço quando necessário. Depois de editar o TOML ou usar `config set` pelo terminal, aplique as alterações com:
+The `jarvis config` screen saves and restarts the service when needed. After editing the TOML or using `config set` from a terminal, apply the change with:
 
 ```bash
 systemctl --user restart voice-launcher.service
 ```
 
-Para atualizar, após obter as mudanças do repositório, execute `bash install.sh --update`. Esse comando reaplica os arquivos e dependências da instalação normal e reinicia o serviço.
+To update, pull the repository and run `bash install.sh --update`. It re-applies the files and dependencies of the regular install and restarts the service. With the Omarchy plugin, `omarchy plugin update atzingen.jarvis` updates the panel; to update the voice service as well, run `bash ~/.config/omarchy/plugins/atzingen.jarvis/install.sh --update`.
 
-## Como um pedido é atendido
+## How a request is handled
 
 ```mermaid
 flowchart TD
-    A[Você fala + contexto da conversa] --> B{Continuação clara de uma sessão?}
-    B -- Sim --> S[Mesmo agente, mesmo ID de sessão]
-    B -- Não --> C{Modo configurado}
-    C -- agent: padrão --> G[Agente autenticado pela assinatura]
-    C -- assistant --> I{API de respostas habilitada e configurada?}
-    I -- Não --> G
-    I -- Sim --> M[Modelo inicial responde ou encaminha]
-    M -- Resposta pronta --> R[Texto na tela + voz + histórico]
-    M -- Precisa do computador --> G
-    M -- Análise complexa --> J{Perfil API forte configurado?}
-    J -- Não --> G
-    J -- Sim --> K[Perfil API forte]
+    A[You speak + conversation context] --> B{Clear follow-up to a session?}
+    B -- Yes --> S[Same agent, same session ID]
+    B -- No --> C{Configured mode}
+    C -- agent: default --> G[Agent authenticated by subscription]
+    C -- assistant --> I{Answers API enabled and configured?}
+    I -- No --> G
+    I -- Yes --> M[Initial model answers or hands off]
+    M -- Answer ready --> R[Text on screen + voice + history]
+    M -- Needs the computer --> G
+    M -- Complex analysis --> J{Strong API profile configured?}
+    J -- No --> G
+    J -- Yes --> K[Strong API profile]
     K --> R
-    C -- jev ou local --> D{Classificador disponível?}
-    D -- Não / erro / timeout / carregando --> G
-    D -- Sim --> E[Classifica intenção e complexidade]
-    E --> F{Precisa de computador ou sessão?}
-    F -- Sim --> G
-    F -- Não --> H{API habilitada, modelo e chave válidos?}
-    H -- Não --> G
-    H -- Sim --> P[Resposta por API; busca web se habilitada]
+    C -- jev or local --> D{Classifier available?}
+    D -- No / error / timeout / loading --> G
+    D -- Yes --> E[Classifies intent and complexity]
+    E --> F{Needs the computer or a session?}
+    F -- Yes --> G
+    F -- No --> H{API enabled, model and key valid?}
+    H -- No --> G
+    H -- Yes --> P[API answer; web search if enabled]
     P --> R
     G --> S
     S --> R
-    S -. tarefa longa ou abrir terminal .-> T[Interface nativa + teclado, sem reenviar o pedido]
+    S -. long task or open terminal .-> T[Native interface + keyboard, request not resent]
     T --> S
 ```
 
-O diagrama mostra as decisões **antes de executar**. Se uma execução já começou e a conexão cair, o Jarvis mantém o ID e tenta consultar a mesma sessão. Quando não consegue confirmar o resultado, informa a incerteza. **Ele não dispara uma segunda execução para compensar uma resposta perdida.**
+The diagram shows the decisions **before execution**. If a run has started and the connection drops, Jarvis keeps the ID and tries to query the same session. When it cannot confirm the result, it says so. **It never starts a second run to make up for a lost answer.**
 
-Uma consulta atual depende de ferramentas de busca disponíveis. Quando a rota API não oferece busca, o encaminhamento é para o agente; as permissões desse agente continuam valendo. `system_access = "off"` não ganha acesso à internet ou ao computador por causa do roteador.
+Current information depends on available search tools. When the API route has no search, the request goes to the agent, and that agent's permissions still apply. `system_access = "off"` does not gain internet or computer access because of the router.
 
-## Roteamento opcional
+## Optional routing
 
-| `routing_mode` | Como decide | O que exige | Se faltar a dependência |
+| `routing_mode` | How it decides | What it needs | If the dependency is missing |
 |---|---|---|---|
-| **`agent` — padrão** | Envia diretamente ao agente escolhido. | Codex **ou** Claude autenticado. | Informa o problema do CLI/login; não depende de outro fornecedor. |
-| `assistant` | Um modelo inicial por API responde diretamente ou pede encaminhamento. | API de respostas explicitamente habilitada, modelo e chave. | Usa o agente por assinatura. |
-| `jev` | O Jev classifica o pedido e o nível de complexidade. | Chave do Jev/TypeSafe. | Usa o agente por assinatura. |
-| `local` | Um classificador opcional decide na CPU. | Instalação separada do GLiNER2.5-multi-Decide. | Usa o agente enquanto o classificador carrega, falha ou está ausente. |
+| **`agent` — default** | Sends straight to the chosen agent. | Codex **or** Claude, authenticated. | Reports the CLI/login problem; depends on no other vendor. |
+| `assistant` | An initial API model answers directly or asks for a handoff. | Answers API explicitly enabled, a model and a key. | Uses the subscription agent. |
+| `jev` | Jev classifies the request and its complexity. | A Jev/TypeSafe key. | Uses the subscription agent. |
+| `local` | An optional classifier decides on the CPU. | Separate install of GLiNER2.5-multi-Decide. | Uses the agent while the classifier loads, fails or is missing. |
 
-**O Jev é um classificador.** Ele não substitui o modelo que responde, não executa comandos e não escolhe nomes de modelos arbitrários. Sem uma API de respostas habilitada, a classificação continua levando ao agente da assinatura. A mesma regra vale para o classificador local.
+**Jev is a classifier.** It does not replace the model that answers, runs no commands and does not pick arbitrary model names. Without an enabled answers API, the classification still leads to the subscription agent. The same holds for the local classifier.
 
-**`assistant` é a alternativa sem Jev:** a primeira chamada à API já pode produzir a resposta. Se precisar de ferramentas do computador, entrega o pedido original e o contexto ao agente. Se existir um perfil API mais forte, permite uma escalada para ele; não cria uma cadeia sem fim de classificações.
+**`assistant` is the alternative without Jev:** the first API call can already produce the answer. If it needs computer tools, it hands the original request and the context to the agent. If a stronger API profile exists, it allows one escalation to it; there is no endless chain of classifications.
 
-O modo `agent` ignora os classificadores. Não importa seus modelos, não inicia workers locais nem consulta Jev/API de respostas. Ter uma chave OpenAI para transcrição ou narração **não habilita** a nova rota de respostas.
+The `agent` mode skips the classifiers. It imports none of their modules, starts no local workers and calls neither Jev nor the answers API. Having an OpenAI key for transcription or narration **does not enable** the answers route.
 
-A janela mostra o modelo que atendeu **cada resposta**, com uma linha discreta do caminho escolhido: por exemplo, `Jev → busca web → API` ou `Jev → computador → Agente · assinatura`. Enquanto classifica, mostra que está escolhendo a rota. Se houver fallback, a mesma linha registra a falha e o encaminhamento para a assinatura. O histórico mantém o modelo e a rota de cada mensagem, mesmo quando respostas de tarefas longas chegam depois.
+The window shows which model handled **each answer**, with a discreet line for the path taken: for example `Jev → web search → API` or `Jev → computer → Agent · subscription`. While classifying, it shows that it is choosing the route. On a fallback, the same line records the failure and the handoff to the subscription. The history keeps the model and the route of every message, even when answers to long tasks arrive later.
 
-### Escolha de modelo e esforço
+### Model and effort
 
-O roteador classifica a complexidade como baixa, média ou alta. Baixa/média usam o perfil normal. Alta pode usar o perfil forte que você configurar. Sem perfil forte, mantém o atual.
+The router rates complexity as low, medium or high. Low and medium use the normal profile. High can use the strong profile you configure. Without a strong profile, the current one stays.
 
-| Perfil | Modelo/esforço |
+| Profile | Model/effort |
 |---|---|
-| Agente normal | `codex_model` + `codex_effort`, ou `claude_quick_model` + `claude_quick_effort` |
-| Agente forte | `agent_strong_model` + `agent_strong_effort`, do **mesmo provedor** |
-| API normal | `api_model` + `api_effort` |
-| API forte | `api_strong_model` + `api_strong_effort` |
+| Normal agent | `codex_model` + `codex_effort`, or `claude_quick_model` + `claude_quick_effort` |
+| Strong agent | `agent_strong_model` + `agent_strong_effort`, **same provider** |
+| Normal API | `api_model` + `api_effort` |
+| Strong API | `api_strong_model` + `api_strong_effort` |
 
-Use identificadores e níveis de esforço aceitos pelo modelo da sua conta. O Jarvis não ativa um modelo pago apenas porque descobriu uma chave.
+Use model identifiers and effort levels your account accepts. Jarvis never enables a paid model just because it found a key.
 
-**“Pense bem” e “think hard” agora são texto comum.** Essas frases não trocam de provedor nem ativam um modo especial. As antigas chaves `deep_model`, `deep_effort`, `handoff_seconds_deep` e `narration_interval_deep` continuam legíveis nos arquivos/perfis para permitir reversão, mas saíram dos controles ativos.
+**“Think hard” and “pense bem” are ordinary text now.** These phrases no longer switch providers or enable a special mode. The former `deep_model`, `deep_effort`, `handoff_seconds_deep` and `narration_interval_deep` keys are still read from files and profiles so you can roll back, but they are out of the active settings.
 
-## Como configurar
+## Configuration
 
-Abra `jarvis config`. O grupo **Roteamento** reúne modo, API opcional, chave Jev e perfis fortes. As chaves ficam em `~/.config/jarvis/config.toml`, com permissão `0600`; campos secretos são mascarados na interface e em `config show`.
+Open `jarvis config`. The **Routing** group holds the mode, the optional API, the Jev key and the strong profiles. Keys live in `~/.config/jarvis/config.toml`, mode `0600`; secret fields are masked in the screen and in `config show`.
 
-### Só assinatura, sem chaves de API
+### Subscription only, no API keys
 
 ```toml
 routing_mode = "agent"
 api_provider = "none"
-quick_provider = "codex"       # ou "claude"
+quick_provider = "codex"       # or "claude"
 agent_session_mode = "auto"
 ```
 
-Esse é o comportamento de fábrica e o de configurações antigas que não contêm as novas chaves. Provedor, modelo, esforço e prioridade já salvos são preservados.
+This is the factory behaviour and the behaviour of older configurations that lack the new keys. Saved provider, model, effort and priority are kept.
 
-### Jev decide; a assinatura continua disponível
+### Jev decides; the subscription stays available
 
 ```toml
 routing_mode = "jev"
@@ -153,32 +155,32 @@ api_provider = "none"
 quick_provider = "codex"
 ```
 
-Preencha `jev_api_key` na configuração. Também é possível fornecer `JEV_API_KEY` no ambiente do processo do Jarvis. Sem chave válida, o pedido segue ao agente. A configuração acima **não exige chave OpenAI**.
+Fill `jev_api_key` in the settings, or provide `JEV_API_KEY` in the environment of the Jarvis process. Without a valid key, the request goes to the agent. The configuration above **needs no OpenAI key**.
 
-Para permitir respostas diretas por API, configure também:
+To allow direct API answers, also set:
 
 ```toml
 api_provider = "openai"
-api_model = "<modelo disponível na sua conta>"
-api_effort = ""                # vazio: não envia parâmetro de esforço
+api_model = "<a model available on your account>"
+api_effort = ""                # empty: sends no effort parameter
 api_web_search = true
 ```
 
-Substitua o marcador do modelo e preencha `openai_api_key` na configuração, ou disponibilize `OPENAI_API_KEY` ao serviço. O opt-in que autoriza a rota é `api_provider = "openai"` junto com um modelo preenchido. Uma variável exportada em um terminal não aparece automaticamente em um serviço systemd já iniciado.
+Replace the model placeholder and fill `openai_api_key` in the settings, or make `OPENAI_API_KEY` available to the service. The opt-in that authorizes the route is `api_provider = "openai"` together with a filled model. A variable exported in a terminal does not reach a systemd service that is already running.
 
-### Modelo inicial por API, sem Jev
+### Initial API model, no Jev
 
-Use a configuração de API acima e altere:
+Use the API configuration above and change:
 
 ```toml
 routing_mode = "assistant"
 ```
 
-O modelo inicial responde quando consegue resolver o pedido em texto/busca pública. Necessidade de arquivos, aplicativos, comandos ou sites autenticados leva ao agente. `api_strong_model` é opcional.
+The initial model answers when it can solve the request with text or public search. Needing files, apps, commands or logged-in sites leads to the agent. `api_strong_model` is optional.
 
-### Classificador local, somente CPU
+### Local classifier, CPU only
 
-Essa opção é **experimental**. Ele classifica o pedido; não gera a resposta e não transforma o Jarvis em um assistente inteiramente local.
+This option is **experimental**. It classifies the request; it does not generate the answer and does not make Jarvis a fully local assistant.
 
 ```bash
 jarvis router install-local
@@ -186,28 +188,35 @@ jarvis config set routing_mode local
 systemctl --user restart voice-launcher.service
 ```
 
-O instalador opcional usa **Python 3.11 em Linux x86_64**, ambiente próprio em `~/.local/share/jarvis/router-local`, dependências fixadas com hashes e revisão fixa do modelo. Se necessário, indique o interpretador:
+The optional installer uses **Python 3.11 on Linux x86_64**, its own environment in `~/.local/share/jarvis/router-local`, hash-pinned dependencies and a pinned model revision. If needed, point it at the interpreter:
 
 ```bash
-JARVIS_ROUTER_PYTHON=/caminho/para/python3.11 jarvis router install-local
+JARVIS_ROUTER_PYTHON=/path/to/python3.11 jarvis router install-local
 ```
 
-O worker usa PyTorch CPU, bloqueia CUDA e carrega somente os arquivos já baixados. A instalação é explícita; uma fala nunca dispara download. Enquanto o modelo está frio, o pedido segue imediatamente ao agente. Depois de `local_router_idle_seconds` sem uso, o processo sai e libera a memória.
+The worker uses CPU PyTorch, blocks CUDA and loads only files already downloaded. Installation is explicit; speaking never triggers a download. While the model is cold, the request goes straight to the agent. After `local_router_idle_seconds` without use, the process exits and frees the memory.
 
-Veja as [evidências de validação](docs/routing-validation.md) para resultado, latência, consumo em disco e limitações da avaliação em português. Falhas de classificação não ampliam permissões: a rota API não executa ações textuais.
+See the [validation evidence](docs/routing-validation.md) for results, latency, disk use and the limits of the Portuguese evaluation. Classification mistakes never widen permissions: the API route does not execute textual actions.
 
-### Limites e reversão
+### Personal context and fast mode
 
-| Chave | Padrão | Efeito |
+Create `~/.config/jarvis/contexto.md` (or point `context_file` at another file) with what the model should know about you: where your data lives, which tools to check. The text is appended to the system prompt when the model has computer access (`ask` or `full`) and goes to the provider with every request. It grants no permission; a missing file changes nothing. After you edit the file, the next conversation opens a new native session.
+
+`codex_fast` (on by default) and `claude_fast` (off) ask each CLI for its fast mode: quicker answers that use more of the plan. Claude bills fast mode as extra usage and, without credits, falls back to normal speed.
+
+### Limits and rollback
+
+| Key | Default | Effect |
 |---|---|---|
-| `router_timeout_seconds` | `5.0` | Prazo da classificação Jev/local; depois usa o agente. |
-| `api_timeout_seconds` | `30.0` | Prazo da resposta API; uma execução incerta não é repetida. |
-| `local_router_idle_seconds` | `300` | Inatividade até descarregar o classificador. |
-| `handoff_seconds_quick` | `45` | Quando abrir o terminal de uma tarefa longa. |
-| `handoff_max_minutes` | `30` | Prazo máximo de um turno; não é o tempo de vida de uma sessão ociosa. |
-| `agent_session_mode` | `auto` | Sessão nativa quando suportada; `legacy` mantém o executor de compatibilidade. |
+| `router_timeout_seconds` | `5.0` | Deadline for the Jev/local classification; then the agent is used. |
+| `api_timeout_seconds` | `30.0` | Deadline for the API answer; an uncertain run is not repeated. |
+| `local_router_idle_seconds` | `300` | Idle time before the classifier is unloaded. |
+| `handoff_seconds_quick` | `45` | When to open the terminal for a long task. |
+| `handoff_max_minutes` | `30` | Maximum duration of a turn; not the lifetime of an idle session. |
+| `agent_session_mode` | `auto` | Native session when supported; `legacy` keeps the compatibility executor. |
+| `agent_session_max_hours` | `12` | Maximum age of a native session; after that the next conversation opens a new one. |
 
-Para voltar ao caminho direto e ao executor anterior:
+To go back to the direct path and the previous executor:
 
 ```bash
 jarvis config set routing_mode agent
@@ -216,80 +225,82 @@ jarvis config set agent_session_mode legacy
 systemctl --user restart voice-launcher.service
 ```
 
-Perfis de configuração continuam disponíveis na tela de configuração. A [referência completa](docs/reference.en.md#settings) descreve as opções de áudio, voz, narração, interface e interrupção.
+Settings profiles remain available in the settings screen. The [full reference](docs/reference.en.md#settings) covers audio, voice, narration, interface and interruption options.
 
-## Conversa no terminal
+## Terminal conversations
 
-Tarefas do agente podem começar em uma sessão persistente. Ao demorar, ou ao clicar em **Abrir terminal**, o Jarvis abre um terminal normal com a interface do CLI e entrada de teclado. A janela mostra se o atendimento usa uma sessão interativa ou o modo de compatibilidade.
+Agent tasks can start in a persistent session. When a task takes long, or when you click **Open terminal**, Jarvis opens a normal terminal with the CLI's own interface and keyboard input. The window shows whether the request uses an interactive session or the compatibility mode.
 
-- **Codex:** app-server local, login da assinatura e TUI conectada ao mesmo ID. Esse canal local não é a API paga de respostas.
-- **Claude:** sessão nativa em background e `attach` do ID exato, com um canal tmux privado para integrar a voz. Com o terminal anexado, o teclado tem a entrada; **`Ctrl+B`, depois `D`** desanexa e libera os pedidos de voz que estiverem na fila. Fechar a janela também desanexa.
-- **Continuação:** novas mensagens pertencem à sessão identificada, com diretório e política de acesso conferidos. Não é usado `--last`, nem reenviado o pedido original ao abrir uma janela.
-- **Resultado nas sessões nativas:** a conclusão real atualiza o histórico da conversa aberta, inclusive depois de abrir o terminal. A indicação “continua no terminal” não entra como resposta do modelo. O visualizador legado conserva seu comportamento anterior.
-- **Compatibilidade:** se o CLI não oferecer as capacidades necessárias, o executor anterior é escolhido antes de enviar o pedido. Seu visualizador de progresso continua identificado como compatibilidade.
+- **Codex:** local app-server, subscription login and a TUI attached to the same ID. This local channel is not the paid answers API.
+- **Claude:** native background session and `attach` to the exact ID, with a private tmux channel for voice. While the terminal is attached, the keyboard owns the input; **`Ctrl+B`, then `D`** detaches and releases queued voice requests. Closing the window also detaches.
+- **Follow-ups:** new messages belong to the identified session, with directory and access policy checked. `--last` is never used, and opening a window never resends the original request.
+- **Results in native sessions:** the real completion updates the history of the open conversation, even after the terminal was opened. The “continues in the terminal” notice is not recorded as a model answer. The legacy viewer keeps its previous behaviour.
+- **Compatibility:** if the CLI lacks the required capabilities, the previous executor is chosen before the request is sent. Its progress viewer stays labelled as compatibility.
 
-A integração nativa foi desenvolvida com Codex CLI `0.156.1` e Claude Code `2.1.280`. Claude também precisa de `tmux`; o terminal gráfico usa Alacritty. Versões/capacidades incompatíveis mantêm o caminho anterior.
+Last validation of the native integration: Claude Code `2.1.33x` (2026-11-25) and Codex CLI `0.159.2` (2026-10-02). Claude also needs `tmux`; the graphical terminal is Alacritty. Incompatible versions or capabilities keep the previous path.
 
-Uma continuação mantém o perfil da sessão. No Claude, um pedido independente que selecionar outro modelo/esforço começa uma nova sessão nativa com o contexto recente; a sessão anterior continua identificável. No Codex, o perfil pode ser aplicado por turno. Quando o pedido menciona um único projeto real pelo nome em `dev_dir`, esse diretório é usado; nomes ambíguos ou links não selecionam outro diretório automaticamente.
+**First use with Claude:** the background session opens in `~/.local/share/jarvis/workdir`, or in the request directory when `system_access = "full"` and that directory is not your home folder. Claude Code asks once whether to trust the folder: run `claude` in `~/.local/share/jarvis/workdir` and accept. Until then, Jarvis uses the compatibility mode.
+
+The native session is replaced when the system prompt or the [context file](#personal-context-and-fast-mode) change, and after `agent_session_max_hours`; the old one is stopped if nothing is running in it. An answer that arrives after the long-task notice is spoken at the next pause, besides showing in the window.
+
+A follow-up keeps the session's profile. With Claude, an independent request that selects another model or effort starts a new native session with the recent context; the previous session stays identifiable. With Codex, the profile can be applied per turn. When the request names a single real project in `dev_dir`, that directory is used; ambiguous names or links never select another directory automatically.
 
 ```bash
-jarvis session status <id-do-jarvis>
-jarvis session open <id-do-jarvis>
-jarvis session stop <id-do-jarvis>
+jarvis session status <jarvis-id>
+jarvis session open <jarvis-id>
+jarvis session stop <jarvis-id>
 ```
 
-Os registros ficam privados em `~/.local/share/jarvis/sessions`. O ID do Jarvis aparece no estado da conversa e em `jarvis router status`. Encerrar uma conversa por voz com “fim” desvincula a próxima conversa; uma tarefa já entregue ao terminal continua lá.
+Records are kept private in `~/.local/share/jarvis/sessions`. The Jarvis ID shows in the conversation state and in `jarvis router status`. Ending a voice conversation with “end” unlinks the next conversation; a task already handed to the terminal keeps running there.
 
-## Acesso ao computador
+## Computer access
 
-| `system_access` | Comportamento |
+| `system_access` | Behaviour |
 |---|---|
-| **`ask` — padrão** | O modelo não tem shell/leitura/escrita próprios. Comandos, inclusive leituras, passam pela ferramenta de consentimento e mostram o comando exato. |
-| `off` | Sem ferramentas do computador. Responde com as informações disponíveis. |
-| `full` | Ferramentas do agente com as opções de acesso total já usadas pelo Jarvis. |
+| **`ask` — default** | The model has no shell, read or write tool of its own. Commands, reads included, go through the consent tool and show the exact command. |
+| `off` | No computer tools. Answers with the information it has. |
+| `full` | The agent's own tools with the full-access options Jarvis already used. |
 
-O roteador não muda essa escolha. Perfis fortes também não ganham permissões adicionais. Nas sessões persistentes, “permitir o resto desta pergunta” pertence ao turno atual, sem virar uma permissão para toda a conversa. O cancelamento interrompe também um comando autorizado em andamento.
+The router never changes this choice. Strong profiles gain no extra permissions either. In persistent sessions, “allow the rest of this question” belongs to the current turn and never becomes a permission for the whole conversation. Cancelling also interrupts an authorized command that is running.
 
-Respostas por API são texto: marcadores como `<<ABRIR_APP: ...>>` ou `<<DORMIR>>` não são executados quando vêm dessa rota. Mais detalhes em [SECURITY.md](SECURITY.md).
+API answers are text: markers such as `<<ABRIR_APP: ...>>` or `<<DORMIR>>` are not executed when they come from that route. More in [SECURITY.md](SECURITY.md).
 
-## Ditado e atalhos
+## Dictation and keybindings
 
-| Atalho | Função |
+| Keybinding | Action |
 |---|---|
-| `Ctrl+Shift+J` | Chama o Jarvis como a palavra-chave; liga o serviço se necessário. |
-| `Ctrl+Shift+H` | Também chama o Jarvis. |
-| `Ctrl+Alt+Shift+J` | Liga/desliga apenas a escuta da palavra-chave. |
-| `Ctrl+Shift+K` | Começa/termina o ditado. |
-| `Ctrl+Shift+L` | Ditado enquanto a tecla estiver pressionada. |
-| `Esc`, durante a revisão do ditado | Cancela a revisão por LLM e entrega a transcrição original. |
+| `Ctrl+Shift+J` | Calls Jarvis like the wake word; starts the service if needed. |
+| `Ctrl+Shift+H` | Also calls Jarvis. |
+| `Ctrl+Alt+Shift+J` | Turns only wake-word listening on/off. |
+| `Ctrl+Shift+K` | Starts/stops dictation. |
+| `Ctrl+Shift+L` | Dictation while the key is held. |
+| `Esc`, during dictation review | Cancels the LLM review and delivers the original transcript. |
 
-Adicione os atalhos de [integrations/hypr-bindings.lua](integrations/hypr-bindings.lua) à sua configuração. O instalador não altera os atalhos do desktop automaticamente.
+Add the bindings from [integrations/hypr-bindings.lua](integrations/hypr-bindings.lua) to your configuration. The installer never changes desktop keybindings by itself.
 
-O texto original fica disponível no clipboard assim que a transcrição termina, antes da revisão opcional. Para enviar diretamente a um prompt de IA sem uma etapa extra de limpeza:
+The original text is on the clipboard as soon as transcription ends, before the optional review. To send straight to an AI prompt without an extra cleanup pass:
 
 ```bash
 jarvis config set dictation_polish false
 systemctl --user restart voice-launcher.service
 ```
 
-`dictation_output` escolhe `paste`, `clipboard` ou `type`. As configurações e atalhos de ditado funcionam independentemente do roteador da conversa.
+`dictation_output` picks `paste`, `clipboard` or `type`. Dictation settings and keybindings work independently of the conversation router.
 
-### Texto enquanto você fala
+### Text while you speak
 
-Em **Configuração → Escuta → Reconhecimento de fala**, escolha o backend:
+In **Settings → Listening → Speech recognition**, pick the backend:
 
-| Opção | Onde transcreve | Texto parcial durante a fala | Requisitos |
+| Option | Where it transcribes | Partial text while speaking | Requirements |
 |---|---|---|---|
-| `nemotron` | Na máquina, Nemotron 3.5 ASR 0.6B | Sim | Instalação opcional; CPU ou acelerador compatível |
-| `openai` | API OpenAI, `gpt-live-transcribe` | Sim | Internet, chave e saldo de API |
-| `local` | Na máquina, Whisper | Ao finalizar cada trecho | Sem chave; CUDA ou CPU |
-| `auto` | Mantém a seleção anterior | Depende do backend | CUDA → Whisper; sem CUDA → OpenAI com chave, senão Whisper CPU |
+| `nemotron` | On the machine, Nemotron 3.5 ASR 0.6B | Yes | Optional install; CPU or a compatible accelerator |
+| `openai` | OpenAI API, `gpt-live-transcribe` | Yes | Internet, API key and credits |
+| `local` | On the machine, Whisper | When each phrase is finalized | No key; CUDA or CPU |
+| `auto` | Keeps the previous selection | Depends on the backend | CUDA → Whisper; no CUDA → OpenAI with a key, otherwise Whisper on CPU |
 
-O Nemotron e a API são opcionais. Se a opção escolhida falhar, o áudio capturado
-vai para o Whisper local. Escolher Nemotron nunca ativa uma API paga como fallback.
-A assinatura do agente e o roteamento das respostas continuam independentes do reconhecimento de fala.
+Nemotron and the API are optional. If the chosen option fails, the captured audio goes to local Whisper. Choosing Nemotron never enables a paid API as a fallback. The agent subscription and answer routing stay independent of speech recognition.
 
-**Nemotron local:** instale uma vez, depois selecione na configuração:
+**Local Nemotron:** install once, then select it:
 
 ```bash
 jarvis stt install-nemotron
@@ -297,19 +308,11 @@ jarvis config set stt_provider nemotron
 systemctl --user restart voice-launcher.service
 ```
 
-O instalador baixa o runtime NVIDIA NeMo-Speech.cpp e o modelo quantizado (~707 MiB),
-com versão e SHA-256 fixos. O instalador normal do Jarvis não baixa esse componente.
-O servidor escuta somente em loopback com uma chave temporária e é encerrado junto
-com o Jarvis. O Whisper de fallback só é carregado se necessário.
+The installer downloads the NVIDIA NeMo-Speech.cpp runtime and the quantized model (~707 MiB), with fixed versions and SHA-256. The regular Jarvis installer never downloads this component. The server listens only on loopback with a temporary key and stops together with Jarvis. The fallback Whisper is loaded only when needed.
 
-`jarvis stt install-nemotron --device cpu` instala o pacote sem CUDA.
-Em **Avançado → Reconhecimento → Dispositivo do Nemotron**, `nemotron_device`
-permite `auto`, `cpu`, `cuda` ou `metal`. O runtime também tem suporte a Mac Intel
-(CPU) e Apple Silicon (Metal); a interface, os atalhos e a entrega de texto deste
-Jarvis continuam voltados a Linux/Hyprland. Esta mudança não porta o aplicativo inteiro para macOS.
+`jarvis stt install-nemotron --device cpu` installs the package without CUDA. In **Advanced → Recognition → Nemotron device**, `nemotron_device` accepts `auto`, `cpu`, `cuda` or `metal`. The runtime also supports Intel Macs (CPU) and Apple Silicon (Metal); this Jarvis's interface, keybindings and text delivery remain Linux/Hyprland-oriented. This does not port the whole app to macOS.
 
-**OpenAI:** salve a chave no campo **Chave da OpenAI (API)**, sem colocá-la em scripts
-ou no histórico do terminal, e selecione:
+**OpenAI:** save the key in the **OpenAI key (API)** field, without putting it in scripts or in the terminal history, and select:
 
 ```bash
 jarvis config set stt_provider openai
@@ -317,27 +320,13 @@ jarvis config set openai_stt_model gpt-live-transcribe
 systemctl --user restart voice-launcher.service
 ```
 
-Para inserir o texto no prompt ou editor durante o ditado, ative
-**Configuração → Ditado → Escrever durante o ditado** (`dictation_live = true`).
-As palavras provisórias aparecem na janela; nas pausas de aproximadamente 0,8 s,
-o texto confirmado é inserido no campo selecionado usando a saída configurada
-(`paste` cola cada trecho; `type` simula digitação). A gravação continua enquanto
-o trecho anterior é finalizado. Ao encerrar, o texto completo fica no clipboard,
-sem uma segunda colagem e sem a etapa de revisão com IA. O modo `clipboard`
-continua apenas copiando o resultado ao final.
+To write into the prompt or editor while you dictate, turn on **Settings → Dictation → Write while dictating** (`dictation_live = true`). Provisional words show in the window; at pauses of about 0.8 s the confirmed text is inserted into the selected field with the configured output (`paste` pastes each phrase; `type` simulates typing). Recording continues while the previous phrase is finalized. When you stop, the complete text is on the clipboard, with no second paste and no AI review step. The `clipboard` mode still only copies the result at the end.
 
-A inserção espera a liberação de Ctrl, Shift, Alt e Super. Se não for possível
-verificar as teclas, ou elas continuarem pressionadas por 10 s, a escrita para e
-o resultado continua disponível no clipboard ao encerrar. No modo `paste`, os
-trechos intermediários também passam pelo clipboard. Para escrever durante a
-fala, prefira o toggle Ctrl+Shift+K; segurar Ctrl+Shift+L adia a inserção.
+Insertion waits until Ctrl, Shift, Alt and Super are released. If the key state cannot be checked, or the keys stay down for 10 s, writing stops and the result is still on the clipboard when you finish. In `paste` mode, intermediate phrases also go through the clipboard. To write while speaking, prefer the `Ctrl+Shift+K` toggle; holding `Ctrl+Shift+L` delays insertion.
 
-Mantenha o campo selecionado enquanto dita. Se trocar de janela, a escrita para
-e o texto continua sendo reunido para o clipboard. Cancelar interrompe novas
-inserções; os trechos já escritos permanecem no campo. Para voltar à entrega única
-com revisão opcional, desative `dictation_live`; `dictation_polish` volta a valer.
+Keep the field selected while dictating. If you switch windows, writing stops and the text keeps being collected for the clipboard. Cancelling stops further insertions; phrases already written stay in the field. To go back to a single delivery with optional review, turn off `dictation_live`; `dictation_polish` applies again.
 
-Para usar somente o caminho local já existente:
+To use only the existing local path:
 
 ```bash
 jarvis config set stt_provider local
@@ -345,38 +334,25 @@ jarvis config set dictation_live false
 systemctl --user restart voice-launcher.service
 ```
 
-[Validação da integração e limites dos testes](docs/validation/stt-streaming-2026-09-30.md),
-com referência à avaliação anterior de CPU/GPU.
+[Integration validation and test limits](docs/validation/stt-streaming-2026-09-30.md), with a reference to the earlier CPU/GPU evaluation.
 
-### Palavras e nomes que o ditado costuma errar
+### Words and names dictation tends to get wrong
 
-Em **Configuração → Escuta → Vocabulário pessoal**, coloque uma palavra ou expressão
-por linha, por exemplo `Claude Code`, `README` e `Hyprland`. Vírgulas também separam
-entradas. A lista pessoal substitui a lista automática; se estiver vazia, o Jarvis
-continua usando seus termos básicos e os nomes dos projetos. **Usar vocabulário no
-reconhecimento** permite desligar todas as pistas sem apagar a lista.
+In **Settings → Listening → Personal vocabulary**, put one word or phrase per line, for example `Claude Code`, `README` and `Hyprland`. Commas also separate entries. The personal list replaces the automatic one; when it is empty, Jarvis keeps using its built-in terms and the project names. **Use vocabulary in recognition** turns every hint off without erasing the list.
 
-As pistas favorecem a grafia durante o reconhecimento; não são substituições
-automáticas nem memória pessoal do assistente. A lista fica no seu `config.toml`,
-não no repositório. Ao escolher OpenAI, os termos são enviados junto à configuração
-da transcrição. O caminho Nemotron/Whisper continua inteiramente local.
+The hints favour the spelling during recognition; they are not automatic substitutions and not a personal memory of the assistant. The list lives in your `config.toml`, not in the repository. With OpenAI, the terms are sent along with the transcription configuration. The Nemotron/Whisper path stays fully local.
 
-| Opção | Como usa o vocabulário |
+| Option | How it uses the vocabulary |
 |---|---|
-| Nemotron | `speech_contexts` antes do áudio; ajuste **Avançado → Reconhecimento → Força do vocabulário no Nemotron**. Comece com 0.5; 0 desliga e valores altos podem inserir palavras indevidas. |
-| OpenAI `gpt-live-transcribe` | `keywords`, até 100 entradas válidas e sem duplicatas. Outros modelos OpenAI não recebem esse campo. |
-| Whisper / fallback local | `hotwords`, limitado pelo faster-whisper a 223 tokens (pedaços de palavras). O excedente é truncado pelo reconhecedor. |
+| Nemotron | `speech_contexts` before the audio; tune **Advanced → Recognition → Vocabulary strength in Nemotron**. Start at 0.5; 0 turns it off and high values can insert words that were not said. |
+| OpenAI `gpt-live-transcribe` | `keywords`, up to 100 valid, unique entries. Other OpenAI models do not get this field. |
+| Whisper / local fallback | `hotwords`, limited by faster-whisper to 223 tokens (word pieces). The excess is truncated by the recognizer. |
 
-O Jarvis limita a lista a 100 entradas. Prefira uma lista curta de termos relevantes
-ao assunto; nomes em inglês e siglas podem consumir vários tokens no Whisper.
+Jarvis caps the list at 100 entries. Prefer a short list of terms relevant to the subject; English names and acronyms can take several tokens in Whisper.
 
-**Nemotron instalado antes deste suporte:** depois de atualizar os scripts do Jarvis,
-rode novamente `jarvis stt install-nemotron` (ou `--device cpu`, conforme sua instalação).
-O modelo atualizado inclui o tokenizador necessário para as pistas, com revisão e
-SHA-256 verificados. Uma instalação antiga continua transcrevendo, mas registra no
-log que o vocabulário exige a atualização; nenhum modelo é baixado ao iniciar o serviço.
+**Nemotron installed before this support:** after updating the Jarvis scripts, run `jarvis stt install-nemotron` again (or `--device cpu`, matching your install). The updated model includes the tokenizer the hints need, with verified revision and SHA-256. An old install keeps transcribing, but logs that vocabulary requires the update; no model is downloaded when the service starts.
 
-Exemplo pelo terminal:
+From the terminal:
 
 ```bash
 jarvis config set stt_vocabulary 'Claude Code, README, Hyprland'
@@ -385,19 +361,17 @@ jarvis config set nemotron_vocabulary_boost 0.5
 systemctl --user restart voice-launcher.service
 ```
 
-Ao salvar pela tela de configuração, o serviço é reiniciado automaticamente.
-O streaming e o fallback para Whisper permanecem disponíveis com ou sem vocabulário.
-[Resultados da comparação de áudio e validação](docs/validation/stt-vocabulary-2026-10-02.md).
+Saving from the settings screen restarts the service automatically. Streaming and the Whisper fallback stay available with or without vocabulary. [Audio comparison and validation results](docs/validation/stt-vocabulary-2026-10-02.md).
 
-## Interface, áudio e Picoh
+## Interface, audio and Picoh
 
-`jarvis app` abre o painel da barra como aplicativo. A janela acompanha transcrição, andamento, autorizações e resposta, com o avatar e o anel de voz. O mesmo QML roda no Quickshell ou no host PySide6; há alternativa em terminal quando Qt não está disponível.
+`jarvis app` opens the bar panel as an app. The window follows transcription, progress, authorizations and the answer, with the avatar and the voice ring. The same QML runs in Quickshell or in the PySide6 host; there is a terminal fallback when Qt is not available.
 
-O reconhecimento pode usar Whisper local, Nemotron local ou a API OpenAI, conforme `stt_provider`. A voz usa Piper; `voice`, `voice_length_scale`, `greeting` e `address` personalizam como o Jarvis fala. A narração de progresso possui sua própria configuração: `narration = templates` usa frases locais sem API; `off` a desativa.
+Recognition can use local Whisper, local Nemotron or the OpenAI API, according to `stt_provider`. The voice is Piper; `voice`, `voice_length_scale`, `greeting` and `address` customize how Jarvis speaks. Progress narration has its own settings: `narration = templates` uses local phrases without an API; `off` disables it. The first sentence comes as soon as the model starts acting, after at least `narration_first_seconds` (3 s); in Claude sessions it describes what the tool is doing.
 
-O Picoh é opcional e acompanha as fases e a voz sem participar do roteamento. Use `jarvis picoh probe` para detectar e `jarvis picoh demo` para testar. Detalhes de áudio, dispositivos e robô estão na [referência técnica](docs/reference.en.md).
+The Picoh is optional and follows the phases and the voice without taking part in routing; its eyes always stay dim. Use `jarvis picoh probe` to detect it and `jarvis picoh demo` to test it. Audio, device and robot details are in the [technical reference](docs/reference.en.md).
 
-## Diagnóstico
+## Troubleshooting
 
 ```bash
 jarvis router status
@@ -405,51 +379,55 @@ jarvis config show
 jarvis log
 ```
 
-| Situação | Confira |
+| Situation | Check |
 |---|---|
-| Não tenho Jev, API nem modelo local | Use `routing_mode = "agent"` e autentique o CLI escolhido. |
-| Tenho Jev, mas tudo vai ao agente | Verifique a chave Jev. Sem API de respostas habilitada/modelo/chave, o destino também é o agente. |
-| Tenho uma chave para transcrição, mas não quero pagar por respostas | Mantenha `api_provider = "none"`. |
-| A configuração diz `local`, mas o pedido foi ao agente | O classificador pode estar ausente, carregando ou fora do prazo. Consulte o motivo no estado. |
-| O terminal mostra compatibilidade | Confira versão/capacidades do CLI, Alacritty e, para Claude, tmux. `agent_session_mode = "legacy"` também força esse caminho. |
-| Falei enquanto digitava no terminal Claude | A voz fica na fila. Desanexe com `Ctrl+B`, depois `D`. |
-| Houve erro depois que a tarefa começou | Abra a sessão indicada e confira o resultado; o Jarvis não duplica automaticamente a execução. |
-| A alteração do TOML não apareceu | Reinicie `voice-launcher.service`. |
+| I have no Jev, API or local model | Use `routing_mode = "agent"` and authenticate the chosen CLI. |
+| I have Jev, but everything goes to the agent | Check the Jev key. Without an enabled answers API, model and key, the destination is also the agent. |
+| I have a key for transcription but don't want to pay for answers | Keep `api_provider = "none"`. |
+| The setting says `local`, but the request went to the agent | The classifier may be missing, loading or past its deadline. See the reason in the status. |
+| The terminal shows compatibility | Check the CLI version and capabilities, Alacritty and, for Claude, tmux and the [work folder trust](#terminal-conversations). `agent_session_mode = "legacy"` also forces that path. |
+| I spoke while typing in the Claude terminal | The voice is queued. Detach with `Ctrl+B`, then `D`. |
+| There was an error after the task started | Open the indicated session and check the result; Jarvis never repeats the run by itself. |
+| A TOML change did not show up | Restart `voice-launcher.service`. |
+| The vocabulary has no effect with Nemotron | The log says the model predates the support: run `jarvis stt install-nemotron` again. |
 
-A [matriz de validação](docs/routing-validation.md) separa testes simulados de chamadas reais. A fixture [routing_pt_br.json](tests/fixtures/routing_pt_br.json) contém 60 pedidos públicos para comparar classificadores sem executar ações do agente.
+The [validation matrix](docs/routing-validation.md) separates simulated tests from real calls. The fixture [routing_pt_br.json](tests/fixtures/routing_pt_br.json) holds 60 public requests to compare classifiers without running agent actions.
 
-## Desenvolvimento e arquitetura
+## Development and architecture
 
-O áudio permanece no launcher; os módulos novos separam classificação, política de escolha e sessão de execução.
+Audio stays in the launcher; the newer modules split classification, choice policy and execution session.
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 |---|---|
-| `bin/voice-launcher.py` | Microfone, conversa, ditado, voz e integração com a janela. |
-| `bin/jarvis_routing.py` | Catálogo de perfis, validação de decisões e fallback. |
-| `bin/jarvis_router_api.py` | Resposta/encaminhamento pelo modelo inicial e execução da API. |
-| `bin/jarvis_router_jev.py` | Classificação estruturada do Jev. |
-| `bin/jarvis_router_local.py` | Worker CPU opcional, aquecimento e descarregamento. |
-| `bin/jarvis_conversation_routing.py` | Encaminhamento, continuidade e conclusão tardia. |
-| `bin/jarvis_sessions.py` | IDs, registros privados, envio único, terminal e prazos. |
-| `bin/jarvis_agent_codex.py`, `bin/jarvis_agent_claude.py` | Integrações dos CLIs autenticados. |
-| `bin/jarvis_config.py`, `bin/jarvis_i18n.py` | Configuração, perfis e textos pt-BR/en. |
+| `bin/voice-launcher.py` | Microphone, conversation, dictation, voice and window integration. |
+| `bin/jarvis_routing.py` | Profile catalog, decision validation and fallback. |
+| `bin/jarvis_router_api.py` | Answer/handoff by the initial model and API execution. |
+| `bin/jarvis_router_jev.py` | Jev structured classification. |
+| `bin/jarvis_router_local.py` | Optional CPU worker, warm-up and unloading. |
+| `bin/jarvis_conversation_routing.py` | Handoff, continuity and late completion. |
+| `bin/jarvis_sessions.py` | IDs, private records, single submission, terminal and deadlines. |
+| `bin/jarvis_agent_codex.py`, `bin/jarvis_agent_claude.py` | Integrations with the authenticated CLIs. |
+| `bin/jarvis_stt.py`, `bin/jarvis_nemotron.py`, `bin/jarvis_dictation_stream.py` | Speech recognition, vocabulary, optional Nemotron and write-while-dictating. |
+| `bin/jarvis_config.py`, `bin/jarvis_i18n.py` | Configuration, profiles and pt-BR/en texts. |
 
-Com o ambiente Python de voz disponível:
+With the voice Python environment installed:
 
 ```bash
-python -m unittest discover -s tests -v
-python scripts/evaluate-routing.py --mode local --output /tmp/jarvis-routing-report.json
+~/.local/share/jarvis/venv/bin/python -m unittest discover -s tests
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -import app -input tests
+omarchy plugin validate "$PWD"
+~/.local/share/jarvis/venv/bin/python scripts/evaluate-routing.py --mode local --output /tmp/jarvis-routing-report.json
 ```
 
-A avaliação nunca executa o agente. Os modos Jev/API exigem sua configuração explícita; `assistant` pode consumir créditos da API para classificar/responder aos exemplos. A instalação opcional do classificador e seus pacotes ficam fora de `requirements.lock` do áudio.
+Use Qt 6's `qmltestrunner`; on some distributions the bare command is Qt 5's and exits without running anything. The evaluation never runs the agent. The Jev/API modes require your explicit configuration; `assistant` may spend API credits classifying/answering the examples. The optional classifier install and its packages stay out of the audio `requirements.lock`. Versions, changelog and marketplace publishing: [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
 
-## Remoção e licença
+## Removal and license
 
 ```bash
 bash install.sh --uninstall
-# Para remover também configurações/perfis e vozes:
+# To also remove settings/profiles and voices:
 bash install.sh --uninstall --purge
 omarchy plugin remove atzingen.jarvis
 ```
 
-O projeto usa a licença [MIT](LICENSE). Os componentes de terceiros têm licenças próprias; consulte a [referência de componentes](docs/reference.en.md#third-party-components), os respectivos modelos e [SECURITY.md](SECURITY.md).
+The project is under the [MIT](LICENSE) license. Third-party components have their own licenses; see the [component reference](docs/reference.en.md#third-party-components), the respective models and [SECURITY.md](SECURITY.md).

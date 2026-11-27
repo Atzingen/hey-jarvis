@@ -104,7 +104,7 @@ implicitly selects a paid API.
 | `github.com/dscripka/openWakeWord/releases` | install only — the ONNX wake-word/feature models, **fixed release `v0.5.1`, every file verified against its sha256** before use (openwakeword's own unpinned `download_models()` is never called) |
 | `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **first conversation** — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`; the hub verifies each file's sha256 against that commit) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
 | Anthropic / OpenAI backends of the **user's own** `claude` / `codex` CLIs | requests routed to the agent — the question, the conversation history and (in `ask`/`full`) whatever the model reads on the machine go to the provider the user is logged into |
-| `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio; (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
+| `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio, plus the personal vocabulary (`stt_vocabulary`, as `keywords`, only with `gpt-live-transcribe` and while `stt_vocabulary_enabled` is on); (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
 | `127.0.0.1:11434` (Ollama) | `dictation_polish`, and progress narration when `narration = "local"`/`auto` with a local model + GPU (a warm-up request at conversation start) |
 
 The OpenAI and Nemotron transcription sockets treat the server as untrusted input
@@ -176,12 +176,23 @@ its normal conversation history. Restricted Codex sessions use an isolated
 `CODEX_HOME`, linked only to the user's subscription authentication file, an
 empty work directory, disabled native execution tools and project instruction
 loading disabled. Full-access sessions keep the user's normal CLI setup.
-Claude uses invocation-scoped hooks and the same restricted tool configuration
-as the legacy path. It never uses `--bare`; native background IDs are resolved
+Claude uses invocation-scoped hooks (plus `fastMode` only when `claude_fast` is
+on) and the same restricted tool configuration as the legacy path. It never uses `--bare`; native background IDs are resolved
 exactly, and it never resumes a running background session by creating a copy.
 Voice input is literal bracketed paste over a private tmux socket; terminal
 control characters are escaped and text never becomes shell code. Voice waits
 while an attached terminal owns the input.
+
+A Claude native session runs in the request directory only under
+`system_access = "full"` and when that directory is not the home directory;
+otherwise it runs in `~/.local/share/jarvis/workdir`. Claude Code asks the user
+to trust a folder once; Jarvis never writes Claude's trust settings itself.
+Until the user accepts that question for the work directory, the native session
+does not start and Jarvis uses the compatibility executor.
+
+A native session is replaced when the system prompt or the context file change,
+and after `agent_session_max_hours` (12 by default). The replaced session is
+stopped when nothing is running in it; a running turn keeps its own deadline.
 
 The consent broker resolves the **current native turn** before authorizing a
 command. Grants belong to that turn, and a lost/changed turn cancels consent and
@@ -287,6 +298,12 @@ privileges (there is no privilege separation between Jarvis and the user), so
 the user must read the whole command before pressing `y`. The plugin's job is
 to guarantee that what is shown is exactly what runs, that nothing runs
 without that keystroke, and that no approval outlives the question.
+
+**Personal context file.** `context_file` (default `~/.config/jarvis/contexto.md`,
+in the user's own configuration directory) is appended to the system prompt only
+when the model has computer access (`ask` or `full`), so its text goes to the
+provider with every request. It is plain text for the model: it grants no tool,
+changes no permission and is never executed. A missing file changes nothing.
 
 Existing configurations with the 2.1 boolean (`system_access = true|false`)
 are read as `ask`/`off`: the no-confirmation mode requires an explicit opt-in
