@@ -36,6 +36,8 @@ explained in [RELEASING.md](RELEASING.md).
   system prompt or the context file change.
 - Documentation: English `README.md` again (Portuguese in `README.pt-BR.md`), this changelog,
   `RELEASING.md`, and the missing settings in `docs/reference.en.md`.
+- README GIFs of a question and its answer and of the settings screen (English and Portuguese),
+  a new marketplace preview, and refreshed screenshots of the settings screen and the panel.
 
 ### Changed
 
@@ -54,6 +56,10 @@ explained in [RELEASING.md](RELEASING.md).
 - Claude Code 2.1.33x: native sessions open again (new prompt placeholder; a background
   session no longer starts in the home folder — Jarvis's work folder has to be trusted once).
 - Claude Code 2.1.33x: long follow-ups are recognized again (pasted-content wrapper in hooks).
+- The settings screen in English showed some labels in Portuguese (form of address, window
+  style, music ducking, narration) and said the Jev key falls back to `OPENAI_API_KEY`; it is
+  `JEV_API_KEY`. Long Portuguese labels no longer get cut.
+- The panel's voice guide no longer says the dev layout uses Ghostty.
 - Speech longer than 60 seconds is no longer cut off (the playback ceiling follows the audio length).
 
 ## [2.4.0] — 2026-09-22

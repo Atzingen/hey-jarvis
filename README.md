@@ -6,7 +6,7 @@ Say **“hey jarvis”**, ask a question or ask for something to be done. Jarvis
 
 **A Claude Code or Codex subscription is all the agent needs.** API keys, Jev and the local classifier are optional. New installs and existing configurations start in `routing_mode = "agent"`, with API answers disabled.
 
-![Jarvis conversation window](docs/screenshots/window-answering.png)
+![A question and its answer in the Jarvis conversation window](docs/screenshots/conversation-en.gif)
 
 [Installation](#installation) · [Flow](#how-a-request-is-handled) · [Routing](#optional-routing) · [Configuration](#configuration) · [Terminal](#terminal-conversations) · [Dictation](#dictation-and-keybindings) · [Troubleshooting](#troubleshooting) · [What's new](CHANGELOG.md) · [Detailed reference](docs/reference.en.md)
 
@@ -134,7 +134,11 @@ Use model identifiers and effort levels your account accepts. Jarvis never enabl
 
 ## Configuration
 
-Open `jarvis config`. The **Routing** group holds the mode, the optional API, the Jev key and the strong profiles. Keys live in `~/.config/jarvis/config.toml`, mode `0600`; secret fields are masked in the screen and in `config show`.
+![The jarvis config settings screen](docs/screenshots/settings-en.gif)
+
+Everything is customizable from the interface. `jarvis config` (or the gear button on the bar panel) lists every option — language, wake word, speech recognition and vocabulary, agent, model and effort, computer access, voice, window, dictation and narration — with its current value, a help line that shows the default, and `*` on what you changed. The arrows move, `←`/`→` or Enter change a value, `s` saves and restarts the service, `p`/`o` save and open profiles, `d`/`D` reset one or all. For scripts, the same keys work with `jarvis config set <key> <value>`.
+
+The **Routing** group holds the mode, the optional API, the Jev key and the strong profiles. Keys live in `~/.config/jarvis/config.toml`, mode `0600`; secret fields are masked in the screen and in `config show`.
 
 ### Subscription only, no API keys
 

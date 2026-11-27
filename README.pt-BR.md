@@ -6,7 +6,7 @@ Diga **“hey jarvis”**, faça uma pergunta ou peça uma ação. O Jarvis tran
 
 **Uma assinatura do Claude Code ou do Codex é suficiente para o agente.** Chave de API, Jev e classificador local são opcionais. Instalações novas e configurações antigas continuam começando em `routing_mode = "agent"`, com respostas por API desabilitadas.
 
-![Janela de conversa do Jarvis](docs/screenshots/window-answering.png)
+![Uma pergunta e a resposta na janela de conversa do Jarvis](docs/screenshots/conversation-pt-BR.gif)
 
 [Instalação](#instalação) · [Fluxo](#como-um-pedido-é-atendido) · [Roteamento](#roteamento-opcional) · [Configuração](#como-configurar) · [Terminal](#conversa-no-terminal) · [Ditado](#ditado-e-atalhos) · [Diagnóstico](#diagnóstico) · [Novidades](CHANGELOG.md) · [Referência detalhada em inglês](docs/reference.en.md)
 
@@ -134,7 +134,11 @@ Use identificadores e níveis de esforço aceitos pelo modelo da sua conta. O Ja
 
 ## Como configurar
 
-Abra `jarvis config`. O grupo **Roteamento** reúne modo, API opcional, chave Jev e perfis fortes. As chaves ficam em `~/.config/jarvis/config.toml`, com permissão `0600`; campos secretos são mascarados na interface e em `config show`.
+![A tela de configuração jarvis config](docs/screenshots/settings-pt-BR.gif)
+
+Tudo é configurável pela interface. `jarvis config` (ou a engrenagem do painel da barra) lista todas as opções — idioma, palavra-chave, reconhecimento de fala e vocabulário, agente, modelo e esforço, acesso ao computador, voz, janela, ditado e narração — com o valor atual, uma linha de ajuda que mostra o padrão e `*` no que você alterou. As setas navegam, `←`/`→` ou Enter mudam o valor, `s` salva e reinicia o serviço, `p`/`o` salvam e abrem perfis, `d`/`D` voltam um item ou tudo ao padrão. Em scripts, as mesmas chaves funcionam com `jarvis config set <chave> <valor>`.
+
+O grupo **Roteamento** reúne modo, API opcional, chave Jev e perfis fortes. As chaves ficam em `~/.config/jarvis/config.toml`, com permissão `0600`; campos secretos são mascarados na interface e em `config show`.
 
 ### Só assinatura, sem chaves de API
 
