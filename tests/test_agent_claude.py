@@ -32,8 +32,9 @@ class ClaudeAdapterTest(unittest.TestCase):
     def test_restricted_native_flags_preserve_subscription(self) -> None:
         for access in ('off', 'ask', 'full'):
             profile = ExecutionProfile('agent_default', 'agent', 'claude', 'haiku', 'low', access)
-            argv = claude.claude_argv(self.session, profile, self.root/'settings', self.root/'ctx')
+            argv = claude.claude_argv(self.session, profile, self.root/'settings', self.root/'ctx', self.root/'prompt')
             self.assertNotIn('--bare', argv)
+            self.assertNotIn('--append-system-prompt', argv)   # prompt and personal context stay out of argv
             self.assertIn('--session-id', argv)
             if access != 'full':
                 for flag in ('--restricted', '--strict-mcp-config', '--tools', '--permission-mode'):
@@ -41,6 +42,32 @@ class ClaudeAdapterTest(unittest.TestCase):
                 self.assertNotIn('--no-session-persistence', argv)
             else:
                 self.assertIn('--dangerously-skip-permissions', argv)
+
+    def test_long_paste_wrapper_does_not_hide_the_request(self) -> None:
+        # A follow-up with conversation context is long enough to be wrapped; without
+        # unwrapping, the turn got a random id and Jarvis waited until the 45 s handoff.
+        text = 'User request:\nConversation context (reference only):\n[{"user": "a\\nb"}]\n\nCurrent user request:\nOk.'
+        wrapped = '\n\n<pasted_content id="931a">\n' + text + '\n</pasted_content id="931a">\n'
+        self.assertEqual(claude.unwrap_paste(wrapped), text)
+        self.assertEqual(claude.unwrap_paste(text), text)
+
+    def test_tool_event_carries_what_the_tool_is_doing(self) -> None:
+        # The progress narration is written from this text; the bare tool name ("Bash") made
+        # the narrator guess from the question.
+        label = claude.tool_label({'tool_name': 'Bash', 'tool_input': {
+            'command': 'docker ps', 'description': 'Listar os containers em execução'}})
+        self.assertEqual(label, 'Bash: Listar os containers em execução')
+        self.assertEqual(claude.tool_label({'tool_name': 'Read', 'tool_input': {'file_path': '/etc/hosts'}}),
+                         'Read: /etc/hosts')
+        self.assertEqual(claude.tool_label({'tool_name': 'TaskList'}), 'TaskList')
+
+    def test_prompt_ready_accepts_placeholder_input_line(self) -> None:
+        # Claude Code 2.1.33x shows a placeholder on the empty input line; the old check
+        # waited for a bare prompt, timed out and forced the compatibility mode.
+        pane = "  Opus 5.5 with low effort\n\u2500\u2500\u2500\n\u276f\u00a0Try \"refactor <filepath>\"\n\u2500\u2500\u2500\n"
+        self.assertTrue(claude.prompt_ready(pane))
+        self.assertTrue(claude.prompt_ready("\u276f \n"))
+        self.assertFalse(claude.prompt_ready("  Claude Code starting...\n"))
 
     @patch('jarvis_agent_claude.tmux')
     def test_attached_keyboard_queues_voice_without_touching_input(self, tmux: Mock) -> None:

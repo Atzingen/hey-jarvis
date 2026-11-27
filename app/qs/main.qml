@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Window
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Janela standalone do painel do Jarvis via Qt puro (PySide6) — o caminho pra
 // fora do Omarchy (Ubuntu etc., onde não há quickshell). Carregada por
@@ -9,7 +11,7 @@ Window {
   id: win
   visible: true
   title: "Jarvis"
-  color: Color.popups.background
+  color: Commons.Color.popups.background
   width: panel.implicitWidth + 36
   height: panel.implicitHeight + 32
 

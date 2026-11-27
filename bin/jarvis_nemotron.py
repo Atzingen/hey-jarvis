@@ -28,9 +28,9 @@ ARCHIVES = {
     'macos-x86_64-cpu': '042a4612e07460fab6a39b5d862aa1e39d0ac3eaedfdb979f3f5fc12de510c20',
 }
 MODEL_REPO = 'nvidia/nemotron-3.5-asr-streaming-0.6b'
-MODEL_REVISION = '1c8deaecc64b91f034d73e08dd8b64625eb3395d'
+MODEL_REVISION = 'ea30d66debe3740a08b573244286791d423d6b3e'
 MODEL_FILE = 'nemotron-3.5-asr-streaming-0.6b.q8_0.gguf'
-MODEL_SHA = 'a5c435f294eea8f88ce68dd27b8c3bfea7f777cb2fbba04fcd30eaa555f429ae'
+MODEL_SHA = '3fc991d3badad7277c11030a7519832cddaf2057aafed6d4b25147e953a070b1'
 
 
 def file_hash(path: Path) -> str:
@@ -75,18 +75,20 @@ def install(device: str) -> None:
     name = f'nemo-speech-{VERSION}-{target}'
     archive = ROOT / f'{name}.tar.gz'
     print(f'Instalando runtime {VERSION} ({target}) e Nemotron PT-BR Q8 (~707 MiB).', flush=True)
-    download_verified(f'https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v{VERSION}/{name}.tar.gz',
-                      archive, ARCHIVES[target], 256 * 1024 * 1024)
-    with tarfile.open(archive) as package:
-        package.extractall(ROOT / 'runtime', filter='data')
     executable = ROOT / 'runtime' / name / 'bin/nemo-speech'
+    # Uma atualização só do modelo não deve sobrescrever binários em execução.
+    if not executable.is_file():
+        download_verified(f'https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v{VERSION}/{name}.tar.gz',
+                          archive, ARCHIVES[target], 256 * 1024 * 1024)
+        with tarfile.open(archive) as package:
+            package.extractall(ROOT / 'runtime', filter='data')
     subprocess.run([str(executable), '--version'], check=True, timeout=10)
     download_verified(f'https://huggingface.co/{MODEL_REPO}/resolve/{MODEL_REVISION}/{MODEL_FILE}',
                       ROOT / MODEL_FILE, MODEL_SHA, 742 * 1024 * 1024)
     manifest = {'version': VERSION, 'device': device, 'binary': str(executable.relative_to(ROOT)),
                 'model': MODEL_REPO, 'revision': MODEL_REVISION, 'sha256': MODEL_SHA}
     (ROOT / 'installed.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    archive.unlink()
+    archive.unlink(missing_ok=True)
     print('Instalado. Ative em Reconhecimento de fala: nemotron; ou jarvis config set stt_provider nemotron.')
 
 
@@ -99,11 +101,13 @@ class NemotronServer:
         self.token = secrets.token_urlsafe(32)
         self.url = ''
         self.log = None
+        self.supports_vocabulary = False
 
     def start(self) -> None:
         try:
             manifest = json.loads((ROOT / 'installed.json').read_text())
             binary = ROOT / manifest['binary']
+            self.supports_vocabulary = manifest.get('sha256') == MODEL_SHA
         except (OSError, ValueError, KeyError) as error:
             raise RuntimeError('instale com jarvis stt install-nemotron') from error
         model = ROOT / MODEL_FILE
@@ -114,12 +118,16 @@ class NemotronServer:
             port = reservation.getsockname()[1]
         log_path = ROOT / 'server.log'
         self.log = os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w')
+        # The bearer goes in the environment (readable only by this user), not in argv; the
+        # server gets no API keys of its own.
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'JEV_API_KEY')}
         self.process = subprocess.Popen([
             str(binary), 'serve', '--asr-model', str(model), '--device', self.device,
-            '--host', '127.0.0.1', '--port', str(port), '--api-key', self.token, '--no-ui',
+            '--host', '127.0.0.1', '--port', str(port), '--no-ui',
             '--asr.endpointing.enable=false', '--asr.batching.enabled=false',
         ], stdin=subprocess.DEVNULL, stdout=self.log, stderr=subprocess.STDOUT,
-            env={**os.environ, 'OMP_NUM_THREADS': '8'})
+            env={**env, 'OMP_NUM_THREADS': '8', 'NEMO_SPEECH_HTTP_API_KEY': self.token})
         atexit.register(self.close)
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:

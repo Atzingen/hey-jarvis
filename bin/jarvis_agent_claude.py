@@ -37,7 +37,9 @@ def capabilities() -> dict[str, bool]:
                 subprocess.run(['claude', '--help'], stdout=output, stderr=subprocess.DEVNULL, timeout=5)
                 output.seek(0)
                 help_text = output.read()
-            available = all(flag in help_text for flag in ('--session-id', '--restricted', '--strict-mcp-config', '--settings', '--bg'))
+            available = (all(flag in help_text for flag in ('--session-id', '--restricted', '--strict-mcp-config', '--settings',
+                                                          '--bg', '--tools', '--permission-mode'))
+                         and ('--append-system-prompt-file' in help_text or '--append-system-prompt[-file]' in help_text))
         except (OSError, subprocess.TimeoutExpired):
             available = False
     return dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt',
@@ -53,10 +55,13 @@ def tmux(session: SessionRef, *args: str, input_text: str | None = None) -> str:
     return result.stdout
 
 
-def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, context: Path) -> list[str]:
+def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, context: Path,
+                prompt: Path) -> list[str]:
+    # The system prompt (personal context file included) goes in a private file, not argv,
+    # where any local user could read it from the process list.
     argv = ['claude', '--session-id', session.native_id, '--model', profile.model,
             '--effort', profile.effort, '--settings', str(settings),
-            '--append-system-prompt', system_prompt(profile.system_access)]
+            '--append-system-prompt-file', str(prompt)]
     if profile.system_access == 'full':
         argv += ['--dangerously-skip-permissions']
     else:
@@ -71,12 +76,29 @@ def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, 
     return argv
 
 
+PASTE_WRAPPER = re.compile(r'\s*<pasted_content id="([^"]+)">\n(.*)\n</pasted_content id="\1">\s*', re.DOTALL)
+
+
+def unwrap_paste(prompt: str) -> str:
+    # Claude Code 2.1.33x hands a long pasted input to hooks inside <pasted_content> tags.
+    match = PASTE_WRAPPER.fullmatch(prompt)
+    return match.group(2) if match else prompt
+
+
+def prompt_ready(pane: str) -> bool:
+    # The input line may be empty or show a dimmed placeholder ("❯ Try ...", Claude Code 2.1.33x).
+    return re.search(r'^❯(?:\s|$)', pane, re.MULTILINE) is not None
+
+
 def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     session = sessions.new_session(request, profile)
     directory = sessions.session_dir(session.id)
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     socket = runtime / ('jarvis-claude-' + session.id + '.sock')
-    work = request.cwd if profile.system_access == 'full' else jarvis_consent.WORKDIR
+    # Claude Code only trusts the home directory one interactive session at a time, so a
+    # background session started from ~ is refused; Jarvis's own folder is trusted once.
+    work = (request.cwd if profile.system_access == 'full' and request.cwd.resolve() != Path.home().resolve()
+            else jarvis_consent.WORKDIR)
     work.mkdir(parents=True, exist_ok=True)
     session = sessions.update_backend(session, {'socket': str(socket), 'effective_cwd': str(work),
                                                 'ready': False, 'running': False, 'current_turn': '', 'native_monitor': True})
@@ -85,13 +107,17 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     events = ('SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'StopFailure', 'SessionEnd')
     settings = directory / 'claude-settings.json'
     settings.write_text(json.dumps({'hooks': {event: [{'hooks': [{'type': 'command', 'command': hook_command}]}]
-                                                   for event in events}}))
+                                                   for event in events},
+                                    'fastMode': profile.fast}))
     settings.chmod(0o600)
     context = directory / 'consent.json'
     context.write_text(json.dumps({'session_id': session.id, 'sessions_dir': str(directory.parent),
                                    'lang': jarvis_config.load()['language']}))
     context.chmod(0o600)
-    argv = claude_argv(session, profile, settings, context)
+    prompt = directory / 'system-prompt.md'
+    prompt.write_text(system_prompt(profile.system_access))
+    prompt.chmod(0o600)
+    argv = claude_argv(session, profile, settings, context, prompt)
     # --bg assigns its own native UUID. Resolve the printed background ID before
     # any prompt is sent; --resume on a running background session would fork it.
     index = argv.index('--session-id')
@@ -124,13 +150,19 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
         while time.monotonic() < deadline:
             state = sessions.read_record(session.id)['backend']
             if state.get('ready') and socket.exists():
-                pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
-                if re.search(r'^❯\s*$', pane, re.MULTILINE):
+                try:
+                    pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
+                except RuntimeError:
+                    pane = ''   # the tmux session is not up yet
+                if prompt_ready(pane):
                     return session
             time.sleep(.1)
     except Exception:
         pass
-    stop(session)
+    try:
+        stop(session)
+    except Exception:
+        pass
     raise SessionUnsupported('claude_native_setup_required')
 
 
@@ -165,12 +197,11 @@ def interrupt(session: SessionRef, turn_id: str) -> None:
         if (record['backend'].get('current_turn') != turn_id
                 and record['backend'].get('pending_request_id') != turn_id):
             return
-        record['backend']['running'] = False
-        record['backend']['interrupted_turn'] = turn_id
-        sessions.write_record(session.id, record)
     # Escape in an attached background TUI is not a reliable cancellation.
-    # Native stop terminates the worker; attach later restores this exact ID.
+    # Native stop terminates the worker; attach later restores this exact ID. Until the stop is
+    # confirmed the turn stays running, so the watchdog keeps trying.
     stop(session)
+    sessions.update_backend(session, {'interrupted_turn': turn_id})
     append_event(session, turn_id, 'interrupted', '')
 
 
@@ -189,8 +220,16 @@ def ensure_connected(session: SessionRef) -> None:
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         state = sessions.read_record(session.id)['backend']
-        if state.get('ready') and re.search(r'^❯\s*$', tmux(session, 'capture-pane', '-p', '-t', 'jarvis'), re.MULTILINE):
+        try:
+            pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis') if state.get('ready') else ''
+        except RuntimeError:
+            pane = ''   # the tmux session is not up yet
+        if prompt_ready(pane):
             sessions.update_backend(session, {'stopped': False})
+            # its watchdog left when the session stopped; turns typed from now on need one again
+            unit = 'jarvis-watch-' + session.id + '.service'
+            if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit]).returncode:
+                sessions.start_watchdog(session)
             return
         time.sleep(.1)
     raise RuntimeError('claude_reconnect_failed')
@@ -205,6 +244,20 @@ def append_event(session: SessionRef, turn_id: str, kind: str, text: str, reques
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     with os.fdopen(fd, 'w') as stream:
         stream.write(json.dumps(data, ensure_ascii=False) + '\n')
+
+
+def tool_label(data: dict) -> str:
+    # What the tool is doing, for the progress narration: the agent's own description when
+    # there is one (Bash), else the command, file or query.
+    name = str(data.get('tool_name', 'tool'))
+    tool_input = data.get('tool_input')
+    if not isinstance(tool_input, dict):
+        return name
+    for key in ('description', 'command', 'file_path', 'pattern', 'query', 'url'):
+        detail = tool_input.get(key)
+        if isinstance(detail, str) and detail.strip():
+            return (name + ': ' + ' '.join(detail.split()))[:500]
+    return name
 
 
 def record_hook(session: SessionRef, data: dict) -> None:
@@ -227,14 +280,15 @@ def record_hook(session: SessionRef, data: dict) -> None:
             backend['ready'] = True
         elif event == 'UserPromptSubmit':
             prompt = str(data.get('prompt', ''))
-            digest = hashlib.sha256(prompt.strip().encode()).hexdigest()
+            digest = hashlib.sha256(unwrap_paste(prompt).strip().encode()).hexdigest()
             request_id = backend.get('pending_request_id', '') if digest == backend.get('pending_text_sha256') else ''
             turn_id = request_id or uuid.uuid4().hex
             backend.update(current_turn=turn_id, running=True, question=prompt, pending_request_id='',
                            pending_text_sha256='', started_at=time.time())
             append_event(session, turn_id, 'user', prompt, request_id)
         elif event in ('PreToolUse', 'PostToolUse') and turn_id:
-            append_event(session, turn_id, 'tool', str(data.get('tool_name', 'tool')))
+            append_event(session, turn_id, 'tool', tool_label(data) if event == 'PreToolUse'
+                         else str(data.get('tool_name', 'tool')))
         elif event in ('Stop', 'StopFailure') and turn_id:
             backend['running'] = False
             kind = 'result' if event == 'Stop' else 'failed'
@@ -273,7 +327,8 @@ def consent_context(session: SessionRef) -> dict:
     backend = sessions.read_record(session.id)['backend']
     if not backend.get('running') or not backend.get('current_turn'):
         return {}
-    return {'call_id': session.id + '-' + backend['current_turn'], 'question': backend.get('question', '')}
+    return {'call_id': session.id + '-' + backend['current_turn'], 'question': backend.get('question', ''),
+            'started_at': backend.get('started_at')}
 
 
 def active_turns(session: SessionRef) -> list[tuple[str, float]]:
@@ -293,17 +348,33 @@ def alive(session: SessionRef) -> bool:
 
 def stop(session: SessionRef) -> None:
     backend = sessions.read_record(session.id)['backend']
+    failed = False
     if backend.get('background_id'):
-        result = subprocess.run(['claude', 'stop', backend['background_id']], capture_output=True, timeout=8,
-                                env=subscription_env())
-        if result.returncode:
-            raise RuntimeError('claude_stop_failed')
+        try:
+            result = subprocess.run(['claude', 'stop', backend['background_id']], capture_output=True, timeout=8,
+                                    env=subscription_env())
+            failed = result.returncode != 0
+        except (OSError, subprocess.TimeoutExpired):
+            failed = True
+    # A worker that already exited makes `claude stop` fail too. One still listed may still run
+    # a turn: keep its record (and so its watchdog) until a stop is confirmed.
+    if failed and background_listed(backend):
+        raise RuntimeError('claude_stop_failed')
     try:
         tmux(session, 'kill-server')
     except Exception:
         pass
     sessions.update_backend(session, {'stopped': True, 'ready': False, 'running': False,
                                       'pending_request_id': '', 'pending_text_sha256': ''})
+
+
+def background_listed(backend: dict) -> bool:
+    try:
+        listed = subprocess.run(['claude', 'agents', '--json', '--cwd', backend['effective_cwd']],
+                                env=subscription_env(), capture_output=True, text=True, timeout=5, check=True)
+        return any(item.get('id') == backend['background_id'] for item in json.loads(listed.stdout))
+    except Exception:
+        return True   # unknown: report the failure
 
 
 def main() -> None:

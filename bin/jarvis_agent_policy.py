@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import tomllib
 
 import jarvis_config
 import jarvis_i18n
@@ -15,9 +16,26 @@ CODEX_DISABLED_FEATURES = ('shell_tool', 'unified_exec', 'view_image', 'multi_ag
 
 def subscription_env() -> dict[str, str]:
     env = dict(os.environ)
-    for key in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'CLAUDECODE'):
+    for key in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'JEV_API_KEY', 'CLAUDECODE'):
         env.pop(key, None)
     return env
+
+
+CODEX_SYSTEM_CONFIG = Path('/etc/codex/config.toml')
+
+
+def codex_system_mcp_servers() -> list[str]:
+    """MCP servers of the system-wide Codex config. Codex merges that layer into every run,
+    isolated CODEX_HOME and --ignore-user-config included, so their tools would bypass the
+    consent broker: restricted modes refuse Codex while any is configured."""
+    try:
+        data = tomllib.loads(CODEX_SYSTEM_CONFIG.read_text())
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError):
+        return [str(CODEX_SYSTEM_CONFIG)]
+    servers = data.get('mcp_servers')
+    return sorted(servers) if isinstance(servers, dict) else []
 
 
 def system_prompt(access: str | None = None) -> str:
@@ -32,6 +50,9 @@ def system_prompt(access: str | None = None) -> str:
     text += jarvis_i18n.ACTIONS_PROTOCOL[lang].format(projects=projects)
     if access in ('full', 'ask'):
         text += jarvis_i18n.ENVIRONMENT_NOTES[lang]
+        context = jarvis_config.user_context(cfg)
+        if context:
+            text += jarvis_i18n.USER_CONTEXT_HEADER[lang] + context
     if access in ('ask', 'off'):
         text += jarvis_i18n.ACCESS_NOTES[lang][access]
     if cfg.get('narration') == 'self':

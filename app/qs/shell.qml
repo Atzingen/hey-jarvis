@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Janela standalone do painel do Jarvis rodando em quickshell (Omarchy/Arch):
 //   quickshell -p <este diretório>
@@ -11,7 +13,7 @@ ShellRoot {
   FloatingWindow {
     id: win
     title: "Jarvis"
-    color: Color.popups.background
+    color: Commons.Color.popups.background
     implicitWidth: panel.implicitWidth + 36
     implicitHeight: panel.implicitHeight + 32
 

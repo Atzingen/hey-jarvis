@@ -66,7 +66,8 @@ def build_profiles(cfg: dict) -> dict[str, ExecutionProfile]:
         'agent_default', 'agent', provider,
         cfg.get('codex_model' if codex else 'claude_quick_model', '' if codex else 'sonnet'),
         cfg.get('codex_effort' if codex else 'claude_quick_effort', 'low'),
-        cfg.get('system_access', 'ask'), bool(cfg.get('codex_fast', True)) if codex else False)
+        cfg.get('system_access', 'ask'),
+        bool(cfg.get('codex_fast', True)) if codex else bool(cfg.get('claude_fast', False)))
     profiles = {base.name: base}
     if cfg.get('agent_strong_model', '').strip():
         profiles['agent_strong'] = replace(base, name='agent_strong', model=cfg['agent_strong_model'],
@@ -83,7 +84,7 @@ def build_profiles(cfg: dict) -> dict[str, ExecutionProfile]:
 
 def resolve_profile(decision: RouteDecision, cfg: dict) -> ExecutionProfile:
     profiles = build_profiles(cfg)
-    transport = 'api' if decision.kind in ('api', 'answer') and not decision.needs_computer else 'agent'
+    transport = 'api' if decision.kind in ('api', 'answer', 'clarify') and not decision.needs_computer else 'agent'
     selected = f'{transport}_default'
     if decision.complexity == 'high' or decision.profile == f'{transport}_strong':
         selected = f'{transport}_strong' if f'{transport}_strong' in profiles else selected

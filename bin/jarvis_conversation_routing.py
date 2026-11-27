@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ import time
 from typing import Callable
 import uuid
 
+import jarvis_consent
+from jarvis_agent_policy import codex_system_mcp_servers
 import jarvis_sessions as sessions
 from jarvis_i18n import T
 from jarvis_routing import (RouteRequest, RouteDecision, ExecutionProfile, RouterUnavailable, RouterCancelled,
@@ -51,20 +54,63 @@ def remember_session(session: sessions.SessionRef) -> None:
     os.replace(temporary, ACTIVE_FILE)
 
 
+def prompt_fingerprint(access: str) -> str:
+    from jarvis_agent_policy import system_prompt
+    return hashlib.sha256(system_prompt(access).encode()).hexdigest()
+
+
 def restore_active_session(cfg: dict, cwd: Path) -> sessions.SessionRef | None:
     if cfg.get('agent_session_mode', 'auto') == 'legacy':
         return None
     try:
         session = sessions.load_session(json.loads(ACTIVE_FILE.read_text())['session_id'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    try:
         dev = Path(cfg.get('dev_dir', str(cwd))).expanduser().resolve()
         known_project = (session.cwd.parent == dev and session.cwd.is_dir()
                          and not session.cwd.is_symlink() and not session.cwd.name.startswith('.'))
+        record = sessions.read_record(session.id)
+        age = time.time() - float(record['created_at'])
+        # A native session keeps the system prompt it started with, and a long one piles up
+        # stale answers: reuse it only while both still describe the current setup.
         if (session.provider == cfg['quick_provider'] and session.system_access == cfg['system_access']
-                and (session.cwd == cwd.resolve() or known_project)):
+                and (session.cwd == cwd.resolve() or known_project)
+                and age < float(cfg.get('agent_session_max_hours', 12)) * 3600
+                and record['backend'].get('prompt_sha256') == prompt_fingerprint(session.system_access)):
             return session
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    retire_session(session)
     return None
+
+
+def retire_session(session: sessions.SessionRef) -> None:
+    """Forgets a session that will not be reused and stops it, unless a turn still runs in it."""
+    forget_active_session()
+
+    def stop() -> None:
+        try:
+            adapter = sessions.adapter_for(session.provider)
+            try:
+                busy = adapter.active_turns(session)
+            except Exception:
+                # inconclusive (slow or dead backend): its watchdog decides, it stops dead ones
+                busy = ['unknown']
+            if not busy:
+                sessions.stop_session(session)
+        except Exception:
+            pass
+    threading.Thread(target=stop, daemon=True, name='jarvis-session-retire').start()
+
+
+def retire_active_session() -> None:
+    try:
+        session = sessions.load_session(json.loads(ACTIVE_FILE.read_text())['session_id'])
+    except (OSError, ValueError, KeyError, TypeError):
+        forget_active_session()
+        return
+    retire_session(session)
 
 
 def forget_active_session() -> None:
@@ -197,7 +243,7 @@ class ConversationExecutor:
         if cancel.is_set():
             raise RouterCancelled()
         profile = resolve_profile(decision, self.cfg)
-        if decision.continuation and self.session:
+        if decision.continuation and request.active_session_id and self.session:
             profile = ExecutionProfile(**sessions.read_record(self.session.id)['profile'])
         state = {'routing_mode': mode, 'effective_route': profile.transport,
                  'fallback_reason': decision.reason, 'session_id': '', 'session_backend': '',
@@ -234,6 +280,15 @@ class ConversationExecutor:
                on_status: Callable, on_event: Callable, on_state: Callable, on_late: Callable) -> Answer:
         if self.session and self.session.cwd != request.cwd:
             self.session = None
+        if self.session and not sessions.adapter_for(self.session.provider).alive(self.session):
+            # A dead app-server/tmux would fail every following request before submission.
+            retire_session(self.session)
+            self.session = None
+        if (self.session and self.session.provider == 'codex' and self.session.system_access != 'full'
+                and codex_system_mcp_servers()):
+            # Started before /etc/codex gained MCP servers: never reuse it in a restricted mode.
+            retire_session(self.session)
+            self.session = None
         self.cwd = request.cwd
         if self.session and self.session.provider == 'claude':
             previous = sessions.read_record(self.session.id)['profile']
@@ -250,6 +305,8 @@ class ConversationExecutor:
                 on_state(session_id=self.session.id, session_backend='native', can_attach=True,
                          fallback_reason='submission_unknown')
                 reconcile_submission(self.session, request, cancel, on_status)
+            self.session = sessions.update_backend(
+                self.session, {'prompt_sha256': prompt_fingerprint(self.session.system_access)})
             remember_session(self.session)
         elif (self.session.provider != profile.provider or self.session.system_access != profile.system_access
               or self.session.cwd != request.cwd):
@@ -267,11 +324,16 @@ class ConversationExecutor:
                'started': time.monotonic()}
         on_state(session_id=self.session.id, session_backend='native', can_attach=True,
                  fallback_reason=reason)
-        result = self.wait_for_turn(job, profile, reason, cancel, on_status, on_event, background=False)
+        try:
+            result = self.wait_for_turn(job, profile, reason, cancel, on_status, on_event, background=False)
+        except BaseException:
+            jarvis_consent.revoke_session_grants(self.session.id)   # cancelled or lost
+            raise
         if result is not None:
+            jarvis_consent.revoke_session_grants(self.session.id)   # answer delivered
             return result
         try:
-            sessions.open_terminal(self.session)
+            sessions.open_terminal(self.session)   # also ends the turn's grants
         except (OSError, sessions.SessionUnsupported):
             on_state(fallback_reason='terminal_open_failed')
         def finish() -> None:

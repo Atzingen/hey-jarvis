@@ -82,7 +82,8 @@ class App:
     def fmt_value(self, s) -> str:
         v = self.cfg[s.key]
         if s.secret:
-            return jc.mask(v) or T(self.lang, "cfg_secret_empty")
+            env = "JEV_API_KEY" if s.key == "jev_api_key" else "OPENAI_API_KEY"
+            return jc.mask(v) or T(self.lang, "cfg_secret_empty").format(env=env)
         if isinstance(v, bool):
             return T(self.lang, "cfg_on") if v else T(self.lang, "cfg_off")
         if isinstance(v, float):

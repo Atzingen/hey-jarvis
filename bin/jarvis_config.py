@@ -16,6 +16,7 @@ Uso como CLI (chamado por `jarvis config ...`):
 from __future__ import annotations
 
 import os
+import tempfile
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -89,6 +90,14 @@ SETTINGS: list[Setting] = [
             "openai = streaming por API com chave; local = Whisper. "
             "auto mantém a seleção antiga: GPU→Whisper; sem GPU→API se houver chave, senão Whisper CPU.",
             group="Escuta", choices=["auto", "local", "nemotron", "openai"]),
+    Setting("stt_vocabulary_enabled", True, "Usar vocabulário no reconhecimento",
+            "Favorece nomes e termos técnicos durante a transcrição. Desative para comparar sem pistas.",
+            group="Escuta"),
+    Setting("stt_vocabulary", "", "Vocabulário pessoal",
+            "Uma palavra ou expressão por linha (ou separadas por vírgula), até 100 entradas. "
+            "Substitui a lista automática; vazio usa os nomes básicos e dos projetos. "
+            "Whisper aproveita até 223 tokens. Na opção OpenAI, as palavras são enviadas à API.",
+            group="Escuta", multiline=True),
     Setting("openai_api_key", "", "Chave da OpenAI (API)",
             "Usada pelo reconhecimento openai. Vazio = variável de ambiente OPENAI_API_KEY.",
             group="Escuta", secret=True),
@@ -117,14 +126,14 @@ SETTINGS: list[Setting] = [
     Setting("jev_api_key", "", "Chave do Jev",
             "Usada somente no modo jev. Vazio usa JEV_API_KEY; sem chave, usa a assinatura.",
             group="Roteamento", secret=True),
-    Setting("agent_strong_model", "", "Modelo do agente para tarefas complexas",
+    Setting("agent_strong_model", "", "Modelo do agente (tarefa complexa)",
             "Opcional, do mesmo provedor do agente. Vazio mantém o modelo atual.", group="Roteamento"),
-    Setting("agent_strong_effort", "", "Esforço do agente para tarefas complexas",
+    Setting("agent_strong_effort", "", "Esforço do agente (tarefa complexa)",
             "Vazio mantém o esforço atual. Usado pelo roteador se o modelo forte estiver configurado.",
             group="Roteamento", choices=["", "low", "medium", "high", "xhigh", "max"]),
-    Setting("api_strong_model", "", "Modelo da API para tarefas complexas",
+    Setting("api_strong_model", "", "Modelo da API (tarefa complexa)",
             "Opcional; vazio impede escalar para outra API.", section="advanced", group="Roteamento"),
-    Setting("api_strong_effort", "high", "Esforço da API para tarefas complexas",
+    Setting("api_strong_effort", "high", "Esforço da API (tarefa complexa)",
             "Precisa ser suportado pelo modelo configurado; vazio omite o parâmetro.",
             section="advanced", group="Roteamento", choices=["", "none", "minimal", "low", "medium", "high", "xhigh"]),
     Setting("router_timeout_seconds", 5.0, "Limite da classificação (s)",
@@ -133,13 +142,17 @@ SETTINGS: list[Setting] = [
     Setting("api_timeout_seconds", 30.0, "Limite da resposta por API (s)",
             "Prazo por chamada. Uma execução de estado incerto não é reenviada automaticamente.",
             section="advanced", group="Roteamento", min=1.0, max=300.0, step=1.0),
-    Setting("local_router_idle_seconds", 300, "Descarregar classificador ocioso (s)",
+    Setting("local_router_idle_seconds", 300, "Classificador: descarregar após (s)",
             "Libera a memória do classificador local após inatividade.",
             section="advanced", group="Roteamento", min=10, max=3600, step=10),
     Setting("agent_session_mode", "auto", "Sessões do agente",
             "auto usa sessão nativa quando todas as capacidades estiverem disponíveis; "
             "legacy mantém o executor de compatibilidade.",
             group="Roteamento", choices=["auto", "legacy"]),
+    Setting("agent_session_max_hours", 12, "Sessões do agente — vida máxima (h)",
+            "Uma sessão nativa mais velha que isso é encerrada e a próxima conversa abre outra. "
+            "A sessão também é trocada quando o prompt de sistema ou o arquivo de contexto mudam.",
+            section="advanced", group="Roteamento", min=1, max=168, step=1),
     Setting("quick_provider", "codex", "Agente por assinatura",
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
@@ -161,6 +174,10 @@ SETTINGS: list[Setting] = [
     Setting("codex_fast", True, "Codex em modo rápido (fast)",
             "service_tier=fast: processamento prioritário, respostas mais rápidas "
             "(consome mais do plano). Desligado usa o tier padrão.",
+            group="Modelos"),
+    Setting("claude_fast", False, "Claude em modo rápido (fast)",
+            "fastMode do Claude Code: respostas mais rápidas no modelo que suporta, com preço "
+            "por token maior. Desligado usa o modo normal.",
             group="Modelos"),
     Setting("claude_quick_model", "sonnet", "Claude — modelo rápido",
             "Usado nas perguntas rápidas quando o provedor é claude.",
@@ -244,6 +261,10 @@ SETTINGS: list[Setting] = [
             "auto escolhe o acelerador do runtime instalado; cpu funciona sem GPU; "
             "cuda usa NVIDIA; metal usa Apple Silicon. Falhas voltam ao Whisper.",
             section="advanced", group="Reconhecimento", choices=["auto", "cpu", "cuda", "metal"]),
+    Setting("nemotron_vocabulary_boost", 0.5, "Força do vocabulário no Nemotron",
+            "0 desliga as pistas no Nemotron; comece com 0.5. Valores altos podem inserir palavras indevidas. "
+            "Instalações antigas precisam atualizar o modelo com jarvis stt install-nemotron.",
+            section="advanced", group="Reconhecimento", min=0.0, max=5.0, step=0.25),
     Setting("openai_stt_model", "gpt-live-transcribe", "Modelo OpenAI (tempo real)",
             "gpt-live-transcribe = streaming com deltas (recomendado); gpt-realtime-whisper = alternativa.",
             section="advanced", group="Reconhecimento",
@@ -270,7 +291,7 @@ SETTINGS: list[Setting] = [
     Setting("handoff_seconds_deep", 180, "Prazo do pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Conversa", min=30, max=1800, step=30),
-    Setting("handoff_max_minutes", 30, "Vida máxima do trabalho entregue (min)",
+    Setting("handoff_max_minutes", 30, "Duração máxima do turno (min)",
             "Um trabalho que foi pro terminal rascunho é encerrado (scope inteiro) depois disso.",
             section="advanced", group="Conversa", min=1, max=240, step=1),
     Setting("narration_interval_quick", 8, "Narração — intervalo rápida (s)",
@@ -279,6 +300,10 @@ SETTINGS: list[Setting] = [
     Setting("narration_interval_deep", 15, "Narração — intervalo pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Narração", min=3, max=60, step=1),
+    Setting("narration_first_seconds", 3.0, "Narração — primeira frase (s)",
+            "Espera mínima até a primeira frase de progresso, que sai assim que o modelo começa "
+            "a agir (roda um comando, lê algo). As seguintes respeitam o intervalo normal.",
+            section="advanced", group="Narração", min=1.0, max=30.0, step=0.5),
     Setting("narration_local_model", "gemma3:4b", "Narração — modelo local (Ollama)",
             "Modelo do Ollama que gera a frase de progresso.",
             section="advanced", group="Narração"),
@@ -286,6 +311,10 @@ SETTINGS: list[Setting] = [
             "Modelo da Responses API usado quando a narração roda pela OpenAI (chave openai_api_key).",
             section="advanced", group="Narração",
             choices=["gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.6-luna"], free_choices=True),
+    Setting("context_file", "~/.config/jarvis/contexto.md", "Arquivo de contexto pessoal",
+            "Texto anexado ao prompt de sistema quando o modelo tem acesso ao computador: onde "
+            "ficam seus dados, que ferramentas consultar. Arquivo ausente não muda nada.",
+            section="advanced", group="Conversa"),
     Setting("system_prompt", "", "Prompt de sistema",
             "Instruções de estilo enviadas ao modelo (edite no $EDITOR). Vazio = padrão do idioma.",
             section="advanced", group="Conversa", multiline=True),
@@ -344,7 +373,8 @@ BY_KEY = {s.key: s for s in SETTINGS}
 
 GROUP_EN = {"Roteamento": "Routing", "Geral": "General", "Escuta": "Listening", "Modelos": "Models", "Voz": "Voice",
             "Interface": "Interface", "Reconhecimento": "Recognition", "Conversa": "Conversation",
-            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation"}
+            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation",
+            "Narração": "Narration"}
 
 
 def text_for(setting: Setting, lang: str) -> tuple[str, str]:
@@ -413,6 +443,15 @@ def _read_toml(path: Path) -> dict:
     return out
 
 
+def user_context(cfg: dict) -> str:
+    """Conteúdo do arquivo de contexto pessoal (opção context_file), ou vazio se não houver."""
+    path = Path(str(cfg.get("context_file", "")).strip() or "/nonexistent").expanduser()
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
 def load(path: Path = CONFIG_FILE) -> dict:
     """Defaults sobrescritos pelo que estiver no arquivo do usuário."""
     cfg = defaults()
@@ -454,12 +493,22 @@ def dump_toml(cfg: dict, only_changed: bool = True) -> str:
     return "\n".join(lines)
 
 
+def write_private(path: Path, text: str) -> None:
+    """Troca atômica com temporário exclusivo que já nasce 0600: config e perfis levam chaves
+    de API, e dois salvamentos ao mesmo tempo não disputam o mesmo arquivo."""
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as output:
+            output.write(text)
+        os.replace(name, path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+
+
 def save(cfg: dict, path: Path = CONFIG_FILE) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(dump_toml(cfg))
-    os.chmod(tmp, 0o600)  # pode conter chave de API
-    tmp.replace(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    write_private(path, dump_toml(cfg))
 
 
 # --- perfis ------------------------------------------------------------
@@ -475,10 +524,7 @@ def save_profile(name: str, cfg: dict) -> Path:
     PROFILES_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(PROFILES_DIR, 0o700)
     path = PROFILES_DIR / f"{safe}.toml"
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(dump_toml(cfg, only_changed=False))
-    os.chmod(tmp, 0o600)  # o perfil leva a config inteira, chave de API inclusive
-    tmp.replace(path)
+    write_private(path, dump_toml(cfg, only_changed=False))
     return path
 
 

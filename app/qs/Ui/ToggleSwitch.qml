@@ -1,12 +1,14 @@
 import QtQuick
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Shim de qs.Ui.ToggleSwitch (subconjunto usado pelo PanelContent).
 Item {
   id: root
   property bool checked: false
-  property color foreground: Color.foreground
-  property color accent: Color.accent
+  property color foreground: Commons.Color.foreground
+  property color accent: Commons.Color.accent
   signal toggled()
 
   readonly property int trackHeight: 22

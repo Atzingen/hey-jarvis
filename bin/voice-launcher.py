@@ -29,6 +29,7 @@ um terminal rascunho separado, onde segue executando até terminar.
 import argparse
 import json
 import os
+import queue
 import signal
 import difflib
 import re
@@ -38,6 +39,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import wave
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -57,6 +59,7 @@ import jarvis_i18n
 import jarvis_stt
 import jarvis_routing
 import jarvis_conversation_routing
+import jarvis_agent_policy
 from jarvis_i18n import T
 
 # Tudo que é ajustável vem de ~/.config/jarvis/config.toml (UI: `jarvis config`);
@@ -457,6 +460,9 @@ def action_protocol(access: str, provider: str) -> str:
     text = jarvis_i18n.ACTIONS_PROTOCOL[LANG].format(projects=projects)
     if access in ("full", "ask"):
         text += jarvis_i18n.ENVIRONMENT_NOTES[LANG]
+        context = jarvis_config.user_context(CFG)
+        if context:
+            text += jarvis_i18n.USER_CONTEXT_HEADER[LANG] + context
     if access == "ask":
         text += jarvis_i18n.ACCESS_NOTES[LANG]["ask"]
     elif access == "off":
@@ -595,26 +601,29 @@ class JarvisWindow:
     def update(self, phase: str | None = None, **fields) -> None:
         if not self.enabled:
             return
-        if phase is not None:
-            self.state["phase"] = phase
-            self.state["deadline"] = fields.pop("deadline", None)
-        self.state.update(fields)
-        self._write()
+        with self.lock:
+            if phase is not None:
+                self.state["phase"] = phase
+                self.state["deadline"] = fields.pop("deadline", None)
+            self.state.update(fields)
+            self._write()
 
     def add_exchange(self, question: str, answer: str, label: str) -> None:
         if not self.enabled:
             return
-        self.state.setdefault("exchanges", []).append(
-            {"q": question, "a": answer, "label": label})
-        self._write()
+        with self.lock:
+            self.state.setdefault("exchanges", []).append(
+                {"q": question, "a": answer, "label": label})
+            self._write()
 
     def set_last_answer(self, answer: str) -> None:
         if not self.enabled:
             return
-        exchanges = self.state.get("exchanges")
-        if exchanges:
-            exchanges[-1]["a"] = answer
-            self._write()
+        with self.lock:
+            exchanges = self.state.get("exchanges")
+            if exchanges:
+                exchanges[-1]["a"] = answer
+                self._write()
 
     def close(self) -> None:
         if not self.enabled:
@@ -688,15 +697,23 @@ _cli_ok_cache: dict[str, bool] = {}
 
 
 def cli_supports_safe_mode(provider: str) -> bool:
-    if provider in _cli_ok_cache:
-        return _cli_ok_cache[provider]
+    # a política vem antes do cache: um MCP posto em /etc/codex com o serviço no ar também vale
+    if provider == "codex" and jarvis_agent_policy.codex_system_mcp_servers():
+        return False   # /etc/codex/config.toml traria tools fora do consentimento
+    if _cli_ok_cache.get(provider):
+        return True
     args = [provider, "--help"] if provider == "claude" else ["codex", "exec", "--help"]
     try:
-        out = subprocess.run(args, capture_output=True, text=True, timeout=20).stdout
+        # arquivo, não pipe: o Claude Code pode sair antes de despejar o help num pipe
+        with tempfile.TemporaryFile(mode="w+") as output:
+            subprocess.run(args, stdout=output, stderr=subprocess.DEVNULL, timeout=20)
+            output.seek(0)
+            out = output.read()
     except (OSError, subprocess.TimeoutExpired):
         out = ""
     ok = all(flag in out for flag in CLI_REQUIRED_FLAGS[provider])
-    _cli_ok_cache[provider] = ok
+    if ok:
+        _cli_ok_cache[provider] = True   # só o positivo fica: uma leitura ruim no boot não trava a sessão
     return ok
 
 
@@ -737,7 +754,8 @@ def _build_ask_call(question: str, profile: jarvis_routing.ExecutionProfile, ans
                "--model", model,
                "--effort", effort,
                "--output-format", "stream-json", "--verbose",
-               "--append-system-prompt", system]
+               "--append-system-prompt", system,
+               "--settings", json.dumps({"fastMode": profile.fast})]
         if access == "full":
             cmd += ["--dangerously-skip-permissions"]   # roda comandos sem confirmar
         else:
@@ -870,6 +888,9 @@ def ask_model(question: str, profile: jarvis_routing.ExecutionProfile | None = N
         # em voo, e cancelar para o scope inteiro (CLI + filhos).
         # stdin fechado: o codex fica esperando entrada se herdar um stdin aberto.
         # stdout/stderr são pipes: o launcher grava nos arquivos até o teto (pump).
+        # a chave do Jev é só do roteador; os CLIs dos agentes não a recebem
+        popen_kwargs = {**popen_kwargs, "env": {k: v for k, v in popen_kwargs.get("env", os.environ).items()
+                                                if k not in ("JEV_API_KEY", "CLAUDECODE")}}
         proc = subprocess.Popen(scoped(cmd, unit), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
     except Exception as e:
@@ -1191,8 +1212,9 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
         except subprocess.TimeoutExpired:
             proc.kill()
 
+    seconds = wav_seconds(wav_path) + 5
     if listener is None:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + max(30, seconds)
         while proc.poll() is None:
             if (stop_when is not None and stop_when()) or time.monotonic() > deadline:
                 cut()
@@ -1202,7 +1224,7 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
 
     listener.tts_playing = True
     try:
-        deadline = time.monotonic() + 60  # hard cap: TTS nunca deveria passar disso
+        deadline = time.monotonic() + max(60, seconds)  # teto: um paplay travado não segura a conversa
         while proc.poll() is None:
             if stop_when is not None and stop_when():
                 cut()
@@ -1222,6 +1244,33 @@ def tts(text: str, listener: "BargeInListener | None" = None, stop_when=None) ->
         return listener.fired
     finally:
         listener.tts_playing = False
+
+
+def wav_seconds(path: Path) -> float:
+    try:
+        with wave.open(str(path)) as audio:
+            return audio.getnframes() / float(audio.getframerate())
+    except (OSError, EOFError, wave.Error, ZeroDivisionError):
+        return 0.0
+
+
+# Respostas que chegaram depois do aviso de trabalho longo. Quem fala é a thread principal,
+# num ponto em que o microfone não está em uso: o início de uma escuta ou a espera da wake word.
+LATE_ANSWERS: "queue.SimpleQueue[str]" = queue.SimpleQueue()
+
+
+def speak_late_answers() -> bool:
+    """Fala as respostas tardias pendentes. True se falou alguma."""
+    spoke = False
+    while True:
+        try:
+            answer = LATE_ANSWERS.get_nowait()
+        except queue.Empty:
+            return spoke
+        print(f"[late] resposta do trabalho longo :: {_txt(answer)}")
+        chime(880, 1320, ms=100, vol=0.15)
+        tts(T(LANG, "late_answer") + " " + answer)
+        spoke = True
 
 
 def _unlink_after(proc: subprocess.Popen, path: Path) -> None:
@@ -1365,6 +1414,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
         pending_chunks: list[np.ndarray] = []     # a mesma fala, em chunks int16 (pro stt)
 
         while True:
+            if pending_audio is None and speak_late_answers():
+                flush_stream(stream)
             # sessão de reconhecimento por fala: abre já (a conexão da API fica
             # pronta enquanto você começa a falar); o texto provisório vai pra janela
             session = stt.begin(on_partial=lambda t: window.update(partial=t))
@@ -1413,7 +1464,7 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             print(f"[cmd]  {kind}")
 
             if kind == "end":
-                jarvis_conversation_routing.forget_active_session()
+                jarvis_conversation_routing.retire_active_session()
                 print("[conv] encerrada por comando de voz")
                 chime(660, 440, ms=100, vol=0.12)
                 return
@@ -1451,7 +1502,8 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
             narrator = jarvis_narrate.Narrator(
                 narr_mode, LANG,
                 NARRATION_INTERVAL_QUICK, question,
-                generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG))
+                generate=jarvis_narrate.build_generate(narr_mode, CFG, LANG),
+                first_interval=CFG["narration_first_seconds"])
 
             def on_status(status: str) -> None:
                 if status in ("terminal_owns_input", "agent_turn_running"):
@@ -1473,11 +1525,16 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 answer = result.text
                 if result.allow_actions:
                     answer, late_actions = parse_actions(answer)
-                    for action, argument in allowed_actions(late_actions, original_question, result.profile.system_access):
-                        run_action(action, argument, args, window)
+                    # a resposta tardia chega sem ninguém olhando: só executa ações com acesso total
+                    if result.profile.system_access == "full":
+                        for action, argument in allowed_actions(late_actions, original_question, "full"):
+                            run_action(action, argument, args, window)
                 with history_lock:
                     history.append((original_question, answer))
                 window.set_answer_at(index, answer, model_label(result.profile))
+                spoken = re.split(r"\n\s*-{3,}\s*\n", answer, maxsplit=1)[0].strip()
+                if spoken:
+                    LATE_ANSWERS.put(spoken)
 
             with history_lock:
                 context = tuple(history[-MAX_HISTORY_EXCHANGES:])
@@ -1555,7 +1612,11 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                     print(f"[ans]  handoff após {elapsed:.0f}s [{label}] — terminal rascunho")
                     if not handoff.get("native"):
                         open_handoff_terminal(handoff)
-                    window.set_answer_at(exchange_index, T(LANG, "native_handoff" if handoff.get("native") else "handoff_window"), label)
+                    with window.lock:
+                        # a resposta tardia pode ter chegado antes deste aviso: não sobrescreve
+                        exchanges = window.state.get("exchanges", [])
+                        if exchange_index < len(exchanges) and exchanges[exchange_index].get("a") == "…":
+                            window.set_answer_at(exchange_index, T(LANG, "native_handoff" if handoff.get("native") else "handoff_window"), label)
                     window.update(phase="handoff", detail=label)
                     interrupted = tts(T(LANG, "native_handoff_voice" if handoff.get("native") else "handoff"), listener)
                 else:
@@ -1867,6 +1928,9 @@ def main() -> None:
         while True:
             if take_talk_request():
                 PTT.set()
+            if not (PTT.is_set() or DICT.is_set()) and speak_late_answers() and stream is not None:
+                wake.reset()
+                flush_stream(stream)
             # Modo manual (marcador jarvis-wake-off): sem escuta da wake word — o
             # mic fica FECHADO enquanto ocioso; só o push-to-talk (SIGUSR1) e o
             # ditado (SIGUSR2) abrem o stream, que volta a fechar em seguida.

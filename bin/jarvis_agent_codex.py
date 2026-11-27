@@ -12,7 +12,8 @@ import time
 import uuid
 
 import jarvis_config
-from jarvis_agent_policy import CODEX_DISABLED_FEATURES, input_text, subscription_env, system_prompt
+from jarvis_agent_policy import (CODEX_DISABLED_FEATURES, codex_system_mcp_servers, input_text, subscription_env,
+                                 system_prompt)
 from jarvis_routing import RouteRequest, ExecutionProfile
 from jarvis_sessions import (SessionRef, SessionUnsupported, SessionBusy, new_session, update_backend,
                              read_record, session_dir)
@@ -34,8 +35,9 @@ def capabilities() -> dict[str, bool]:
             available = '--remote' in help_text and 'app-server' in help_text
         except (OSError, subprocess.TimeoutExpired):
             available = False
-    return dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt',
-                          'access_off', 'access_ask', 'access_full'), available)
+    restricted = available and not codex_system_mcp_servers()
+    return {**dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt', 'access_full'), available),
+            'access_off': restricted, 'access_ask': restricted}
 
 
 def policy_config(profile: ExecutionProfile, context: Path) -> dict:
@@ -157,10 +159,10 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
         thread(session)  # Required event interface, checked before any user input.
         return session
     except SessionUnsupported:
-        stop(session)
+        cleanup_quietly(session)
         raise
     except Exception:
-        stop(session)
+        cleanup_quietly(session)
         raise SessionUnsupported('codex_session_setup_failed') from None
 
 
@@ -177,11 +179,15 @@ def thread(session: SessionRef) -> dict:
 
 def submit(session: SessionRef, request: RouteRequest) -> str:
     state = rpc(session, 'thread/read', {'threadId': session.native_id, 'includeTurns': False})['thread']
+    if state.get('status', {}).get('type') == 'notLoaded':
+        state = rpc(session, 'thread/resume', {'threadId': session.native_id, 'excludeTurns': True})['thread']
     if state.get('status', {}).get('type') == 'active' or any(
             turn.get('status') == 'inProgress' for turn in state.get('turns', [])):
         raise SessionBusy('agent_turn_running')
     profile = read_record(session.id)['profile']
     params = {'threadId': session.native_id, 'clientUserMessageId': request.request_id,
+              'approvalPolicy': 'never',
+              'sandboxPolicy': {'type': 'dangerFullAccess' if session.system_access == 'full' else 'readOnly'},
               'input': [{'type': 'text', 'text': input_text(request), 'text_elements': []}],
               'effort': profile['effort'], 'serviceTier': 'fast' if profile['fast'] else 'default'}
     if profile['model']:
@@ -236,13 +242,28 @@ def consent_context(session: SessionRef) -> dict:
             questions = [block.get('text', '') for item in turn.get('items', [])
                          if item.get('type') == 'userMessage' for block in item.get('content', [])
                          if block.get('type') == 'text']
-            return {'call_id': session.id + '-' + turn['id'], 'question': '\n'.join(questions)}
+            # Only the start Codex reports: the watchdog's first-seen time may come after a handoff.
+            return {'call_id': session.id + '-' + turn['id'], 'question': '\n'.join(questions),
+                    'started_at': turn.get('startedAt')}
     return {}
 
 
 def active_turns(session: SessionRef) -> list[tuple[str, float]]:
-    return [(turn['id'], float(turn.get('startedAt') or time.time()))
-            for turn in thread(session).get('turns', []) if turn.get('status') == 'inProgress']
+    # startedAt may be null; the first time a turn is seen is kept, or every check would
+    # treat it as just started and the deadline would never apply.
+    known = read_record(session.id)['backend'].get('turn_started', {})
+    first_seen = {}
+    turns = []
+    for turn in thread(session).get('turns', []):
+        if turn.get('status') != 'inProgress':
+            continue
+        started = turn.get('startedAt') or known.get(turn['id'])
+        if not started:
+            started = first_seen[turn['id']] = time.time()
+        turns.append((turn['id'], float(started)))
+    if first_seen:
+        update_backend(session, {'turn_started': {**known, **first_seen}})
+    return turns
 
 
 def alive(session: SessionRef) -> bool:
@@ -261,3 +282,17 @@ def stop(session: SessionRef) -> None:
     except subprocess.TimeoutExpired:
         subprocess.run(['systemctl', '--user', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    # Confirmed only when the scope is gone; otherwise the caller keeps the watchdog.
+    state = subprocess.run(['systemctl', '--user', 'is-active', unit], capture_output=True, text=True,
+                           timeout=5).stdout.strip()
+    if state not in ('inactive', 'failed'):   # empty: systemd unreachable, nothing confirmed
+        raise RuntimeError('codex_stop_failed')
+
+
+def cleanup_quietly(session: SessionRef) -> None:
+    # Setup failed before any request was sent: a cleanup error must not hide that result,
+    # which is what sends the request to the legacy executor.
+    try:
+        stop(session)
+    except Exception:
+        pass

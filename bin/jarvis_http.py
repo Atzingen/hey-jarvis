@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from jarvis_routing import RouterUnavailable, RouterCancelled, ExecutionUncertain
 
@@ -52,7 +52,7 @@ def post_json(url: str, key: str, body: dict, timeout: float, cancel: threading.
             raise ExecutionUncertain('invalid_http_response') from None
         if result.get('error'):
             status = result.get('status')
-            if status in (400, 401, 403, 404, 413, 422, 429):
+            if status in (400, 401, 403, 404, 413, 422, 429) or (isinstance(status, int) and 300 <= status < 400):
                 raise RouterUnavailable(f'http_{status}')
             raise ExecutionUncertain('http_failure')
         data = result.get('data')
@@ -71,12 +71,18 @@ def post_json(url: str, key: str, body: dict, timeout: float, cancel: threading.
             process.stdin.close()
 
 
+class RefuseRedirects(HTTPRedirectHandler):
+    # urllib would resend the Authorization header to the redirect target.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def worker() -> None:
     try:
         data = json.loads(sys.stdin.buffer.read(MAX_BYTES + 1))
         request = Request(data['url'], data=json.dumps(data['body']).encode(), headers={
             'Authorization': 'Bearer ' + data['key'], 'Content-Type': 'application/json'}, method='POST')
-        with urlopen(request, timeout=data['timeout']) as response:
+        with build_opener(RefuseRedirects).open(request, timeout=data['timeout']) as response:
             raw = response.read(MAX_BYTES + 1)
             if len(raw) > MAX_BYTES:
                 raise ValueError('too large')

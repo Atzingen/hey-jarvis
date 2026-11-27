@@ -1,5 +1,7 @@
 import QtQuick
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Conteúdo da janela gráfica da conversa — o MESMO QML nos dois hosts:
 //   - quickshell (conversation.qml, janela em layer-shell no Omarchy);
@@ -22,15 +24,15 @@ Item {
   signal openSessionRequested(string sessionId)
 
   // --- paleta: tema do Omarchy quando disponível, senão a fixa do shim ------
-  property color background: Color.popups.background
-  property color foreground: Color.popups.text
-  property color accent: Color.accent
-  property color urgent: Color.urgent
+  property color background: Commons.Color.popups.background
+  property color foreground: Commons.Color.popups.text
+  property color accent: Commons.Color.accent
+  property color urgent: Commons.Color.urgent
   property color green: "#7fd18a"
   property color amber: "#d9a441"
-  property color blue: Color.accent
-  property color muted: Qt.darker(Color.popups.text, 1.6)
-  property color raised: Qt.lighter(Color.popups.background, 1.35)
+  property color blue: Commons.Color.accent
+  property color muted: Qt.darker(Commons.Color.popups.text, 1.6)
+  property color raised: Qt.lighter(Commons.Color.popups.background, 1.35)
 
   onThemeRawChanged: applyTheme(themeRaw)
   function applyTheme(raw) {

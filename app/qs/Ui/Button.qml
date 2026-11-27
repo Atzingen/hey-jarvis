@@ -1,5 +1,7 @@
 import QtQuick
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Shim de qs.Ui.Button (subconjunto usado pelo PanelContent).
 Rectangle {
@@ -8,8 +10,8 @@ Rectangle {
   property string iconText: ""
   property bool bordered: false
   property bool selected: false
-  property color foreground: Color.foreground
-  property color accent: Color.accent
+  property color foreground: Commons.Color.foreground
+  property color accent: Commons.Color.accent
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.body
   property real iconSize: Style.font.icon

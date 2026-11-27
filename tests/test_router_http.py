@@ -14,10 +14,24 @@ from jarvis_routing import RouterUnavailable, RouterCancelled, ExecutionUncertai
 
 
 class Handler(BaseHTTPRequestHandler):
+    forwarded: list[str] = []
+
     def log_message(self, *args: object) -> None:
         pass
 
+    def do_GET(self) -> None:
+        Handler.forwarded.append(self.headers.get('Authorization', ''))
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(json.dumps({'ok': True}).encode())
+
     def do_POST(self) -> None:
+        if self.path == '/redirect':
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(302)
+            self.send_header('Location', '/elsewhere')
+            self.end_headers()
+            return
         if self.path == '/slow':
             time.sleep(0.8)
         status = int(self.path[1:]) if self.path[1:].isdigit() else 200
@@ -51,6 +65,12 @@ class HttpTest(unittest.TestCase):
                 post_json(self.base + '/' + str(code), 'fake', {}, 3, threading.Event())
         with self.assertRaises(ExecutionUncertain):
             post_json(self.base + '/500', 'fake', {}, 3, threading.Event())
+
+    def test_redirect_never_forwards_the_key(self) -> None:
+        Handler.forwarded.clear()
+        with self.assertRaisesRegex(RouterUnavailable, '302'):
+            post_json(self.base + '/redirect', 'secret-key', {}, 3, threading.Event())
+        self.assertEqual(Handler.forwarded, [])
 
     def test_cancel_interrupts_inflight_http(self) -> None:
         cancel = threading.Event()

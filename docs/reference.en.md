@@ -1,6 +1,6 @@
 # Technical reference (English)
 
-For installation and the current routing flow, start with the [main guide](../README.md). This page retains the detailed audio, desktop, robot and configuration reference.
+For installation and the current routing flow, start with the [main guide](../README.md) ([em português](../README.pt-BR.md)). This page retains the detailed audio, desktop, robot and configuration reference. Release history: [CHANGELOG.md](../CHANGELOG.md).
 
 ## Features
 
@@ -12,15 +12,15 @@ For installation and the current routing flow, start with the [main guide](../RE
 | **Barge-in** | Talk over Jarvis while it thinks or speaks: it stops, listens, and chains what you said. An energy gate keeps it from interrupting itself through the speakers. |
 | **The model decides** | No keyword parsing. The model receives an *action protocol* (open project, open app, sleep, end conversation) and emits markers the launcher executes; anything else about the machine it does itself. |
 | **Machine access, with your consent** | Answers about your system come from real commands — but by default (`system_access = "ask"`) the model runs sandboxed and every action that changes something opens a window showing the **exact command** for you to allow or deny. `full` (no sandbox, no prompts) and `off` (knowledge-only) are opt-in. |
-| **Optional routing** | `agent` (subscription, default), `assistant` (initial API model), `jev`, or `local` (optional CPU classifier). No magic phrase changes models. See the [routing guide](../README.md#roteamento-opcional). |
+| **Optional routing** | `agent` (subscription, default), `assistant` (initial API model), `jev`, or `local` (optional CPU classifier). No magic phrase changes models. See the [routing guide](../README.md#optional-routing). |
 | **Live window** | A floating window shows the phase (listening / recording / thinking / answering / your turn, with countdown), the conversation with speaker labels, live speech-to-text, and what the model is doing while you wait. |
 | **Never silent while it works** | Every few seconds without speech, Jarvis says one short sentence about what the model is doing right now (*"I'm counting the Docker containers."*). A small local model (Ollama) or the OpenAI API writes it from the CLI's live events; the model itself or fixed phrases are the fallbacks. |
 | **Long tasks don't die** | Long tasks open the same native session in a normal terminal with keyboard input. Older CLIs retain their progress viewer. |
-| **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU) or OpenAI Realtime (`gpt-live-transcribe`) with live provisional text. Automatic fallback. |
+| **Speech-to-text, your choice** | Local faster-whisper (large-v3-turbo on CUDA, small on CPU), optional local Nemotron streaming ASR, or OpenAI Realtime (`gpt-live-transcribe`); the last two show live provisional text. A personal vocabulary biases the spelling of names and jargon. Automatic fallback to local Whisper. |
 | **Settings UI** | `jarvis config` — a terminal screen with everything: main options up top, advanced folded, profiles, defaults. Also a scriptable CLI. |
 | **Bilingual** | en / pt-BR: voice, recognition, prompts, window, settings screen, bar panel. |
-| **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Live transcript + audio meter in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
-| **A face, if you want one** | Plug in a [Picoh](https://www.ohbot.co.uk/picoh.html) (the Ohbot robot head) and it becomes Jarvis's face: base colour per phase (green listening, amber thinking, red asking for consent, blue answering), mouth moving in sync with the voice, eyes that wander while the model works. Auto-detected on USB, nothing to configure — and entirely optional: without the robot nothing changes. |
+| **Dictation** | `Ctrl+Shift+K`: speak, press again, the text is pasted into the active window (and lands on top of the clipboard history). Optionally the confirmed phrases are written *while* you speak (`dictation_live`). Live transcript + waveform in the window; optional local polish (Ollama) for punctuation and hesitations. Same mic, same STT, same window as the assistant. |
+| **A face, if you want one** | Plug in a [Picoh](https://www.ohbot.co.uk/picoh.html) (the Ohbot robot head) and it becomes Jarvis's face: base colour per phase (green listening, amber thinking, red asking for consent, blue answering), mouth moving in sync with the voice, eyes that wander while the model works and always stay dim. Auto-detected on USB, nothing to configure — and entirely optional: without the robot nothing changes. |
 | **Bar widget** | Omarchy shell plugin: brain icon in the theme accent when active, a tooltip on hover and a panel in cards on click — state + on/off switch, config chips, voice guide, dictation (with a start/stop button and live recording state), keybindings, icon actions (power, pause, dictate, logs, settings, install). |
 
 ---
@@ -53,7 +53,7 @@ Things you can say (any phrasing works — these are examples):
 |---|---|
 | "how many Docker containers are running?" | the model runs `docker ps` and answers with the number |
 | "open a terminal on workspace 1" | the model does it (`omarchy-launch-terminal`, `hyprctl dispatch …`) and confirms |
-| "let's work on hey-jarvis" / "abre o projeto iaprev" | `<<ABRIR_PROJETO>>` → 2×2 Ghostty grid + VS Code + Chrome for `~/Desktop/dev/<project>` |
+| "let's work on hey-jarvis" / "abre o projeto iaprev" | `<<ABRIR_PROJETO>>` → 2×2 Alacritty grid + VS Code + Chrome for `~/Desktop/dev/<project>` |
 | "open btop" / "abre o Chrome" | `<<ABRIR_APP>>` → launches the installed app (TUIs float like Omarchy's own) |
 | "Compare Postgres and SQLite for this application." | Configured agent, or an optional router-selected profile |
 | "go to sleep" / "pode dormir" | `<<DORMIR>>` → `systemctl suspend` |
@@ -172,7 +172,9 @@ Everything is configurable, three ways:
 | `wake_word_enabled` | `true` | `false` = hotkeys-only mode: the mic stays closed while idle; push-to-talk (`Ctrl+Shift+J` or `Ctrl+Shift+H`) and dictation (`Ctrl+Shift+K/L`) still open it on demand. `jarvis wake` toggles it live |
 | `wake_word` | `hey_jarvis` | openWakeWord model: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` |
 | `wake_threshold` | `0.5` | wake score threshold (lower = more sensitive) |
-| `stt_provider` | `auto` | `auto` / `local` / `openai` — see [Speech-to-text](#speech-to-text-local-or-openai) |
+| `stt_provider` | `auto` | `auto` / `local` / `nemotron` / `openai` — see [Speech-to-text](#speech-to-text-local-nemotron-or-openai) |
+| `stt_vocabulary` | `""` | personal vocabulary, one term per line (commas also separate), at most 100 entries; empty = built-in terms + project names. See [Personal vocabulary](#personal-vocabulary) |
+| `stt_vocabulary_enabled` | `true` | `false` sends no vocabulary hints to any recognizer, without erasing the list |
 | `openai_api_key` | `""` | key for the `openai` STT backend (empty = `OPENAI_API_KEY` env) |
 | `end_silence_seconds` | `1.2` | continuous silence that ends your turn — raise it if it cuts you off |
 | `followup_seconds` | `20.0` | listening window after each answer, no wake word needed |
@@ -180,6 +182,7 @@ Everything is configurable, three ways:
 | `system_access` | `ask` | `ask` = sandboxed, each consequential action needs your OK in a window showing the exact command; `full` = no sandbox / no approvals (`--dangerously-*`); `off` = knowledge-only. See [Models and machine access](#models-and-machine-access) |
 | `codex_model` / `codex_effort` | `""` / `low` | Codex model (empty = CLI default; the settings screen cycles the known ones — `gpt-6-astra`, `gpt-6-sol`… — and accepts any name) and reasoning effort |
 | `codex_fast` | `true` | Codex fast mode (`service_tier=fast`) |
+| `claude_fast` | `false` | Claude Code fast mode (`fastMode` in the settings Jarvis passes); Claude bills it as extra usage, and without credits it falls back to normal speed |
 | `claude_quick_model` / `claude_quick_effort` | `sonnet` / `low` | fast path when `quick_provider = "claude"` |
 | `routing_mode` / `api_provider` | `agent` / `none` | Subscription-first defaults. Optional routing and response API require explicit configuration. |
 | `agent_strong_model` / `agent_strong_effort` | empty / empty | Optional high-complexity profile, same agent provider |
@@ -192,6 +195,8 @@ Everything is configurable, three ways:
 | `picoh` | `auto` | Picoh robot as the face: `auto` looks for it on USB, `off` never does |
 | `dictation_window` | `true` | live transcript + audio meter while dictating |
 | `dictation_output` | `paste` | `paste` (clipboard + Ctrl+V into the active window) / `type` / `clipboard` |
+| `dictation_live` | `false` | write each confirmed phrase into the active window at the pauses while you speak; provisional words show in the window with `nemotron` or `openai`. Skips the polish pass and the final paste |
+| `dictation_duck` | `0.5` | multiplies the system volume while a toggle dictation records (1 = leave it alone); push-to-talk does not duck |
 | `dictation_polish` / `dictation_polish_model` | `false` / `gemma3:4b` | optional Ollama pass for punctuation/hesitations |
 | `narration` | `auto` | progress narration while the model works: `auto` (Ollama+GPU → `local`; else key → `openai`; else `templates`), `local`, `openai`, `self` (the main model narrates), `templates`, `off` |
 
@@ -202,17 +207,22 @@ Everything is configurable, three ways:
 | `whisper_model` | `auto` | `auto` = `large-v3-turbo` on GPU, `small` on CPU; or any faster-whisper size |
 | `whisper_device` | `auto` | `auto` / `cuda` / `cpu` |
 | `openai_stt_model` | `gpt-live-transcribe` | or `gpt-realtime-whisper`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` |
+| `nemotron_device` | `auto` | `auto` / `cpu` / `cuda` / `metal` for the optional Nemotron server |
+| `nemotron_vocabulary_boost` | `0.5` | strength of the vocabulary hints in Nemotron; 0 turns them off, high values can insert words that were not said |
 | `vad_speech_threshold` | `0.5` | silero probability to count a frame as speech |
 | `first_speech_wait_seconds` | `6.0` | how long to wait for you to start after the greeting |
 | `max_utterance_seconds` | `45.0` | hard cap per utterance |
 | `preroll_chunks` | `6` | 80 ms chunks kept from before speech onset |
 | `max_history_exchanges` | `4` | previous exchanges sent as context |
-| `handoff_seconds_quick` | `45` | Opens the same native session in a terminal; legacy mode uses its progress viewer |
+| `handoff_seconds_quick` | `45` | Opens the same native session in a terminal; legacy mode uses its progress viewer. When the native session finishes later, Jarvis speaks the answer at the next pause (start of a listening window or while waiting for the wake word) |
 | `handoff_max_minutes` | `30` | maximum active turn duration, including after terminal handoff; idle sessions remain available |
 | `narration_interval_quick` | `8` | Seconds of silence before a progress sentence (3–60) |
+| `narration_first_seconds` | `3` | Shortest wait before the first progress sentence, which is spoken as soon as the model starts acting (runs a command, reads something); later ones follow `narration_interval_quick` |
+| `agent_session_max_hours` | `12` | A native session older than this is stopped and the next conversation opens a new one; it is also replaced when the system prompt or the context file change |
 | `narration_local_model` | `gemma3:4b` | Ollama model that writes the sentence (`narration = local`/`auto`) |
 | `narration_openai_model` | `gpt-5.4-nano` | Responses API model for `narration = openai` (uses `openai_api_key`) |
 | `system_prompt` | `""` | style instructions; empty = language default (edit in `$EDITOR`) |
+| `context_file` | `~/.config/jarvis/contexto.md` | personal context appended to the system prompt when the model has computer access (`full` or `ask`); a missing file changes nothing |
 | `barge_min_rms` | `0.012` | energy floor for your speech to count as an interruption |
 | `tts_bleed_factor` | `1.5` | speech must exceed N× the TTS bleed measured on the mic |
 | `barge_tts_warmup_frames` | `4` | frames calibrating the bleed at the start of each TTS |
@@ -223,6 +233,7 @@ Everything is configurable, three ways:
 | `dev_dir` | `~/Desktop/dev` | where "open project X" looks |
 | `layout_script` | `~/.local/bin/dev-layout` | run as `<script> <project>` |
 | `picoh_port` | `""` | serial port of the Picoh (`""` = probe every USB serial port with the handshake) |
+| `log_transcripts` | `false` | write what you said, dictated and the answer into the journal; off = sizes and timings only |
 
 ### Profiles
 
@@ -239,12 +250,14 @@ Jarvis doubles as a speech-to-text tool for any window — the same microphone, 
 - **Skip polishing** (`Esc`): while the local model is polishing, stops that pass and delivers the **entire raw transcript** according to `dictation_output`. The raw transcript is already in the clipboard before polishing starts. A late model result cannot replace it. Outside polishing, Esc keeps its normal behavior. The global Esc shortcut requires the supplied Hyprland bindings; on other desktops, use Esc in the dictation window or `jarvis dictate skip`.
 - The window shows the **live transcript** (with the OpenAI backend the words appear as you speak) and a tall, scrolling **audio waveform** (mirrored around its axis, auto-gain so quiet speech still fills it), then the phase: TRANSCRIBING → POLISHING → PASTED.
 - If Jarvis is in a conversation when you press the key, the conversation yields the microphone to dictation.
+- **Write while dictating** (`dictation_live = true`): at every pause of about 0.8 s the confirmed phrase is inserted into the window that was active when you started (`paste` pastes each phrase, `type` types it). Insertion waits until Ctrl, Shift, Alt and Super are released, and stops for good if the key state can't be read, keys stay down for 10 s, or the active window changes — the full transcript still lands on the clipboard at the end, with no second paste and no polish pass. Prefer the toggle (`Ctrl+Shift+K`) for this; holding `Ctrl+Shift+L` delays the insertion.
+- While a toggle dictation records, other audio is lowered by `dictation_duck` (0.5 by default; 1 leaves it alone) and restored when you stop.
 
 To always deliver the raw transcript, turn off **Polish text with AI after dictation** in `jarvis config` → Dictation (or run `jarvis config set dictation_polish false`, then `systemctl --user restart voice-launcher.service`).
 
 Settings (`jarvis config` → Dictation): `dictation_output` = `paste` / `type` (types the text with `wtype`) / `clipboard` (copy only); `dictation_polish` (off by default) runs the transcript through a local Ollama model (`dictation_polish_model`, default `gemma3:4b`) that only fixes punctuation and removes hesitations — it never rewrites, and falls back to the raw text if the output looks wrong or Ollama is unavailable; `dictation_window` shows/hides the window; `dictation_max_seconds` (advanced) caps a recording.
 
-CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybindings call (`integrations/hypr-bindings.lua`). Requires `wl-clipboard` and `wtype`.
+CLI: `jarvis dictate toggle | start | stop | cancel | skip` — this is what the keybindings call (`integrations/hypr-bindings.lua`). Requires `wl-clipboard` and `wtype`.
 
 ---
 
@@ -254,16 +267,18 @@ CLI: `jarvis dictate toggle | start | stop | cancel` — this is what the keybin
 
 | Phase | Base colour | Eyes / head |
 |---|---|---|
-| listening (waiting for you) | green | large eyes, head slightly up |
-| recording (you are talking) | lime, pulsing fast | fully open eyes, attentive |
+| listening (waiting for you) | green | glasses, head slightly up |
+| recording (you are talking) | lime, pulsing fast | glasses, attentive |
 | transcribing | cyan | square eyes |
 | thinking | amber, breathing | small pupils wandering up-left/up-right |
 | asking for consent | red, blinking | angry eyes |
 | answering | blue-violet | heart eyes, **mouth opens with the voice** (bottom lip follows the volume envelope of the Piper audio, 20 Hz), small nods on loud syllables |
 | your turn again (follow-up) | teal | glasses |
 | handed off to a terminal | purple, breathing | sunglasses |
-| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | large eyes |
+| dictation | cyan, pulsing → heart (pasted) / sad (cancelled) | glasses |
 | idle | off, dim round eyes | occasional blink |
+
+The eye LEDs stay in a low brightness band in every phase (`MAX_BRIGHT` in `bin/jarvis_picoh.py`); phases that share an eye shape are told apart by the base colour.
 
 The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. Nothing in the service depends on it.
 
@@ -274,15 +289,16 @@ The mouth also moves for the greeting and for the progress narration while the m
 
 ---
 
-## Speech-to-text: local or OpenAI
+## Speech-to-text: local, Nemotron or OpenAI
 
-`stt_provider` picks how your speech becomes text. Both backends sit behind the same interface (`bin/jarvis_stt.py`), so the rest of the pipeline doesn't care.
+`stt_provider` picks how your speech becomes text. Every backend sits behind the same interface (`bin/jarvis_stt.py`), so the rest of the pipeline doesn't care.
 
 | Provider | What it does | When |
 |---|---|---|
 | `local` | faster-whisper on the machine. NVIDIA GPU: `large-v3-turbo` fp16 — ~0.1 s for 10 s of speech on an RTX 4090. CPU: `small` int8 — ~1.5 s on a desktop, 3–5 s on a laptop. No key, no network, offline. Project and app names are passed as `hotwords`. | default; always the fallback |
 | `openai` | OpenAI Realtime API (`gpt-live-transcribe`, WebSocket): audio streams while you talk, **provisional text shows live in the window**, final transcript on commit. Project names as `keywords`. If the API fails (no network, bad key, no credits, timeout) the buffered audio is transcribed locally — you never lose an utterance. Billed separately by the API provider; consult its current pricing. | machines without a GPU, or when you want live text |
-| `auto` | GPU present → `local`; no GPU and a key → `openai`; else `local` on CPU. | default value |
+| `nemotron` | NVIDIA Nemotron 3.5 ASR 0.6B (Q8_0) through NeMo-Speech.cpp, on the machine: streaming, **provisional text while you talk**, no key. A separate, explicit install (`jarvis stt install-nemotron`, ~707 MiB, pinned versions and SHA-256); `nemotron_device` picks `cpu`, `cuda` or `metal`. The server listens on loopback only, with a per-process token, and stops with the service. | when you want live text without sending audio out |
+| `auto` | GPU present → `local`; no GPU and a key → `openai`; else `local` on CPU. Never selects `nemotron`. | default value |
 
 ```bash
 jarvis config set openai_api_key sk-...      # or export OPENAI_API_KEY in the service environment
@@ -291,6 +307,26 @@ voice-launcher --stt local                   # one-off override for a run
 ```
 
 The API session is opened the moment Jarvis starts listening, so the handshake overlaps with you starting to speak; only speech is sent (no silence, no greeting).
+
+```bash
+jarvis stt install-nemotron                  # or --device cpu
+jarvis config set stt_provider nemotron
+systemctl --user restart voice-launcher.service
+```
+
+If the chosen backend fails, the captured audio goes to local Whisper. Choosing Nemotron never falls back to a paid API.
+
+### Personal vocabulary
+
+`stt_vocabulary` (settings screen → Listening → Personal vocabulary) holds the names and jargon the recognizer tends to misspell — one per line, commas also separate, at most 100 entries. A non-empty list **replaces** the automatic one (built-in terms + project names in `dev_dir`); `stt_vocabulary_enabled = false` turns every hint off without erasing the list. The hints bias spelling during recognition; they are not text substitutions and not a memory of the assistant.
+
+| Backend | How the vocabulary is used |
+|---|---|
+| `nemotron` | `speech_contexts` before the audio; strength `nemotron_vocabulary_boost` (start at 0.5, 0 turns it off) |
+| `openai` with `gpt-live-transcribe` | `keywords`, up to 100 unique entries; other OpenAI models get no vocabulary. The terms are sent to OpenAI with the session configuration |
+| `local` Whisper / fallback | `hotwords`, which faster-whisper truncates at 223 tokens |
+
+A Nemotron install from before this support keeps transcribing but logs that the vocabulary needs the updated model: run `jarvis stt install-nemotron` again (nothing is downloaded at service start). Measurements: [docs/validation/stt-vocabulary-2026-10-02.md](validation/stt-vocabulary-2026-10-02.md).
 
 ---
 
@@ -345,6 +381,10 @@ Custom `greeting`, `voice` or `system_prompt` values override the language defau
 | `jarvis config` | settings screen (floating terminal) |
 | `jarvis config show \| get \| set \| reset \| path` | scriptable settings |
 | `jarvis picoh probe \| demo \| reset \| fake` | the Picoh robot: find it, walk through the phases, rest position, demo without a robot |
+| `jarvis dictate toggle \| start \| stop \| cancel` | dictation, as called by the keybindings |
+| `jarvis router status \| install-local` | routing state and the reason of the last decision / install the optional CPU classifier |
+| `jarvis stt install-nemotron [--device cpu\|cuda\|metal] \| status` | install or inspect the optional Nemotron recognizer |
+| `jarvis session status \| open \| stop <id>` | a native agent session: its state, attach a terminal to it, stop it |
 
 Runtime overrides: `voice-launcher --test` (dry run: no layouts, no suspend), `--stt local|openai|auto`, `--whisper-model <size>`, `--wake-threshold 0.6`.
 
@@ -410,7 +450,16 @@ hey-jarvis/
 │   ├── jarvis_config.py        settings schema, defaults, TOML, profiles, CLI
 │   ├── jarvis-config.py        settings screen (curses)
 │   ├── jarvis_i18n.py          en / pt-BR strings, prompts, action protocol
-│   ├── jarvis_stt.py           speech-to-text backends (local whisper / OpenAI Realtime)
+│   ├── jarvis_stt.py           speech-to-text backends (local whisper / Nemotron / OpenAI Realtime), vocabulary
+│   ├── jarvis_nemotron.py      optional Nemotron install and loopback server
+│   ├── jarvis_dictation_stream.py  write-while-dictating: VAD segments, guarded insertion
+│   ├── jarvis_routing.py       execution profiles, routing decisions, fallback
+│   ├── jarvis_router_api.py / jarvis_router_jev.py / jarvis_router_local.py  optional routers
+│   ├── jarvis-router.py        `jarvis router` CLI
+│   ├── jarvis_conversation_routing.py  hands a request to a route, continuity, late answers
+│   ├── jarvis_sessions.py      native session records, single submission, terminal attach, deadlines
+│   ├── jarvis_agent_codex.py / jarvis_agent_claude.py / jarvis_agent_policy.py  native CLI sessions, system prompt
+│   ├── jarvis_http.py          bounded HTTP child for the optional APIs
 │   ├── jarvis_events.py        streaming events of the model CLIs → activity lines
 │   ├── jarvis_narrate.py       progress narration while the model works (Ollama / OpenAI / self / templates)
 │   ├── jarvis_picoh.py         Picoh robot daemon: phase → colour/eyes/head, speech envelope → mouth
@@ -429,12 +478,14 @@ hey-jarvis/
 │   ├── jarvis.desktop          desktop entry template (Jarvis in the app launcher)
 │   ├── 60-jarvis-picoh.rules   udev rule: serial access to the Picoh without root
 │   └── waybar/                 waybar module (for non-Omarchy Hyprland setups)
-├── tests/                      unit tests: `python -m unittest tests.test_narrate`
-├── docs/                       screenshots, bar-active-accent hook
+├── scripts/                    install-router-local.sh, evaluate-routing.py
+├── tests/                      Python unit tests + QML tests (see Development in the README)
+├── docs/                       this reference, screenshots, validation records, bar-active-accent hook
 ├── requirements.txt            direct Python deps (input for the lock)
 ├── requirements.lock           full transitive set with sha256 hashes (what install.sh installs)
 ├── requirements-gpu.txt/.lock  optional cuBLAS/cuDNN wheels for CUDA whisper
 ├── requirements-overrides.txt  uv override used when regenerating the locks
+├── requirements-router-local.txt/.lock  optional CPU classifier environment (not installed by install.sh)
 └── LICENSE                     MIT
 ```
 
@@ -443,8 +494,8 @@ hey-jarvis/
 ## Requirements
 
 - Arch Linux with Hyprland — developed on Omarchy 4 (the bar widget needs the Omarchy shell; the voice service works on any Hyprland).
-- Python 3.11+, PipeWire, PortAudio, `wl-clipboard` + `wtype` (dictation paste), a terminal (`ghostty` by default), a microphone.
-- Codex CLI and/or Claude Code CLI, logged in.
+- Python 3.11+, PipeWire, PortAudio, `wl-clipboard` + `wtype` (dictation paste), a terminal (Alacritty is preferred: it temporarily replaces Ghostty, which crashes with Claude Code — ghostty#11504), a microphone.
+- Codex CLI and/or Claude Code CLI, logged in. Native Claude sessions also need `tmux`.
 - Optional: NVIDIA GPU for local `large-v3-turbo` transcription; an OpenAI API key for realtime transcription; a Picoh robot on USB.
 
 Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts, sounddevice, websockets, pyserial…); `install.sh` installs the hash-locked `requirements.lock`. Tested with Python 3.11 and 3.14. To bump a dependency, edit `requirements*.txt` and regenerate: `uv pip compile --universal --generate-hashes --python-version 3.11 --no-header --override requirements-overrides.txt -o requirements.lock requirements.txt` (same for `-gpu`).
@@ -467,6 +518,8 @@ Python packages: see `requirements.txt` (openwakeword, faster-whisper, piper-tts
 | Narration is silent, or only says "running a command" | `python ~/.local/bin/jarvis_narrate.py status` shows what `narration = auto` resolved to; `[narr]` lines in `jarvis log` show generation time and failures (Ollama down or model missing → `ollama pull gemma3:4b`; OpenAI `HTTP 429` = no credits). After two failures in a row the backend is off for the rest of the conversation |
 | Narration talks too much / too little | `narration_interval_quick` (seconds), or `narration = off` |
 | Active bar icons are red | that's the Omarchy theme default; see the note in [The bar widget](#the-bar-widget) |
+| Claude answers always say compatibility mode | the native session could not start: check `tmux`, Alacritty and the CLI version; Claude Code also has to trust `~/.local/share/jarvis/workdir` once — run `claude` in that folder and accept the trust question |
+| The vocabulary has no effect with Nemotron | the log says the model predates vocabulary support: run `jarvis stt install-nemotron` again |
 
 ---
 

@@ -135,16 +135,23 @@ def start_session(request: RouteRequest, profile: ExecutionProfile, cancel: thre
     if not all(caps.get(key, False) for key in (*REQUIRED_CAPABILITIES, 'access_' + profile.system_access)):
         raise SessionUnsupported('native_capabilities_missing')
     session = adapter.start(request, profile)
+
+    def stop_quietly(stopper) -> None:
+        # Nothing was sent yet: a cleanup error must not hide the cancel or the fallback.
+        try:
+            stopper(session)
+        except Exception:
+            pass
     if cancel is not None and cancel.is_set():
-        adapter.stop(session)
+        stop_quietly(adapter.stop)
         raise RouterCancelled()
     try:
         start_watchdog(session)
     except Exception:
-        adapter.stop(session)
+        stop_quietly(adapter.stop)
         raise SessionUnsupported('native_watchdog_unavailable') from None
     if cancel is not None and cancel.is_set():
-        adapter.stop(session)
+        stop_quietly(stop_session)
         raise RouterCancelled()
     submit_turn(session, request)
     return session
@@ -230,6 +237,15 @@ def interrupt_turn(session: SessionRef, turn_id: str) -> None:
 
 
 def open_terminal(session: SessionRef) -> None:
+    # Handing a turn to a terminal ends "allow the rest of this question", whoever opens it
+    # (the long-task handoff, the window's button or `jarvis session open`).
+    import jarvis_consent
+    with locked(session.id):   # the consent broker grants under this same lock
+        record = read_record(session.id)
+        record['state'] = 'handed_off'
+        record['handoff_at'] = time.time()
+        write_record(session.id, record)
+        jarvis_consent.revoke_session_grants(session.id)
     adapter = adapter_for(session.provider)
     if hasattr(adapter, 'ensure_connected'):
         adapter.ensure_connected(session)
@@ -240,10 +256,6 @@ def open_terminal(session: SessionRef) -> None:
                       '--working-directory', str(session.cwd), '-e', *argv],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
-    with locked(session.id):
-        record = read_record(session.id)
-        record['state'] = 'handed_off'
-        write_record(session.id, record)
 
 
 def enforce_deadlines(session: SessionRef, maximum: float, now: float | None = None) -> list[str]:
@@ -255,6 +267,17 @@ def enforce_deadlines(session: SessionRef, maximum: float, now: float | None = N
             adapter.interrupt(session, turn_id)
             expired.append(turn_id)
     return expired
+
+
+def stop_session(session: SessionRef) -> None:
+    """Stops the agent session and its watchdog unit (a retired session must not leave it running)."""
+    adapter_for(session.provider).stop(session)   # raises while the backend may still run: keep the watchdog
+    if shutil.which('systemctl'):
+        try:
+            subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
 
 def start_watchdog(session: SessionRef) -> None:
@@ -273,6 +296,15 @@ def start_watchdog(session: SessionRef) -> None:
         raise SessionUnsupported('native_watchdog_unavailable')
 
 
+def stop_confirmed(adapter, session: SessionRef) -> bool:
+    """A stop that fails leaves the watchdog running: it retries on the next cycle."""
+    try:
+        adapter.stop(session)
+        return True
+    except Exception:
+        return False
+
+
 def watch_session(session: SessionRef, maximum: float) -> None:
     adapter = adapter_for(session.provider)
     failures = 0
@@ -282,17 +314,18 @@ def watch_session(session: SessionRef, maximum: float) -> None:
             expired = enforce_deadlines(session, maximum)
             failures = 0
             last_success = time.monotonic()
+            if not expired and not adapter.active_turns(session) and not adapter.alive(session):
+                return   # session stopped or gone with nothing running: nothing left to watch
             if expired:
                 time.sleep(.5)
                 remaining = {turn for turn, _ in adapter.active_turns(session)}
-                if remaining.intersection(expired):
-                    adapter.stop(session)
+                if remaining.intersection(expired) and stop_confirmed(adapter, session):
                     return
         except Exception:
             failures += 1
             if failures >= 3:
-                if not adapter.alive(session) or time.monotonic() - last_success > maximum:
-                    adapter.stop(session)
+                if ((not adapter.alive(session) or time.monotonic() - last_success > maximum)
+                        and stop_confirmed(adapter, session)):
                     return
         time.sleep(.5)
 
@@ -313,9 +346,7 @@ def main() -> None:
     elif args.action == 'watch':
         watch_session(session, args.max_seconds)
     elif args.action == 'stop':
-        adapter_for(session.provider).stop(session)
-        subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        stop_session(session)
         from jarvis_conversation_routing import ACTIVE_FILE, forget_active_session
         try:
             if json.loads(ACTIVE_FILE.read_text()).get('session_id') == session.id:

@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import jarvis_dictate  # noqa: E402
 import jarvis_events  # noqa: E402
+from jarvis_http import RefuseRedirects  # noqa: E402
 from jarvis_i18n import NARRATOR_PROMPT, T  # noqa: E402
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -112,10 +113,14 @@ class Narrator:
 
     def __init__(self, mode: str, lang: str, interval: float, question: str,
                  generate: Generate | None = None, clock: Callable[[], float] = time.monotonic,
-                 generate_timeout: float = OPENAI_TIMEOUT):
+                 generate_timeout: float = OPENAI_TIMEOUT, first_interval: float | None = None):
         self.mode = mode
         self.lang = lang
         self.interval = float(interval)
+        # a primeira frase sai mais cedo, assim que o modelo começa a agir: o silêncio do
+        # início é o que mais pesa na conversa
+        self.first_interval = self.interval if first_interval is None else min(float(first_interval), self.interval)
+        self._narrated = False
         self.question = question
         self.generate = generate if mode in ("local", "openai") else None
         self.generate_timeout = generate_timeout
@@ -162,7 +167,7 @@ class Narrator:
                 return self._finish(None, self._snapshot)
             return None
         now = self._clock()
-        if now - self._last_spoken < self.interval:
+        if now - self._last_spoken < (self.interval if self._narrated else self.first_interval):
             return None
         with self._lock:
             snapshot = self._events[:]
@@ -218,6 +223,7 @@ class Narrator:
         if self._last_phrase is not None and _norm(phrase) == _norm(self._last_phrase):
             return None
         self._last_phrase = phrase
+        self._narrated = True
         return phrase
 
 
@@ -293,7 +299,8 @@ def openai_generate(api_key: str, model: str, lang: str) -> Generate:
                                      headers={"Content-Type": "application/json",
                                               "Authorization": f"Bearer {api_key}"})
         try:
-            with urllib.request.urlopen(req, timeout=OPENAI_TIMEOUT) as r:
+            # sem seguir redirect: o urllib reenviaria a chave para o novo endereço
+            with urllib.request.build_opener(RefuseRedirects).open(req, timeout=OPENAI_TIMEOUT) as r:
                 return openai_text(json.loads(r.read().decode()))
         except urllib.error.HTTPError as e:
             log(f"openai HTTP {e.code}: {e.read()[:200]!r}")

@@ -47,6 +47,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "routing_error": "Não consegui concluir este pedido. Confira o estado do Jarvis antes de tentar novamente.",
         "native_handoff": "A tarefa continua na mesma sessão. Abra o terminal para acompanhar ou digitar.",
         "native_handoff_voice": "A tarefa continua no terminal, na mesma conversa.",
+        "late_answer": "{address}, terminei aquele pedido que estava demorando.",
         "route_agent": "Agente · assinatura",
         "route_api": "Resposta por API",
         "route_initial_model": "Modelo inicial",
@@ -157,7 +158,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cfg_keys2": "↑↓ navegar   ←→ / Enter alterar   p  salvar perfil   o  abrir perfil   e  editar arquivo",
         "cfg_on": "ligado",
         "cfg_off": "desligado",
-        "cfg_secret_empty": "(vazio — usa OPENAI_API_KEY do ambiente)",
+        "cfg_secret_empty": "(vazio — usa {env} do ambiente)",
         "cfg_saved_restart": "salvo — Jarvis reiniciado com a nova configuração",
         "cfg_saved_off": "salvo (Jarvis desligado; vale quando ligar)",
         "cfg_saved": "salvo",
@@ -177,6 +178,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "routing_error": "I could not complete this request. Check the Jarvis state before trying again.",
         "native_handoff": "The task continues in the same session. Open the terminal to follow along or type.",
         "native_handoff_voice": "The task continues in the terminal, in the same conversation.",
+        "late_answer": "{address}, that longer request is done.",
         "route_agent": "Agent · subscription",
         "route_api": "API response",
         "route_initial_model": "Initial model",
@@ -283,7 +285,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cfg_keys2": "↑↓ navigate   ←→ / Enter change   p  save profile   o  open profile   e  edit file",
         "cfg_on": "on",
         "cfg_off": "off",
-        "cfg_secret_empty": "(empty — uses OPENAI_API_KEY from the environment)",
+        "cfg_secret_empty": "(empty — uses {env} from the environment)",
         "cfg_saved_restart": "saved — Jarvis restarted with the new settings",
         "cfg_saved_off": "saved (Jarvis is off; applies when it starts)",
         "cfg_saved": "saved",
@@ -438,6 +440,12 @@ ENVIRONMENT_NOTES = {
 # Como o modelo pode tocar na máquina, por system_access × provedor. Vai depois
 # das AÇÕES (e das notas de AMBIENTE, quando há acesso) e prevalece sobre a
 # frase "tem acesso ao computador" do prompt de sistema.
+USER_CONTEXT_HEADER = {
+    "pt-BR": "\n\nCONTEXTO DO USUÁRIO. Vale para entender os pedidos e saber onde buscar a resposta:\n",
+    "en": "\n\nUSER CONTEXT. Use it to understand requests and to know where to look for answers:\n",
+}
+
+
 ACCESS_NOTES = {
     "pt-BR": {
         "ask": (
@@ -495,6 +503,9 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "language": ("Language", "Language Jarvis speaks and understands. Also picks the default voice and the speech-recognition language."),
     "stt_provider": ("Speech recognition", "nemotron = local streaming (jarvis stt install-nemotron); openai = API streaming with a key; local = Whisper. auto preserves GPU→Whisper, otherwise API with a key or Whisper CPU."),
     "nemotron_device": ("Nemotron device", "auto uses the installed runtime accelerator; cpu needs no GPU; cuda uses NVIDIA; metal uses Apple Silicon. Failures fall back to Whisper."),
+    "stt_vocabulary_enabled": ("Use recognition vocabulary", "Bias transcription toward names and technical terms. Disable to compare without hints."),
+    "stt_vocabulary": ("Personal vocabulary", "One word or phrase per line (or comma-separated), up to 100 entries. Replaces the automatic list; empty uses built-in terms and project names. Whisper uses up to 223 tokens. OpenAI mode sends these words to the API."),
+    "nemotron_vocabulary_boost": ("Nemotron vocabulary strength", "0 disables Nemotron hints; start at 0.5. Higher values may insert unwanted words. Older installations need a model update with jarvis stt install-nemotron."),
     "dictation_live": ("Write while dictating", "Preview provisional words and type confirmed segments at pauses. Skips AI polishing and does not paste again at the end. Changing windows stops typing; the full transcript stays on the clipboard. Clipboard output copies only at the end."),
     "openai_api_key": ("OpenAI API key", "Used by the openai speech recognition. Empty = OPENAI_API_KEY environment variable."),
     "wake_word_enabled": (
@@ -511,6 +522,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "codex_model": ("Codex model", "Empty uses the Codex CLI default. Only with the codex provider."),
     "codex_effort": ("Codex effort", "model_reasoning_effort for fast questions."),
     "codex_fast": ("Codex fast mode", "service_tier=fast: priority processing, faster answers (uses more of the plan). Off = default tier."),
+    "claude_fast": ("Claude fast mode", "Claude Code fastMode: faster answers on models that support it, at a higher price per token. Off = normal mode."),
     "claude_quick_model": ("Claude — fast model", "Used for fast questions when the provider is claude."),
     "claude_quick_effort": ("Claude — fast effort", "Reasoning effort for fast questions via claude."),
     "deep_model": ("Legacy model (retained for rollback)", "Always via Claude Code CLI. fable = Claude Fable 5 (most capable)."),
@@ -533,6 +545,17 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "max_history_exchanges": ("Exchanges sent as context", "How many previous questions/answers go to the model."),
     "handoff_seconds_quick": ("Fast-question deadline (s)", "After this the work moves to a separate terminal (it is not killed)."),
     "handoff_seconds_deep": ("Think-hard deadline (s)", "Same, for think-hard questions."),
+    "address": ("Form of address", "How Jarvis addresses you in fixed phrases and in the prompt (sir, boss, a name...). Empty = \"sir\" / \"senhor\" by language. The model is told never to use your name on its own."),
+    "window_style": ("Window style", "auto = graphic (quickshell on Omarchy, otherwise PySide6) with Jarvis's face and the ring that pulses with the voice, or the terminal where there is no Qt; graphic = graphic only; terminal = the text window (alacritty)."),
+    "dictation_duck": ("Lower music while dictating", "Multiplies the sound volume while a toggle dictation records and restores it when you stop (0.5 = half; 1 = leave it alone). Toggle shortcut only, not push-to-talk."),
+    "narration": ("Narrate progress while thinking", "Every N seconds Jarvis says what the model is doing. auto = detect (Ollama+GPU -> local; else an OpenAI key -> openai; else templates); local = Ollama; openai = API; self = the model narrates itself; templates = fixed phrases; off = silent."),
+    "handoff_max_minutes": ("Maximum turn length (min)", "A turn is stopped (its whole scope) after this long, including after it was handed to a terminal. Idle sessions stay available."),
+    "narration_interval_quick": ("Narration — interval (s)", "Seconds of silence before a progress sentence."),
+    "narration_local_model": ("Narration — local model (Ollama)", "Ollama model that writes the progress sentence."),
+    "narration_openai_model": ("Narration — OpenAI model", "Responses API model used when narration runs through OpenAI (key openai_api_key)."),
+    "context_file": ("Personal context file", "Text appended to the system prompt when the model has computer access: where your data lives, which tools to check. A missing file changes nothing."),
+    "narration_first_seconds": ("Narration: first sentence (s)", "Shortest wait before the first progress sentence, spoken as soon as the model starts acting. Later ones follow the normal interval."),
+    "agent_session_max_hours": ("Agent sessions: maximum age (h)", "A native session older than this is stopped and the next conversation opens a new one. It is also replaced when the system prompt or the context file change."),
     "system_prompt": ("System prompt", "Style instructions sent to the model (edit in $EDITOR). Empty = default for the language."),
     "barge_min_rms": ("Barge-in — energy floor (RMS)", "Your speech must exceed this to interrupt. Typical room ≈ 0.005."),
     "tts_bleed_factor": ("Barge-in — factor over bleed", "Speech must exceed N× the TTS level picked up by the mic."),

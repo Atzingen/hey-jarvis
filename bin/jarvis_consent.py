@@ -230,6 +230,14 @@ def has_grant(call_id: str) -> bool:
         return False
 
 
+def revoke_session_grants(session_id: str) -> None:
+    """Every grant of a native session's turns (call ids are `<session>-<turn>`)."""
+    safe = "".join(c for c in session_id if c.isalnum())
+    if safe and CONSENT_DIR.is_dir():
+        for path in CONSENT_DIR.glob(f"grant-{safe}-*"):
+            path.unlink(missing_ok=True)
+
+
 def revoke_grants(call_id: str | None = None) -> None:
     """Sem `call_id`, revoga todos (cancelamento, handoff, fim da pergunta, subida do serviço)."""
     if not CONSENT_DIR.is_dir():
