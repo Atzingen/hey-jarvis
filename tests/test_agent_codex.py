@@ -39,6 +39,33 @@ class CodexAdapterTest(unittest.TestCase):
             self.assertEqual(config['project_doc_max_bytes'], 0)
             self.assertEqual(bool(config.get('mcp_servers')), access == 'ask')
 
+    @patch('jarvis_agent_codex.thread')
+    def test_turn_without_started_at_keeps_its_first_seen_time(self, thread: Mock) -> None:
+        # With startedAt null every check used to restart the clock, so the deadline never hit.
+        thread.return_value = {'turns': [{'id': 'turn-1', 'status': 'inProgress', 'startedAt': None}]}
+        with patch.object(codex.time, 'time', return_value=1000.0):
+            first = codex.active_turns(self.session)
+        with patch.object(codex.time, 'time', return_value=5000.0):
+            later = codex.active_turns(self.session)
+        self.assertEqual(first, [('turn-1', 1000.0)])
+        self.assertEqual(later, [('turn-1', 1000.0)])
+
+    def test_system_mcp_servers_disable_restricted_modes(self) -> None:
+        # /etc/codex/config.toml is merged into every Codex run; its tools would skip consent.
+        system = self.root / 'system-config.toml'
+        system.write_text('[mcp_servers.files]\ncommand = "server"\n')
+        with (patch.object(codex, 'codex_system_mcp_servers', return_value=['files']),
+              patch.object(codex.shutil, 'which', return_value='/usr/bin/codex'),
+              patch.object(codex.importlib.util, 'find_spec', return_value=object()),
+              patch.object(codex.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '--remote app-server', ''))):
+            caps = codex.capabilities()
+        self.assertTrue(caps['access_full'])
+        self.assertFalse(caps['access_ask'])
+        self.assertFalse(caps['access_off'])
+        import jarvis_agent_policy
+        with patch.object(jarvis_agent_policy, 'CODEX_SYSTEM_CONFIG', system):
+            self.assertEqual(jarvis_agent_policy.codex_system_mcp_servers(), ['files'])
+
     @patch('jarvis_agent_codex.rpc')
     def test_submit_uses_original_request_id_and_exact_thread(self, rpc: Mock) -> None:
         rpc.side_effect = [{'thread': {'turns': []}}, {'turn': {'id': 'turn-1'}}]

@@ -6,7 +6,7 @@ explained in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
-## [2.5.0] — not released yet
+## [2.5.0] — 2026-11-27
 
 ### Added
 
@@ -64,6 +64,31 @@ explained in [RELEASING.md](RELEASING.md).
   QtQuick's own type, so every themed color came out undefined (black icon in the bar, colorless
   `jarvis app`). The shared QML now uses the qualified `Commons.Color`.
 - Speech longer than 60 seconds is no longer cut off (the playback ceiling follows the audio length).
+- A native session whose Codex app-server or Claude terminal died is replaced at the next
+  request instead of failing every following one; Codex turns without a start time no longer
+  escape the turn deadline; watchdog units stop with their session instead of running until reboot.
+- Write while dictating decides the target window and the paste shortcut from one focus query, so
+  a focus change in between can no longer paste into another window.
+- The voice service no longer turns off the restricted Claude path until its next restart when
+  `claude --help` is read incompletely at boot; `jarvis` without a known command lists every command.
+
+### Security
+
+- In `ask` and `off`, Codex is refused when `/etc/codex/config.toml` defines MCP servers: Codex
+  merges that file into every run, and its tools would bypass the consent window.
+- "Allow the rest of this question" is revoked when a native session is handed to a terminal, as it
+  already was for the legacy viewer.
+- An answer that arrives after the long-task notice runs no desktop action unless
+  `system_access = "full"`.
+- Authenticated API calls (answers API, Jev) refuse redirects, so the key never reaches another URL.
+- `config.toml` and profiles are written through a temporary file created `0600` (the key was
+  briefly readable with a `022` umask); the native Claude system prompt, personal context
+  included, and the Nemotron bearer token no longer appear on any command line; `JEV_API_KEY`
+  is not passed to the agent CLIs.
+- `jarvis router install-local` downloads a fixed list of model files, each checked against its
+  size and SHA-256.
+- `SECURITY.md` describes the native and legacy invocations separately and matches the code on
+  endpoints, deadlines, limits and uninstall.
 
 ## [2.4.0] — 2026-09-22
 

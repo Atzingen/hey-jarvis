@@ -32,8 +32,9 @@ class ClaudeAdapterTest(unittest.TestCase):
     def test_restricted_native_flags_preserve_subscription(self) -> None:
         for access in ('off', 'ask', 'full'):
             profile = ExecutionProfile('agent_default', 'agent', 'claude', 'haiku', 'low', access)
-            argv = claude.claude_argv(self.session, profile, self.root/'settings', self.root/'ctx')
+            argv = claude.claude_argv(self.session, profile, self.root/'settings', self.root/'ctx', self.root/'prompt')
             self.assertNotIn('--bare', argv)
+            self.assertNotIn('--append-system-prompt', argv)   # prompt and personal context stay out of argv
             self.assertIn('--session-id', argv)
             if access != 'full':
                 for flag in ('--restricted', '--strict-mcp-config', '--tools', '--permission-mode'):

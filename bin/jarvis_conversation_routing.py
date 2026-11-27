@@ -12,6 +12,7 @@ import time
 from typing import Callable
 import uuid
 
+import jarvis_consent
 import jarvis_sessions as sessions
 from jarvis_i18n import T
 from jarvis_routing import (RouteRequest, RouteDecision, ExecutionProfile, RouterUnavailable, RouterCancelled,
@@ -91,7 +92,7 @@ def retire_session(session: sessions.SessionRef) -> None:
         try:
             adapter = sessions.adapter_for(session.provider)
             if not adapter.active_turns(session):
-                adapter.stop(session)
+                sessions.stop_session(session)
         except Exception:
             pass
     threading.Thread(target=stop, daemon=True, name='jarvis-session-retire').start()
@@ -236,7 +237,7 @@ class ConversationExecutor:
         if cancel.is_set():
             raise RouterCancelled()
         profile = resolve_profile(decision, self.cfg)
-        if decision.continuation and self.session:
+        if decision.continuation and request.active_session_id and self.session:
             profile = ExecutionProfile(**sessions.read_record(self.session.id)['profile'])
         state = {'routing_mode': mode, 'effective_route': profile.transport,
                  'fallback_reason': decision.reason, 'session_id': '', 'session_backend': '',
@@ -272,6 +273,10 @@ class ConversationExecutor:
     def native(self, request: RouteRequest, profile: ExecutionProfile, reason: str, cancel: threading.Event,
                on_status: Callable, on_event: Callable, on_state: Callable, on_late: Callable) -> Answer:
         if self.session and self.session.cwd != request.cwd:
+            self.session = None
+        if self.session and not sessions.adapter_for(self.session.provider).alive(self.session):
+            # A dead app-server/tmux would fail every following request before submission.
+            retire_session(self.session)
             self.session = None
         self.cwd = request.cwd
         if self.session and self.session.provider == 'claude':
@@ -311,6 +316,13 @@ class ConversationExecutor:
         result = self.wait_for_turn(job, profile, reason, cancel, on_status, on_event, background=False)
         if result is not None:
             return result
+        # "Allow the rest of this question" ends at the handoff, as in the legacy path.
+        try:
+            turn = sessions.adapter_for(self.session.provider).consent_context(self.session).get('call_id')
+            if turn:
+                jarvis_consent.revoke_grants(turn)
+        except Exception:
+            pass
         try:
             sessions.open_terminal(self.session)
         except (OSError, sessions.SessionUnsupported):

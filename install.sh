@@ -125,7 +125,11 @@ if [[ ${1:-} == "--uninstall" ]]; then
         "$RUNTIME"/jarvis-wake-off "$RUNTIME"/jarvis-dictating "$RUNTIME"/jarvis-dictate.cmd \
         "$RUNTIME"/jarvis-talk "$RUNTIME"/jarvis-polishing "$RUNTIME"/jarvis-skip-polish \
         "$RUNTIME"/jarvis-meeting-paused "$RUNTIME"/jarvis-resume-at
-  rm -f "$RUNTIME/jarvis-active-session.json"
+  rm -f "$RUNTIME/jarvis-active-session.json" "$RUNTIME"/jarvis-claude-*.sock
+  if [[ -f /etc/udev/rules.d/60-jarvis-picoh.rules ]]; then
+    # root-owned: never removed silently, the same way it was never installed silently
+    say "The Picoh udev rule stays. Remove it with: sudo rm /etc/udev/rules.d/60-jarvis-picoh.rules && sudo udevadm control --reload-rules"
+  fi
   if [[ ${2:-} == "--purge" ]]; then
     say "Removing ~/.config/jarvis and Piper voices"
     rm -rf "$HOME/.config/jarvis" "$VOICES"

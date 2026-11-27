@@ -84,7 +84,7 @@ def build_profiles(cfg: dict) -> dict[str, ExecutionProfile]:
 
 def resolve_profile(decision: RouteDecision, cfg: dict) -> ExecutionProfile:
     profiles = build_profiles(cfg)
-    transport = 'api' if decision.kind in ('api', 'answer') and not decision.needs_computer else 'agent'
+    transport = 'api' if decision.kind in ('api', 'answer', 'clarify') and not decision.needs_computer else 'agent'
     selected = f'{transport}_default'
     if decision.complexity == 'high' or decision.profile == f'{transport}_strong':
         selected = f'{transport}_strong' if f'{transport}_strong' in profiles else selected

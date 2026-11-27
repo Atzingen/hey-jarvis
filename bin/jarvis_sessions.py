@@ -144,7 +144,7 @@ def start_session(request: RouteRequest, profile: ExecutionProfile, cancel: thre
         adapter.stop(session)
         raise SessionUnsupported('native_watchdog_unavailable') from None
     if cancel is not None and cancel.is_set():
-        adapter.stop(session)
+        stop_session(session)
         raise RouterCancelled()
     submit_turn(session, request)
     return session
@@ -257,6 +257,15 @@ def enforce_deadlines(session: SessionRef, maximum: float, now: float | None = N
     return expired
 
 
+def stop_session(session: SessionRef) -> None:
+    """Stops the agent session and its watchdog unit (a retired session must not leave it running)."""
+    try:
+        adapter_for(session.provider).stop(session)
+    finally:
+        subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+
+
 def start_watchdog(session: SessionRef) -> None:
     if not read_record(session.id)['backend'].get('native_monitor'):
         return
@@ -282,6 +291,8 @@ def watch_session(session: SessionRef, maximum: float) -> None:
             expired = enforce_deadlines(session, maximum)
             failures = 0
             last_success = time.monotonic()
+            if not expired and not adapter.active_turns(session) and not adapter.alive(session):
+                return   # session stopped or gone with nothing running: nothing left to watch
             if expired:
                 time.sleep(.5)
                 remaining = {turn for turn, _ in adapter.active_turns(session)}
@@ -313,9 +324,7 @@ def main() -> None:
     elif args.action == 'watch':
         watch_session(session, args.max_seconds)
     elif args.action == 'stop':
-        adapter_for(session.provider).stop(session)
-        subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        stop_session(session)
         from jarvis_conversation_routing import ACTIVE_FILE, forget_active_session
         try:
             if json.loads(ACTIVE_FILE.read_text()).get('session_id') == session.id:

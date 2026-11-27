@@ -446,7 +446,7 @@ def user_context(cfg: dict) -> str:
     """Conteúdo do arquivo de contexto pessoal (opção context_file), ou vazio se não houver."""
     path = Path(str(cfg.get("context_file", "")).strip() or "/nonexistent").expanduser()
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return path.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return ""
 
@@ -492,12 +492,19 @@ def dump_toml(cfg: dict, only_changed: bool = True) -> str:
     return "\n".join(lines)
 
 
-def save(cfg: dict, path: Path = CONFIG_FILE) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def write_private(path: Path, text: str) -> None:
+    """Troca atômica com o temporário já nascendo 0600: config e perfis levam chaves de API."""
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(dump_toml(cfg))
-    os.chmod(tmp, 0o600)  # pode conter chave de API
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as output:
+        output.write(text)
     tmp.replace(path)
+
+
+def save(cfg: dict, path: Path = CONFIG_FILE) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    write_private(path, dump_toml(cfg))
 
 
 # --- perfis ------------------------------------------------------------
@@ -513,10 +520,7 @@ def save_profile(name: str, cfg: dict) -> Path:
     PROFILES_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(PROFILES_DIR, 0o700)
     path = PROFILES_DIR / f"{safe}.toml"
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(dump_toml(cfg, only_changed=False))
-    os.chmod(tmp, 0o600)  # o perfil leva a config inteira, chave de API inclusive
-    tmp.replace(path)
+    write_private(path, dump_toml(cfg, only_changed=False))
     return path
 
 

@@ -17,14 +17,57 @@ mkdir -p "$PREFIX"
 "$PYTHON" -m venv "$PREFIX/venv"
 "$PREFIX/venv/bin/python" -m pip install --extra-index-url https://download.pytorch.org/whl/cpu --require-hashes --no-deps -r "$HERE/requirements-router-local.lock"
 "$PREFIX/venv/bin/python" - "$PREFIX" <<'PY'
-import json
-from pathlib import Path
+import hashlib
 import sys
-from huggingface_hub import snapshot_download
-root = Path(sys.argv[1])
-snapshot_download('fastino/GLiNER2.5-multi-Decide',
-                  revision='a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f', local_dir=root / 'model',
-                  allow_patterns=['*.json', '*.safetensors', 'encoder_config/*'])
+import urllib.request
+from pathlib import Path
+
+REPOSITORY = 'fastino/GLiNER2.5-multi-Decide'
+REVISION = 'a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f'
+# Exactly the files the classifier loads, with the size and SHA-256 of this revision.
+FILES = [
+    ('config.json', 3152, 'be5123080c0f3f01b938bc46a5dd0d7a2e515a34f6df798dfd70ed04c277c8bf'),
+    ('encoder_config/config.json', 858, 'd0ebbcb8b458e285a39e12cc315cbaf3d1c6f631e7281e6b22dd5b4071183f83'),
+    ('tokenizer_config.json', 646, 'fd4a31dc2f1f17e31638c5f0e783b81cdb2fbe6bddd116a8d9e5d50d78148cf1'),
+    ('tokenizer.json', 16035853, 'c62446df87ae18ec98b133f8f84fc449a07cc89bbf8ef192a4cb5f9c53777a7a'),
+    ('model.safetensors', 1149461028, '9efe0f88c99f2aa794452e9559dc60e98d60d9fa2bf1b60cf2710411b6da5b4e'),
+]
+
+
+def fetch(name: str, size: int, sha256: str, model_dir: Path) -> None:
+    target = model_dir / name
+    if target.is_file() and target.stat().st_size == size:
+        digest = hashlib.sha256()
+        with target.open('rb') as existing:
+            for block in iter(lambda: existing.read(1 << 20), b''):
+                digest.update(block)
+        if digest.hexdigest() == sha256:
+            return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + '.part')
+    url = f'https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{name}'
+    digest = hashlib.sha256()
+    received = 0
+    with urllib.request.urlopen(url, timeout=60) as response, partial.open('wb') as output:
+        while True:
+            block = response.read(1 << 20)
+            if not block:
+                break
+            received += len(block)
+            if received > size:
+                partial.unlink()
+                raise SystemExit(f'{name}: larger than the expected {size} bytes')
+            digest.update(block)
+            output.write(block)
+    if received != size or digest.hexdigest() != sha256:
+        partial.unlink()
+        raise SystemExit(f'{name}: size or SHA-256 does not match revision {REVISION}')
+    partial.replace(target)
+
+
+model_dir = Path(sys.argv[1]) / 'model'
+for name, size, sha256 in FILES:
+    fetch(name, size, sha256, model_dir)
 PY
 MODULE="$HERE/bin/jarvis_router_local.py"
 [[ -f "$MODULE" ]] || MODULE="$HOME/.local/bin/jarvis_router_local.py"

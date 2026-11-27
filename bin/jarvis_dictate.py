@@ -245,12 +245,13 @@ def polish_interruptible(text: str, lang: str = "pt-BR", model: str = "gemma3:4b
 
 # --- colagem -------------------------------------------------------------------------
 
-def active_window_is_terminal() -> bool:
-    try:
-        raw = subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=2).stdout
-        win = json.loads(raw)
-    except Exception:
-        return False
+def active_window_is_terminal(win: dict | None = None) -> bool:
+    if win is None:
+        try:
+            raw = subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True, text=True, timeout=2).stdout
+            win = json.loads(raw)
+        except Exception:
+            return False
     tags = [t.rstrip("*") for t in win.get("tags", [])]
     cls = (win.get("class") or "").lower()
     return "terminal" in tags or any(k in cls for k in ("ghostty", "alacritty", "kitty", "foot", "wezterm", "tui."))
@@ -300,12 +301,15 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False,
     try:
         if should_cancel is not None and should_cancel():
             return "cancelled"
+        window = None
         if target_window is not None:
             if not wait_for_shortcut_release(should_cancel):
                 return "cancelled" if should_cancel is not None and should_cancel() else "clipboard"
+            # Uma consulta só decide a janela e o atalho; a corrida que sobra é entre ela e a tecla.
             active = subprocess.run(["hyprctl", "activewindow", "-j"], capture_output=True,
                                     text=True, check=True, timeout=1)
-            if json.loads(active.stdout).get("address") != target_window:
+            window = json.loads(active.stdout)
+            if window.get("address") != target_window:
                 return "clipboard"
         if should_cancel is not None and should_cancel():
             return "cancelled"
@@ -314,7 +318,7 @@ def paste_text(text: str, mode: str = "paste", dry_run: bool = False,
             typed = " ".join(text.replace("\r", "\n").split("\n"))
             subprocess.run(["wtype", "--", typed], check=True, timeout=30, **_QUIET)
             return "typed"
-        if active_window_is_terminal():
+        if active_window_is_terminal(window):
             subprocess.run(["wtype", "-M", "ctrl", "-M", "shift", "v", "-m", "shift", "-m", "ctrl"], check=True, timeout=5, **_QUIET)
         else:
             subprocess.run(["wtype", "-M", "ctrl", "v", "-m", "ctrl"], check=True, timeout=5, **_QUIET)

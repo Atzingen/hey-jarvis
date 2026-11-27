@@ -422,7 +422,7 @@ class OpenAISession:
         if not isinstance(raw, str):
             return self._fail("frame binário inesperado")
         self.events += 1
-        self.session_bytes += len(raw)
+        self.session_bytes += len(raw.encode("utf-8"))
         if self.events > OPENAI_MAX_EVENTS:
             return self._fail(f"teto de eventos ({OPENAI_MAX_EVENTS})")
         if self.session_bytes > OPENAI_MAX_SESSION_BYTES:

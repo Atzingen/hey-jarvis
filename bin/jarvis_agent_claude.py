@@ -37,7 +37,9 @@ def capabilities() -> dict[str, bool]:
                 subprocess.run(['claude', '--help'], stdout=output, stderr=subprocess.DEVNULL, timeout=5)
                 output.seek(0)
                 help_text = output.read()
-            available = all(flag in help_text for flag in ('--session-id', '--restricted', '--strict-mcp-config', '--settings', '--bg'))
+            available = (all(flag in help_text for flag in ('--session-id', '--restricted', '--strict-mcp-config', '--settings',
+                                                          '--bg', '--tools', '--permission-mode'))
+                         and ('--append-system-prompt-file' in help_text or '--append-system-prompt[-file]' in help_text))
         except (OSError, subprocess.TimeoutExpired):
             available = False
     return dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt',
@@ -53,10 +55,13 @@ def tmux(session: SessionRef, *args: str, input_text: str | None = None) -> str:
     return result.stdout
 
 
-def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, context: Path) -> list[str]:
+def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, context: Path,
+                prompt: Path) -> list[str]:
+    # The system prompt (personal context file included) goes in a private file, not argv,
+    # where any local user could read it from the process list.
     argv = ['claude', '--session-id', session.native_id, '--model', profile.model,
             '--effort', profile.effort, '--settings', str(settings),
-            '--append-system-prompt', system_prompt(profile.system_access)]
+            '--append-system-prompt-file', str(prompt)]
     if profile.system_access == 'full':
         argv += ['--dangerously-skip-permissions']
     else:
@@ -109,7 +114,10 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     context.write_text(json.dumps({'session_id': session.id, 'sessions_dir': str(directory.parent),
                                    'lang': jarvis_config.load()['language']}))
     context.chmod(0o600)
-    argv = claude_argv(session, profile, settings, context)
+    prompt = directory / 'system-prompt.md'
+    prompt.write_text(system_prompt(profile.system_access))
+    prompt.chmod(0o600)
+    argv = claude_argv(session, profile, settings, context, prompt)
     # --bg assigns its own native UUID. Resolve the printed background ID before
     # any prompt is sent; --resume on a running background session would fork it.
     index = argv.index('--session-id')
@@ -142,13 +150,19 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
         while time.monotonic() < deadline:
             state = sessions.read_record(session.id)['backend']
             if state.get('ready') and socket.exists():
-                pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
+                try:
+                    pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
+                except RuntimeError:
+                    pane = ''   # the tmux session is not up yet
                 if prompt_ready(pane):
                     return session
             time.sleep(.1)
     except Exception:
         pass
-    stop(session)
+    try:
+        stop(session)
+    except Exception:
+        pass
     raise SessionUnsupported('claude_native_setup_required')
 
 
@@ -207,7 +221,11 @@ def ensure_connected(session: SessionRef) -> None:
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         state = sessions.read_record(session.id)['backend']
-        if state.get('ready') and prompt_ready(tmux(session, 'capture-pane', '-p', '-t', 'jarvis')):
+        try:
+            pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis') if state.get('ready') else ''
+        except RuntimeError:
+            pane = ''   # the tmux session is not up yet
+        if prompt_ready(pane):
             sessions.update_backend(session, {'stopped': False})
             return
         time.sleep(.1)
@@ -326,17 +344,19 @@ def alive(session: SessionRef) -> bool:
 
 def stop(session: SessionRef) -> None:
     backend = sessions.read_record(session.id)['backend']
+    failed = False
     if backend.get('background_id'):
         result = subprocess.run(['claude', 'stop', backend['background_id']], capture_output=True, timeout=8,
                                 env=subscription_env())
-        if result.returncode:
-            raise RuntimeError('claude_stop_failed')
+        failed = result.returncode != 0   # e.g. the worker already exited
     try:
         tmux(session, 'kill-server')
     except Exception:
         pass
     sessions.update_backend(session, {'stopped': True, 'ready': False, 'running': False,
                                       'pending_request_id': '', 'pending_text_sha256': ''})
+    if failed:
+        raise RuntimeError('claude_stop_failed')
 
 
 def main() -> None:

@@ -13,7 +13,7 @@ detects, and states exactly what is written, executed, and contacted.
 | Voice service (`voice-launcher.py`) | `voice-launcher.service`, a **user** systemd unit | `install.sh` (opt-in — see below) |
 | Conversation / dictation window, settings screen, `jarvis app` | floating terminal or window | the user (hotkey, click, or CLI) |
 | Picoh robot face (`jarvis_picoh.py`, optional) | child process of the voice service; idle unless a Picoh answers on a USB serial port | the voice service, when `picoh = auto` (default) |
-| Nemotron STT (`jarvis_nemotron.py`, optional) | owned native child, loopback only, random port and per-process bearer token | the voice service, only with `stt_provider = "nemotron"` and prior installation |
+| Nemotron STT (`jarvis_nemotron.py`, optional) | owned native child, loopback only, random port and per-process bearer token (passed in the server's environment, not on its command line; the server gets no API keys) | the voice service, only with `stt_provider = "nemotron"` and prior installation |
 
 Adding the plugin (`omarchy plugin add`) installs **only the bar widget**.
 The voice service is a separate, explicit step: the **Install** button on the
@@ -23,7 +23,7 @@ by hand. Nothing is installed silently.
 ## What `install.sh` writes (capability: `installer`)
 
 - `~/.local/bin/` — the scripts listed in `SCRIPTS` (this repository's `bin/`)
-- `~/.local/share/jarvis/` — the dedicated Python venv (always; no pre-existing environment is reused), the panel app QML, `models/whisper/` (Whisper weights, see *Network endpoints*), and `workdir/` (the empty working directory the model CLI and every authorized command run in under `system_access = "ask"`)
+- `~/.local/share/jarvis/` — the dedicated Python venv (always; no pre-existing environment is reused), the panel app QML, `models/whisper/` (Whisper weights, see *Network endpoints*), `workdir/` (the empty working directory the model CLI and every authorized command run in under `system_access = "ask"`), and `router-tools/` (a copy of the optional classifier installer and its lock files, run only by `jarvis router install-local`)
 - `~/.local/share/piper-voices/` — TTS voices (pinned + checksummed, see below). Every download `install.sh` makes itself (`fetch_verified`: voices, openWakeWord models) is **size-capped before verification**: curl refuses an announced size above the ceiling and the stream is cut at the ceiling when no size is announced (128 MiB per voice file, 32 MiB per wake-word model), so a remote endpoint cannot write more than that to disk regardless of how long the 600 s transfer window is
 - `~/.local/share/applications/jarvis.desktop` — launcher entry
 - `~/.config/systemd/user/voice-launcher.service` — the user unit
@@ -32,7 +32,9 @@ by hand. Nothing is installed silently.
 
 It never edits Hyprland or Omarchy configuration; keybindings and the
 bar-accent hook are opt-in snippets the user adds themselves.
-`install.sh --uninstall [--purge]` removes everything above.
+`install.sh --uninstall [--purge]` removes everything above except the root-owned
+udev rule, which it never touches without the user: when the rule exists it prints
+the `sudo` command that removes it.
 
 ### The Picoh robot is optional
 
@@ -102,19 +104,20 @@ implicitly selects a paid API.
 | `github.com/NVIDIA/NeMo-Speech.cpp/releases`, `huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b` | only `jarvis stt install-nemotron` — pinned, checksummed native runtime and model |
 | `huggingface.co/rhasspy/piper-voices` | install only — **pinned to an immutable revision, every file verified against its sha256** before use |
 | `github.com/dscripka/openWakeWord/releases` | install only — the ONNX wake-word/feature models, **fixed release `v0.5.1`, every file verified against its sha256** before use (openwakeword's own unpinned `download_models()` is never called) |
-| `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **first conversation** — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`; the hub verifies each file's sha256 against that commit) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
+| `huggingface.co` (`Systran/faster-whisper-*`, `dropbox-dash/faster-whisper-large-v3-turbo`) | **when the voice service starts** with local recognition, or the first time Nemotron/OpenAI fall back to it — Whisper weights, fetched at a **fixed commit** (`jarvis_stt.WHISPER_REVISIONS`; the hub verifies each file's sha256 against that commit) into `~/.local/share/jarvis/models/whisper/`; CTranslate2 loads `model.bin` as data, no Python is executed from it |
 | Anthropic / OpenAI backends of the **user's own** `claude` / `codex` CLIs | requests routed to the agent — the question, the conversation history and (in `ask`/`full`) whatever the model reads on the machine go to the provider the user is logged into |
-| `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio, plus the personal vocabulary (`stt_vocabulary`, as `keywords`, only with `gpt-live-transcribe` and while `stt_vocabulary_enabled` is on); (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
+| `api.openai.com` | (1) `stt_provider = "openai"`, or `auto` **without a CUDA GPU and with** `openai_api_key` set: the speech audio, plus the vocabulary hints as `keywords` (only with `gpt-live-transcribe` and while `stt_vocabulary_enabled` is on): the user's `stt_vocabulary`, or, when it is empty, the built-in terms and the names of the project folders in `dev_dir`; (2) progress narration when `narration = "openai"`, or `auto` **without** a local Ollama+GPU and **with** a key: the question and the model's tool-event summaries. Never contacted without a key |
 | `127.0.0.1:11434` (Ollama) | `dictation_polish`, and progress narration when `narration = "local"`/`auto` with a local model + GPU (a warm-up request at conversation start) |
 
 The OpenAI and Nemotron transcription sockets treat the server as untrusted input
 (`jarvis_stt.OpenAISession._handle_frame`): the WebSocket keeps a finite
 `max_size` (256 KiB per frame), and every frame is checked *before* anything is
 retained — text frames only, a valid JSON object with string fields, at most
-20 000 events and 16 MiB per session, and an accumulated transcript (partial or
+20 000 events and 16 MiB (UTF-8 bytes) per session, and an accumulated transcript (partial or
 final) of at most 32 000 characters. Crossing any ceiling, or a nonconforming
 event, closes the socket fail-closed; the speech then falls back to the local
-Whisper. The existing connect (6 s) and final-transcript (8 s) deadlines stay.
+Whisper. The connect deadline is 6 s; the final-transcript deadline is 8 s for
+OpenAI and 15 s for Nemotron.
 
 Wake word detection, voice activity detection, local transcription and TTS all
 run on the machine. Nothing is recorded or sent anywhere until the wake word
@@ -146,7 +149,8 @@ their own settings.
 |---|---|
 | `https://api.typesafe.ai/v1/systemone` | Explicit `jev` mode plus Jev key; receives the current text and conversation context for closed-category classification. It returns no executable commands. |
 | `https://api.openai.com/v1/responses` | Explicit `api_provider = "openai"`, configured model and key, with an API route selected. Optional web search uses the provider's search tool. Responses do not execute launcher action markers. |
-| Hugging Face `fastino/GLiNER2.5-multi-Decide` | Only `jarvis router install-local`; fixed revision `a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f`, downloaded to the separate classifier environment. |
+| Hugging Face `fastino/GLiNER2.5-multi-Decide` | Only `jarvis router install-local`; fixed revision `a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f`. The installer downloads a fixed list of five files, each checked against its exact size (the transfer stops beyond it) and SHA-256 before it is kept. |
+| `pypi.org`, `download.pytorch.org/whl/cpu` | Only `jarvis router install-local`: the classifier's own venv from `requirements-router-local.lock` (`--require-hashes --no-deps`; PyTorch CPU wheels come from the PyTorch index). |
 | CPU classifier child | Explicit `local` mode and prior installation. `CUDA_VISIBLE_DEVICES` is empty; PyTorch is a CPU wheel; model loading uses local files with Hugging Face offline mode. The process exits after inactivity. |
 | Local Codex app-server / Claude background session and tmux | Native agent execution using the existing subscription login. No response API credential is required. Sessions have explicit provider, conversation, directory and permission identities. |
 
@@ -161,7 +165,8 @@ model names, changes `system_access`, rewrites the original user request, or
 adds tools. API text containing action markers remains text. Only a validated
 handoff can reach the agent executor. HTTP bodies/responses are bounded;
 credentials are passed to the cancellable HTTP child over stdin, not argv or
-error messages. Cancellation stops the child.
+error messages, and redirects are refused, so the bearer never reaches another
+URL. Cancellation stops the child.
 
 Missing optional dependencies and definitive pre-execution failures may fall
 back to the selected subscription agent. Every native submission records its
@@ -175,9 +180,14 @@ files 0600), with atomic replacement and per-session locks. The CLI also stores
 its normal conversation history. Restricted Codex sessions use an isolated
 `CODEX_HOME`, linked only to the user's subscription authentication file, an
 empty work directory, disabled native execution tools and project instruction
-loading disabled. Full-access sessions keep the user's normal CLI setup.
-Claude uses invocation-scoped hooks (plus `fastMode` only when `claude_fast` is
-on) and the same restricted tool configuration as the legacy path. It never uses `--bare`; native background IDs are resolved
+loading disabled. Codex still merges the system-wide `/etc/codex/config.toml`
+into every run, isolated or not; when that file defines MCP servers, Jarvis
+refuses Codex in `ask` and `off` (native and legacy alike) instead of running with
+tools outside the consent broker. Full-access sessions keep the user's normal CLI
+setup. Claude uses invocation-scoped settings (the hooks, and `fastMode` set from
+`claude_fast`) and the same restricted tool configuration as the legacy path; its
+system prompt, personal context included, is read from a private file in the
+session directory, not passed on the command line. It never uses `--bare`; native background IDs are resolved
 exactly, and it never resumes a running background session by creating a copy.
 Voice input is literal bracketed paste over a private tmux socket; terminal
 control characters are escaped and text never becomes shell code. Voice waits
@@ -191,8 +201,11 @@ Until the user accepts that question for the work directory, the native session
 does not start and Jarvis uses the compatibility executor.
 
 A native session is replaced when the system prompt or the context file change,
-and after `agent_session_max_hours` (12 by default). The replaced session is
-stopped when nothing is running in it; a running turn keeps its own deadline.
+and after `agent_session_max_hours` (12 by default), and a session whose
+app-server or terminal died is retired before the next request. The replaced
+session is stopped when nothing is running in it; a running turn keeps its own
+deadline. Stopping a session also stops its watchdog unit, and a watchdog exits
+by itself once its session is gone with nothing running.
 
 The consent broker resolves the **current native turn** before authorizing a
 command. Grants belong to that turn, and a lost/changed turn cancels consent and
@@ -214,6 +227,15 @@ ships no credentials and no API keys. Because the input to those agents is
 and whatever the model reads, the agents are never given unattended machine
 access by default, and in the default mode they have **no execution, read or
 write tool of their own at all**.
+
+The flags in the table are the legacy executor's. Native sessions (the default,
+`agent_session_mode = "auto"`) keep the same tool boundary: Claude runs with
+`--restricted --tools "" --strict-mcp-config --permission-mode manual` and the
+same single `run` tool, and Codex runs an app-server with the isolated
+`CODEX_HOME`, the same disabled features and MCP configuration, and a read-only
+sandbox per turn. Unlike the legacy flags, both keep their session history
+(no `--no-session-persistence` / `--ephemeral`), so a terminal can attach to the
+exact conversation.
 
 | `system_access` | What the model can do |
 |---|---|
@@ -243,7 +265,7 @@ Consent mechanics (`bin/jarvis_consent.py`, `bin/jarvis-consent.py`):
 - "Allow the rest of this question" is a grant file bound to the model call's
   scope name, valid for 15 minutes at most, revoked when the answer is
   delivered, when the question is cancelled, when a long answer is handed to
-  the scratch terminal, and at service start. **Nothing is ever persisted** —
+  a terminal (the legacy viewer or the native session), and at service start. **Nothing is ever persisted** —
   no allow rules are written to any settings file, and the CLIs cannot write
   their own settings (they have no write tool).
 - Jarvis announces a pending request by voice and switches the conversation
@@ -261,7 +283,8 @@ of `Type=Application` in `/usr/share/applications` and
 `systemctl` … are not launchable). `<<ABRIR_PROJETO>>` accepts only a real
 sub-directory (no symlink) of `dev_dir`, and `dev-layout` re-checks that
 before opening anything. In `off` mode every marker except `<<FIM>>` is
-ignored.
+ignored. A late answer — one that finishes after the long-task notice, when nobody
+may be watching — runs no desktop action at all unless `system_access = "full"`.
 
 Legacy process bounds: each model call runs in its **own named systemd scope**
 (`jarvis-model-<pid>-<n>.scope`), and authorized commands run inside it.
@@ -304,6 +327,10 @@ in the user's own configuration directory) is appended to the system prompt only
 when the model has computer access (`ask` or `full`), so its text goes to the
 provider with every request. It is plain text for the model: it grants no tool,
 changes no permission and is never executed. A missing file changes nothing.
+Native Claude sessions read it from a private file; the legacy executor passes
+the question, the recent history and the system prompt (this file included) on
+the CLI command line, where other local users can see them in the process list
+on systems without `hidepid`.
 
 Existing configurations with the 2.1 boolean (`system_access = true|false`)
 are read as `ask`/`off`: the no-confirmation mode requires an explicit opt-in

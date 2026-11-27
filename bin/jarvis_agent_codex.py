@@ -12,7 +12,8 @@ import time
 import uuid
 
 import jarvis_config
-from jarvis_agent_policy import CODEX_DISABLED_FEATURES, input_text, subscription_env, system_prompt
+from jarvis_agent_policy import (CODEX_DISABLED_FEATURES, codex_system_mcp_servers, input_text, subscription_env,
+                                 system_prompt)
 from jarvis_routing import RouteRequest, ExecutionProfile
 from jarvis_sessions import (SessionRef, SessionUnsupported, SessionBusy, new_session, update_backend,
                              read_record, session_dir)
@@ -34,8 +35,9 @@ def capabilities() -> dict[str, bool]:
             available = '--remote' in help_text and 'app-server' in help_text
         except (OSError, subprocess.TimeoutExpired):
             available = False
-    return dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt',
-                          'access_off', 'access_ask', 'access_full'), available)
+    restricted = available and not codex_system_mcp_servers()
+    return {**dict.fromkeys(('start', 'final_answer', 'submit', 'attach', 'interrupt', 'access_full'), available),
+            'access_off': restricted, 'access_ask': restricted}
 
 
 def policy_config(profile: ExecutionProfile, context: Path) -> dict:
@@ -245,8 +247,21 @@ def consent_context(session: SessionRef) -> dict:
 
 
 def active_turns(session: SessionRef) -> list[tuple[str, float]]:
-    return [(turn['id'], float(turn.get('startedAt') or time.time()))
-            for turn in thread(session).get('turns', []) if turn.get('status') == 'inProgress']
+    # startedAt may be null; the first time a turn is seen is kept, or every check would
+    # treat it as just started and the deadline would never apply.
+    known = read_record(session.id)['backend'].get('turn_started', {})
+    first_seen = {}
+    turns = []
+    for turn in thread(session).get('turns', []):
+        if turn.get('status') != 'inProgress':
+            continue
+        started = turn.get('startedAt') or known.get(turn['id'])
+        if not started:
+            started = first_seen[turn['id']] = time.time()
+        turns.append((turn['id'], float(started)))
+    if first_seen:
+        update_backend(session, {'turn_started': {**known, **first_seen}})
+    return turns
 
 
 def alive(session: SessionRef) -> bool:

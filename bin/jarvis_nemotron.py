@@ -118,12 +118,16 @@ class NemotronServer:
             port = reservation.getsockname()[1]
         log_path = ROOT / 'server.log'
         self.log = os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w')
+        # The bearer goes in the environment (readable only by this user), not in argv; the
+        # server gets no API keys of its own.
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'JEV_API_KEY')}
         self.process = subprocess.Popen([
             str(binary), 'serve', '--asr-model', str(model), '--device', self.device,
-            '--host', '127.0.0.1', '--port', str(port), '--api-key', self.token, '--no-ui',
+            '--host', '127.0.0.1', '--port', str(port), '--no-ui',
             '--asr.endpointing.enable=false', '--asr.batching.enabled=false',
         ], stdin=subprocess.DEVNULL, stdout=self.log, stderr=subprocess.STDOUT,
-            env={**os.environ, 'OMP_NUM_THREADS': '8'})
+            env={**env, 'OMP_NUM_THREADS': '8', 'NEMO_SPEECH_HTTP_API_KEY': self.token})
         atexit.register(self.close)
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:

@@ -59,6 +59,7 @@ import jarvis_i18n
 import jarvis_stt
 import jarvis_routing
 import jarvis_conversation_routing
+import jarvis_agent_policy
 from jarvis_i18n import T
 
 # Tudo que é ajustável vem de ~/.config/jarvis/config.toml (UI: `jarvis config`);
@@ -600,26 +601,29 @@ class JarvisWindow:
     def update(self, phase: str | None = None, **fields) -> None:
         if not self.enabled:
             return
-        if phase is not None:
-            self.state["phase"] = phase
-            self.state["deadline"] = fields.pop("deadline", None)
-        self.state.update(fields)
-        self._write()
+        with self.lock:
+            if phase is not None:
+                self.state["phase"] = phase
+                self.state["deadline"] = fields.pop("deadline", None)
+            self.state.update(fields)
+            self._write()
 
     def add_exchange(self, question: str, answer: str, label: str) -> None:
         if not self.enabled:
             return
-        self.state.setdefault("exchanges", []).append(
-            {"q": question, "a": answer, "label": label})
-        self._write()
+        with self.lock:
+            self.state.setdefault("exchanges", []).append(
+                {"q": question, "a": answer, "label": label})
+            self._write()
 
     def set_last_answer(self, answer: str) -> None:
         if not self.enabled:
             return
-        exchanges = self.state.get("exchanges")
-        if exchanges:
-            exchanges[-1]["a"] = answer
-            self._write()
+        with self.lock:
+            exchanges = self.state.get("exchanges")
+            if exchanges:
+                exchanges[-1]["a"] = answer
+                self._write()
 
     def close(self) -> None:
         if not self.enabled:
@@ -693,15 +697,22 @@ _cli_ok_cache: dict[str, bool] = {}
 
 
 def cli_supports_safe_mode(provider: str) -> bool:
-    if provider in _cli_ok_cache:
-        return _cli_ok_cache[provider]
+    if _cli_ok_cache.get(provider):
+        return True
+    if provider == "codex" and jarvis_agent_policy.codex_system_mcp_servers():
+        return False   # /etc/codex/config.toml traria tools fora do consentimento
     args = [provider, "--help"] if provider == "claude" else ["codex", "exec", "--help"]
     try:
-        out = subprocess.run(args, capture_output=True, text=True, timeout=20).stdout
+        # arquivo, não pipe: o Claude Code pode sair antes de despejar o help num pipe
+        with tempfile.TemporaryFile(mode="w+") as output:
+            subprocess.run(args, stdout=output, stderr=subprocess.DEVNULL, timeout=20)
+            output.seek(0)
+            out = output.read()
     except (OSError, subprocess.TimeoutExpired):
         out = ""
     ok = all(flag in out for flag in CLI_REQUIRED_FLAGS[provider])
-    _cli_ok_cache[provider] = ok
+    if ok:
+        _cli_ok_cache[provider] = True   # só o positivo fica: uma leitura ruim no boot não trava a sessão
     return ok
 
 
@@ -1510,8 +1521,10 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                 answer = result.text
                 if result.allow_actions:
                     answer, late_actions = parse_actions(answer)
-                    for action, argument in allowed_actions(late_actions, original_question, result.profile.system_access):
-                        run_action(action, argument, args, window)
+                    # a resposta tardia chega sem ninguém olhando: só executa ações com acesso total
+                    if result.profile.system_access == "full":
+                        for action, argument in allowed_actions(late_actions, original_question, "full"):
+                            run_action(action, argument, args, window)
                 with history_lock:
                     history.append((original_question, answer))
                 window.set_answer_at(index, answer, model_label(result.profile))
@@ -1595,7 +1608,11 @@ def run_conversation(stream, wake, stt, vad_model, args) -> None:
                     print(f"[ans]  handoff após {elapsed:.0f}s [{label}] — terminal rascunho")
                     if not handoff.get("native"):
                         open_handoff_terminal(handoff)
-                    window.set_answer_at(exchange_index, T(LANG, "native_handoff" if handoff.get("native") else "handoff_window"), label)
+                    with window.lock:
+                        # a resposta tardia pode ter chegado antes deste aviso: não sobrescreve
+                        exchanges = window.state.get("exchanges", [])
+                        if exchange_index < len(exchanges) and exchanges[exchange_index].get("a") == "…":
+                            window.set_answer_at(exchange_index, T(LANG, "native_handoff" if handoff.get("native") else "handoff_window"), label)
                     window.update(phase="handoff", detail=label)
                     interrupted = tts(T(LANG, "native_handoff_voice" if handoff.get("native") else "handoff"), listener)
                 else:

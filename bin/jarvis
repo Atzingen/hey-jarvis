@@ -14,7 +14,8 @@
 #   jarvis config             # tela de configuração (terminal flutuante)
 #   jarvis config show|get <k>|set <k> <v>|reset [<k>]|path
 #   jarvis router status|install-local # roteamento opcional
-#   jarvis session open|status <id>     # sessão exata do agente
+#   jarvis stt install-nemotron|status  # reconhecimento Nemotron opcional
+#   jarvis session open|status|stop <id> # sessão exata do agente
 #   jarvis picoh [probe|demo|reset|fake]   # robô Picoh: procura, percorre as fases, repouso
 #
 #   jarvis pause-meeting         # (uso interno do watcher de reunião)
@@ -317,7 +318,7 @@ case "${1:-}" in
     session)              shift; exec "$(env_python)" "$(dirname "$(readlink -f "$0")")/jarvis_sessions.py" "$@" ;;
     picoh)                cmd_picoh "${2:-probe}" ;;
     *)
-        sed -n '2,15p' "$0" | sed 's/^# \?//'
+        sed -n '2,19p' "$0" | sed 's/^# \?//'
         exit 2
         ;;
 esac

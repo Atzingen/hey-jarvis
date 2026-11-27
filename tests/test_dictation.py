@@ -210,6 +210,28 @@ class DictationFlowTest(unittest.TestCase):
         self.assertIn("cancelled", phases)
 
 
+class LivePasteFocusTest(unittest.TestCase):
+    def test_shortcut_comes_from_the_same_focus_query_that_checked_the_window(self) -> None:
+        # Focus moved to a terminal right after the window check: a second query used to pick
+        # the terminal shortcut and paste into the new window.
+        answers = iter([{"address": "0xA", "class": "firefox"}, {"address": "0xB", "class": "alacritty"}])
+        keys = []
+
+        def run(cmd, **kwargs):
+            if cmd[:2] == ["hyprctl", "activewindow"]:
+                return SimpleNamespace(stdout=json.dumps(next(answers)), returncode=0)
+            if cmd[0] == "wtype":
+                keys.append(cmd)
+            return SimpleNamespace(stdout="", returncode=0)
+
+        with (patch.object(dictate.subprocess, "run", side_effect=run),
+              patch.object(dictate.shutil, "which", return_value="/usr/bin/x"),
+              patch.object(dictate, "wait_for_shortcut_release", return_value=True),
+              patch.object(dictate.time, "sleep")):
+            self.assertEqual(dictate.paste_text("oi", "paste", target_window="0xA"), "pasted")
+        self.assertEqual(keys, [["wtype", "-M", "ctrl", "v", "-m", "ctrl"]])
+
+
 class TalkCliTest(unittest.TestCase):
     def test_failed_start_removes_pending_talk(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
