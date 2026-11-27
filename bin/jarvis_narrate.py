@@ -112,10 +112,14 @@ class Narrator:
 
     def __init__(self, mode: str, lang: str, interval: float, question: str,
                  generate: Generate | None = None, clock: Callable[[], float] = time.monotonic,
-                 generate_timeout: float = OPENAI_TIMEOUT):
+                 generate_timeout: float = OPENAI_TIMEOUT, first_interval: float | None = None):
         self.mode = mode
         self.lang = lang
         self.interval = float(interval)
+        # a primeira frase sai mais cedo, assim que o modelo começa a agir: o silêncio do
+        # início é o que mais pesa na conversa
+        self.first_interval = self.interval if first_interval is None else min(float(first_interval), self.interval)
+        self._narrated = False
         self.question = question
         self.generate = generate if mode in ("local", "openai") else None
         self.generate_timeout = generate_timeout
@@ -162,7 +166,7 @@ class Narrator:
                 return self._finish(None, self._snapshot)
             return None
         now = self._clock()
-        if now - self._last_spoken < self.interval:
+        if now - self._last_spoken < (self.interval if self._narrated else self.first_interval):
             return None
         with self._lock:
             snapshot = self._events[:]
@@ -218,6 +222,7 @@ class Narrator:
         if self._last_phrase is not None and _norm(phrase) == _norm(self._last_phrase):
             return None
         self._last_phrase = phrase
+        self._narrated = True
         return phrase
 
 

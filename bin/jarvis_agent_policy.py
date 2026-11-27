@@ -32,6 +32,9 @@ def system_prompt(access: str | None = None) -> str:
     text += jarvis_i18n.ACTIONS_PROTOCOL[lang].format(projects=projects)
     if access in ('full', 'ask'):
         text += jarvis_i18n.ENVIRONMENT_NOTES[lang]
+        context = jarvis_config.user_context(cfg)
+        if context:
+            text += jarvis_i18n.USER_CONTEXT_HEADER[lang] + context
     if access in ('ask', 'off'):
         text += jarvis_i18n.ACCESS_NOTES[lang][access]
     if cfg.get('narration') == 'self':

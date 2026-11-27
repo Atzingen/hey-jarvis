@@ -177,11 +177,15 @@ def thread(session: SessionRef) -> dict:
 
 def submit(session: SessionRef, request: RouteRequest) -> str:
     state = rpc(session, 'thread/read', {'threadId': session.native_id, 'includeTurns': False})['thread']
+    if state.get('status', {}).get('type') == 'notLoaded':
+        state = rpc(session, 'thread/resume', {'threadId': session.native_id, 'excludeTurns': True})['thread']
     if state.get('status', {}).get('type') == 'active' or any(
             turn.get('status') == 'inProgress' for turn in state.get('turns', [])):
         raise SessionBusy('agent_turn_running')
     profile = read_record(session.id)['profile']
     params = {'threadId': session.native_id, 'clientUserMessageId': request.request_id,
+              'approvalPolicy': 'never',
+              'sandboxPolicy': {'type': 'dangerFullAccess' if session.system_access == 'full' else 'readOnly'},
               'input': [{'type': 'text', 'text': input_text(request), 'text_elements': []}],
               'effort': profile['effort'], 'serviceTier': 'fast' if profile['fast'] else 'default'}
     if profile['model']:

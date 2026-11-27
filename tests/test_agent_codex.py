@@ -50,6 +50,52 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertFalse(rpc.call_args_list[0].args[2]['includeTurns'])
 
     @patch('jarvis_agent_codex.rpc')
+    def test_each_turn_reapplies_the_jarvis_access_policy(self, rpc: Mock) -> None:
+        for access, expected in [('full', 'dangerFullAccess'), ('ask', 'readOnly'), ('off', 'readOnly')]:
+            for status in ('idle', 'notLoaded'):
+                with self.subTest(access=access, status=status):
+                    profile = ExecutionProfile('agent_default', 'agent', 'codex', 'model', 'low', access)
+                    session = sessions.new_session(self.request, profile, 'native-policy')
+                    replies = [{'thread': {'status': {'type': status}, 'turns': []}}]
+                    if status == 'notLoaded':
+                        replies.append({'thread': {'status': {'type': 'idle'}, 'turns': []}})
+                    rpc.side_effect = replies + [{'turn': {'id': 'turn-policy'}}]
+                    self.assertEqual(codex.submit(session, self.request), 'turn-policy')
+                    params = rpc.call_args.args[2]
+                    self.assertEqual(params.get('sandboxPolicy'), {'type': expected})
+                    self.assertEqual(params.get('approvalPolicy'), 'never')
+
+    @patch('jarvis_agent_codex.rpc')
+    def test_unloaded_thread_is_resumed_before_sending_new_request(self, rpc: Mock) -> None:
+        rpc.side_effect = [
+            {'thread': {'id': 'native-id', 'status': {'type': 'notLoaded'}, 'turns': []}},
+            {'thread': {'id': 'native-id', 'status': {'type': 'idle'}, 'turns': []}},
+            {'turn': {'id': 'turn-1'}},
+        ]
+        self.assertEqual(sessions.submit_turn(self.session, self.request), 'turn-1')
+        calls = rpc.call_args_list
+        self.assertEqual([call.args[1] for call in calls],
+                         ['thread/read', 'thread/resume', 'turn/start'])
+        self.assertEqual(calls[1].args[2], {'threadId': 'native-id', 'excludeTurns': True})
+        self.assertEqual(calls[2].args[2]['clientUserMessageId'], 'request-1')
+        record = sessions.read_record(self.session.id)
+        self.assertEqual(record['requests']['request-1']['state'], 'submitted')
+        self.assertEqual(record['session']['native_id'], 'native-id')
+
+    @patch('jarvis_agent_codex.rpc')
+    def test_resumed_thread_with_active_turn_does_not_receive_voice_request(self, rpc: Mock) -> None:
+        rpc.side_effect = [
+            {'thread': {'id': 'native-id', 'status': {'type': 'notLoaded'}, 'turns': []}},
+            {'thread': {'id': 'native-id', 'status': {'type': 'active'}, 'turns': []}},
+        ]
+        with self.assertRaises(sessions.SessionBusy):
+            sessions.submit_turn(self.session, self.request)
+        self.assertEqual([call.args[1] for call in rpc.call_args_list],
+                         ['thread/read', 'thread/resume'])
+        self.assertEqual(sessions.read_record(self.session.id)['requests']['request-1']['state'],
+                         'queued')
+
+    @patch('jarvis_agent_codex.rpc')
     def test_active_keyboard_turn_blocks_voice_before_send(self, rpc: Mock) -> None:
         rpc.return_value = {'thread': {'turns': [{'id': 'keyboard-turn', 'status': 'inProgress'}]}}
         with self.assertRaises(sessions.SessionBusy):

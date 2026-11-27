@@ -148,6 +148,10 @@ SETTINGS: list[Setting] = [
             "auto usa sessão nativa quando todas as capacidades estiverem disponíveis; "
             "legacy mantém o executor de compatibilidade.",
             group="Roteamento", choices=["auto", "legacy"]),
+    Setting("agent_session_max_hours", 12, "Sessões do agente — vida máxima (h)",
+            "Uma sessão nativa mais velha que isso é encerrada e a próxima conversa abre outra. "
+            "A sessão também é trocada quando o prompt de sistema ou o arquivo de contexto mudam.",
+            section="advanced", group="Roteamento", min=1, max=168, step=1),
     Setting("quick_provider", "codex", "Agente por assinatura",
             "codex = OpenAI Codex CLI (login ChatGPT); claude = Claude Code CLI.",
             group="Modelos", choices=["codex", "claude"]),
@@ -169,6 +173,10 @@ SETTINGS: list[Setting] = [
     Setting("codex_fast", True, "Codex em modo rápido (fast)",
             "service_tier=fast: processamento prioritário, respostas mais rápidas "
             "(consome mais do plano). Desligado usa o tier padrão.",
+            group="Modelos"),
+    Setting("claude_fast", False, "Claude em modo rápido (fast)",
+            "fastMode do Claude Code: respostas mais rápidas no modelo que suporta, com preço "
+            "por token maior. Desligado usa o modo normal.",
             group="Modelos"),
     Setting("claude_quick_model", "sonnet", "Claude — modelo rápido",
             "Usado nas perguntas rápidas quando o provedor é claude.",
@@ -291,6 +299,10 @@ SETTINGS: list[Setting] = [
     Setting("narration_interval_deep", 15, "Narração — intervalo pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Narração", min=3, max=60, step=1),
+    Setting("narration_first_seconds", 3.0, "Narração — primeira frase (s)",
+            "Espera mínima até a primeira frase de progresso, que sai assim que o modelo começa "
+            "a agir (roda um comando, lê algo). As seguintes respeitam o intervalo normal.",
+            section="advanced", group="Narração", min=1.0, max=30.0, step=0.5),
     Setting("narration_local_model", "gemma3:4b", "Narração — modelo local (Ollama)",
             "Modelo do Ollama que gera a frase de progresso.",
             section="advanced", group="Narração"),
@@ -298,6 +310,10 @@ SETTINGS: list[Setting] = [
             "Modelo da Responses API usado quando a narração roda pela OpenAI (chave openai_api_key).",
             section="advanced", group="Narração",
             choices=["gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.6-luna"], free_choices=True),
+    Setting("context_file", "~/.config/jarvis/contexto.md", "Arquivo de contexto pessoal",
+            "Texto anexado ao prompt de sistema quando o modelo tem acesso ao computador: onde "
+            "ficam seus dados, que ferramentas consultar. Arquivo ausente não muda nada.",
+            section="advanced", group="Conversa"),
     Setting("system_prompt", "", "Prompt de sistema",
             "Instruções de estilo enviadas ao modelo (edite no $EDITOR). Vazio = padrão do idioma.",
             section="advanced", group="Conversa", multiline=True),
@@ -423,6 +439,15 @@ def _read_toml(path: Path) -> dict:
         except ValueError as e:
             print(f"[config] valor inválido ignorado — {e}", file=sys.stderr)
     return out
+
+
+def user_context(cfg: dict) -> str:
+    """Conteúdo do arquivo de contexto pessoal (opção context_file), ou vazio se não houver."""
+    path = Path(str(cfg.get("context_file", "")).strip() or "/nonexistent").expanduser()
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def load(path: Path = CONFIG_FILE) -> dict:

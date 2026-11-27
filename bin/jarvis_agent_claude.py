@@ -71,12 +71,29 @@ def claude_argv(session: SessionRef, profile: ExecutionProfile, settings: Path, 
     return argv
 
 
+PASTE_WRAPPER = re.compile(r'\s*<pasted_content id="([^"]+)">\n(.*)\n</pasted_content id="\1">\s*', re.DOTALL)
+
+
+def unwrap_paste(prompt: str) -> str:
+    # Claude Code 2.1.33x hands a long pasted input to hooks inside <pasted_content> tags.
+    match = PASTE_WRAPPER.fullmatch(prompt)
+    return match.group(2) if match else prompt
+
+
+def prompt_ready(pane: str) -> bool:
+    # The input line may be empty or show a dimmed placeholder ("❯ Try ...", Claude Code 2.1.33x).
+    return re.search(r'^❯(?:\s|$)', pane, re.MULTILINE) is not None
+
+
 def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     session = sessions.new_session(request, profile)
     directory = sessions.session_dir(session.id)
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     socket = runtime / ('jarvis-claude-' + session.id + '.sock')
-    work = request.cwd if profile.system_access == 'full' else jarvis_consent.WORKDIR
+    # Claude Code only trusts the home directory one interactive session at a time, so a
+    # background session started from ~ is refused; Jarvis's own folder is trusted once.
+    work = (request.cwd if profile.system_access == 'full' and request.cwd.resolve() != Path.home().resolve()
+            else jarvis_consent.WORKDIR)
     work.mkdir(parents=True, exist_ok=True)
     session = sessions.update_backend(session, {'socket': str(socket), 'effective_cwd': str(work),
                                                 'ready': False, 'running': False, 'current_turn': '', 'native_monitor': True})
@@ -85,7 +102,8 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
     events = ('SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'StopFailure', 'SessionEnd')
     settings = directory / 'claude-settings.json'
     settings.write_text(json.dumps({'hooks': {event: [{'hooks': [{'type': 'command', 'command': hook_command}]}]
-                                                   for event in events}}))
+                                                   for event in events},
+                                    'fastMode': profile.fast}))
     settings.chmod(0o600)
     context = directory / 'consent.json'
     context.write_text(json.dumps({'session_id': session.id, 'sessions_dir': str(directory.parent),
@@ -125,7 +143,7 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
             state = sessions.read_record(session.id)['backend']
             if state.get('ready') and socket.exists():
                 pane = tmux(session, 'capture-pane', '-p', '-t', 'jarvis')
-                if re.search(r'^❯\s*$', pane, re.MULTILINE):
+                if prompt_ready(pane):
                     return session
             time.sleep(.1)
     except Exception:
@@ -189,7 +207,7 @@ def ensure_connected(session: SessionRef) -> None:
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         state = sessions.read_record(session.id)['backend']
-        if state.get('ready') and re.search(r'^❯\s*$', tmux(session, 'capture-pane', '-p', '-t', 'jarvis'), re.MULTILINE):
+        if state.get('ready') and prompt_ready(tmux(session, 'capture-pane', '-p', '-t', 'jarvis')):
             sessions.update_backend(session, {'stopped': False})
             return
         time.sleep(.1)
@@ -205,6 +223,20 @@ def append_event(session: SessionRef, turn_id: str, kind: str, text: str, reques
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     with os.fdopen(fd, 'w') as stream:
         stream.write(json.dumps(data, ensure_ascii=False) + '\n')
+
+
+def tool_label(data: dict) -> str:
+    # What the tool is doing, for the progress narration: the agent's own description when
+    # there is one (Bash), else the command, file or query.
+    name = str(data.get('tool_name', 'tool'))
+    tool_input = data.get('tool_input')
+    if not isinstance(tool_input, dict):
+        return name
+    for key in ('description', 'command', 'file_path', 'pattern', 'query', 'url'):
+        detail = tool_input.get(key)
+        if isinstance(detail, str) and detail.strip():
+            return (name + ': ' + ' '.join(detail.split()))[:500]
+    return name
 
 
 def record_hook(session: SessionRef, data: dict) -> None:
@@ -227,14 +259,15 @@ def record_hook(session: SessionRef, data: dict) -> None:
             backend['ready'] = True
         elif event == 'UserPromptSubmit':
             prompt = str(data.get('prompt', ''))
-            digest = hashlib.sha256(prompt.strip().encode()).hexdigest()
+            digest = hashlib.sha256(unwrap_paste(prompt).strip().encode()).hexdigest()
             request_id = backend.get('pending_request_id', '') if digest == backend.get('pending_text_sha256') else ''
             turn_id = request_id or uuid.uuid4().hex
             backend.update(current_turn=turn_id, running=True, question=prompt, pending_request_id='',
                            pending_text_sha256='', started_at=time.time())
             append_event(session, turn_id, 'user', prompt, request_id)
         elif event in ('PreToolUse', 'PostToolUse') and turn_id:
-            append_event(session, turn_id, 'tool', str(data.get('tool_name', 'tool')))
+            append_event(session, turn_id, 'tool', tool_label(data) if event == 'PreToolUse'
+                         else str(data.get('tool_name', 'tool')))
         elif event in ('Stop', 'StopFailure') and turn_id:
             backend['running'] = False
             kind = 'result' if event == 'Stop' else 'failed'

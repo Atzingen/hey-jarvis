@@ -47,6 +47,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "routing_error": "Não consegui concluir este pedido. Confira o estado do Jarvis antes de tentar novamente.",
         "native_handoff": "A tarefa continua na mesma sessão. Abra o terminal para acompanhar ou digitar.",
         "native_handoff_voice": "A tarefa continua no terminal, na mesma conversa.",
+        "late_answer": "{address}, terminei aquele pedido que estava demorando.",
         "route_agent": "Agente · assinatura",
         "route_api": "Resposta por API",
         "route_initial_model": "Modelo inicial",
@@ -177,6 +178,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "routing_error": "I could not complete this request. Check the Jarvis state before trying again.",
         "native_handoff": "The task continues in the same session. Open the terminal to follow along or type.",
         "native_handoff_voice": "The task continues in the terminal, in the same conversation.",
+        "late_answer": "{address}, that longer request is done.",
         "route_agent": "Agent · subscription",
         "route_api": "API response",
         "route_initial_model": "Initial model",
@@ -438,6 +440,12 @@ ENVIRONMENT_NOTES = {
 # Como o modelo pode tocar na máquina, por system_access × provedor. Vai depois
 # das AÇÕES (e das notas de AMBIENTE, quando há acesso) e prevalece sobre a
 # frase "tem acesso ao computador" do prompt de sistema.
+USER_CONTEXT_HEADER = {
+    "pt-BR": "\n\nCONTEXTO DO USUÁRIO. Vale para entender os pedidos e saber onde buscar a resposta:\n",
+    "en": "\n\nUSER CONTEXT. Use it to understand requests and to know where to look for answers:\n",
+}
+
+
 ACCESS_NOTES = {
     "pt-BR": {
         "ask": (
@@ -514,6 +522,7 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "codex_model": ("Codex model", "Empty uses the Codex CLI default. Only with the codex provider."),
     "codex_effort": ("Codex effort", "model_reasoning_effort for fast questions."),
     "codex_fast": ("Codex fast mode", "service_tier=fast: priority processing, faster answers (uses more of the plan). Off = default tier."),
+    "claude_fast": ("Claude fast mode", "Claude Code fastMode: faster answers on models that support it, at a higher price per token. Off = normal mode."),
     "claude_quick_model": ("Claude — fast model", "Used for fast questions when the provider is claude."),
     "claude_quick_effort": ("Claude — fast effort", "Reasoning effort for fast questions via claude."),
     "deep_model": ("Legacy model (retained for rollback)", "Always via Claude Code CLI. fable = Claude Fable 5 (most capable)."),
@@ -536,6 +545,9 @@ SETTING_TEXT_EN: dict[str, tuple[str, str]] = {
     "max_history_exchanges": ("Exchanges sent as context", "How many previous questions/answers go to the model."),
     "handoff_seconds_quick": ("Fast-question deadline (s)", "After this the work moves to a separate terminal (it is not killed)."),
     "handoff_seconds_deep": ("Think-hard deadline (s)", "Same, for think-hard questions."),
+    "context_file": ("Personal context file", "Text appended to the system prompt when the model has computer access: where your data lives, which tools to check. A missing file changes nothing."),
+    "narration_first_seconds": ("Narration: first sentence (s)", "Shortest wait before the first progress sentence, spoken as soon as the model starts acting. Later ones follow the normal interval."),
+    "agent_session_max_hours": ("Agent sessions: maximum age (h)", "A native session older than this is stopped and the next conversation opens a new one. It is also replaced when the system prompt or the context file change."),
     "system_prompt": ("System prompt", "Style instructions sent to the model (edit in $EDITOR). Empty = default for the language."),
     "barge_min_rms": ("Barge-in — energy floor (RMS)", "Your speech must exceed this to interrupt. Typical room ≈ 0.005."),
     "tts_bleed_factor": ("Barge-in — factor over bleed", "Speech must exceed N× the TTS level picked up by the mic."),

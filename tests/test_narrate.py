@@ -25,6 +25,25 @@ class FakeClock:
         self.t += s
 
 
+class FirstSentence(unittest.TestCase):
+    def test_first_sentence_comes_early_and_only_when_the_model_acts(self):
+        # The opening silence is what weighs on a spoken conversation: the first sentence
+        # follows the first tool call, the next ones keep the normal interval.
+        clock = FakeClock()
+        narrator = narr.Narrator("templates", "pt-BR", 8, "pergunta", clock=clock, first_interval=3)
+        narrator.spoke()
+        clock.advance(4)
+        self.assertIsNone(narrator.poll())            # nothing happened yet: no filler
+        narrator.feed("tool", "Bash: docker ps")
+        self.assertEqual(narrator.poll(), "rodando um comando")
+        narrator.spoke()
+        narrator.feed("tool", "Read: /etc/hosts")
+        clock.advance(4)
+        self.assertIsNone(narrator.poll())            # second sentence waits the full interval
+        clock.advance(4)
+        self.assertEqual(narrator.poll(), "lendo um arquivo")
+
+
 class Templates(unittest.TestCase):
     def test_tool_kinds_pt(self):
         self.assertEqual(narr.template_for("tool", "Read: /etc/hosts", "pt-BR"), "lendo um arquivo")
