@@ -89,6 +89,14 @@ SETTINGS: list[Setting] = [
             "openai = streaming por API com chave; local = Whisper. "
             "auto mantém a seleção antiga: GPU→Whisper; sem GPU→API se houver chave, senão Whisper CPU.",
             group="Escuta", choices=["auto", "local", "nemotron", "openai"]),
+    Setting("stt_vocabulary_enabled", True, "Usar vocabulário no reconhecimento",
+            "Favorece nomes e termos técnicos durante a transcrição. Desative para comparar sem pistas.",
+            group="Escuta"),
+    Setting("stt_vocabulary", "", "Vocabulário pessoal",
+            "Uma palavra ou expressão por linha (ou separadas por vírgula), até 100 entradas. "
+            "Substitui a lista automática; vazio usa os nomes básicos e dos projetos. "
+            "Whisper aproveita até 223 tokens. Na opção OpenAI, as palavras são enviadas à API.",
+            group="Escuta", multiline=True),
     Setting("openai_api_key", "", "Chave da OpenAI (API)",
             "Usada pelo reconhecimento openai. Vazio = variável de ambiente OPENAI_API_KEY.",
             group="Escuta", secret=True),
@@ -244,6 +252,10 @@ SETTINGS: list[Setting] = [
             "auto escolhe o acelerador do runtime instalado; cpu funciona sem GPU; "
             "cuda usa NVIDIA; metal usa Apple Silicon. Falhas voltam ao Whisper.",
             section="advanced", group="Reconhecimento", choices=["auto", "cpu", "cuda", "metal"]),
+    Setting("nemotron_vocabulary_boost", 0.5, "Força do vocabulário no Nemotron",
+            "0 desliga as pistas no Nemotron; comece com 0.5. Valores altos podem inserir palavras indevidas. "
+            "Instalações antigas precisam atualizar o modelo com jarvis stt install-nemotron.",
+            section="advanced", group="Reconhecimento", min=0.0, max=5.0, step=0.25),
     Setting("openai_stt_model", "gpt-live-transcribe", "Modelo OpenAI (tempo real)",
             "gpt-live-transcribe = streaming com deltas (recomendado); gpt-realtime-whisper = alternativa.",
             section="advanced", group="Reconhecimento",

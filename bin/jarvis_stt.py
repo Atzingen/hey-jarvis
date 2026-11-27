@@ -78,6 +78,25 @@ def log(msg: str) -> None:
     print(f"[stt]  {msg}", flush=True)
 
 
+def vocabulary_terms(cfg: dict, defaults: list[str] | None) -> list[str]:
+    """Uma lista limitada e sem duplicatas, compartilhada também com o fallback."""
+    if not cfg.get("stt_vocabulary_enabled", True):
+        return []
+    custom = cfg.get("stt_vocabulary", "").strip()
+    candidates = custom.replace(",", "\n").splitlines() if custom else (defaults or [])
+    terms: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        term = " ".join(candidate.split())
+        if not term or any(char in term for char in "<>") or term.casefold() in seen:
+            continue
+        seen.add(term.casefold())
+        terms.append(term)
+    if len(terms) > 100:
+        log("vocabulário limitado às primeiras 100 entradas válidas")
+    return terms[:100]
+
+
 # --- CUDA ---------------------------------------------------------------
 
 def preload_cuda_libs() -> bool:
@@ -269,12 +288,17 @@ class NemotronLocal:
     connect_timeout = 6.0
     final_timeout = 15.0
 
-    def __init__(self, device: str, fallback, language: str = "pt"):
+    def __init__(self, device: str, fallback, language: str = "pt",
+                 terms: list[str] | None = None, vocabulary_boost: float = 0.5):
         from jarvis_nemotron import NemotronServer
 
         self.server = NemotronServer(device=device)
         self.server.start()
         self.fallback = fallback
+        self.terms = terms or []
+        self.vocabulary_boost = vocabulary_boost
+        if self.terms and not self.server.supports_vocabulary:
+            log("modelo Nemotron antigo: vocabulário indisponível; atualize com jarvis stt install-nemotron")
         self.language = {"pt": "pt-BR", "en": "en-US"}.get(language, language)
         self.label = f"nemotron 3.5 0.6b/{self.server.device}"
 
@@ -289,10 +313,13 @@ class NemotronLocal:
         try:
             if json.loads(ws.recv(timeout=self.connect_timeout)).get("type") != "session.created":
                 raise RuntimeError("Nemotron não criou a sessão")
-            ws.send(json.dumps({"type": "session.update", "session": {
+            session = {
                 "sample_rate": SAMPLE_RATE, "language": self.language,
                 "automatic_punctuation": True,
-            }}))
+            }
+            if self.terms and self.server.supports_vocabulary and 0.0 < self.vocabulary_boost <= 5.0:
+                session["speech_contexts"] = [{"phrases": self.terms, "boost": self.vocabulary_boost}]
+            ws.send(json.dumps({"type": "session.update", "session": session}))
             if json.loads(ws.recv(timeout=self.connect_timeout)).get("type") != "session.updated":
                 raise RuntimeError("Nemotron recusou a configuração")
         except Exception:
@@ -526,6 +553,8 @@ def resolve_provider(cfg: dict) -> tuple[str, str]:
 
 def build_transcriber(cfg: dict, terms: list[str] | None = None, language: str = "pt"):
     provider, why = resolve_provider(cfg)
+    terms = vocabulary_terms(cfg, terms)
+    log(f"vocabulário: {len(terms)} termos")
     fallback = LazyWhisper(cfg, terms, language)
     if provider == "openai":
         key = cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
@@ -535,7 +564,8 @@ def build_transcriber(cfg: dict, terms: list[str] | None = None, language: str =
         return backend
     if provider == "nemotron":
         try:
-            backend = NemotronLocal(cfg.get("nemotron_device", "auto"), fallback, language)
+            backend = NemotronLocal(cfg.get("nemotron_device", "auto"), fallback, language,
+                                    terms=terms, vocabulary_boost=cfg.get("nemotron_vocabulary_boost", 0.5))
             log(f"provider=nemotron; {backend.label}")
             return backend
         except (OSError, RuntimeError, TimeoutError) as error:
