@@ -232,12 +232,13 @@ def interrupt_turn(session: SessionRef, turn_id: str) -> None:
 def open_terminal(session: SessionRef) -> None:
     # Handing a turn to a terminal ends "allow the rest of this question", whoever opens it
     # (the long-task handoff, the window's button or `jarvis session open`).
-    with locked(session.id):
+    import jarvis_consent
+    with locked(session.id):   # the consent broker grants under this same lock
         record = read_record(session.id)
         record['state'] = 'handed_off'
+        record['handoff_at'] = time.time()
         write_record(session.id, record)
-    import jarvis_consent
-    jarvis_consent.revoke_session_grants(session.id)
+        jarvis_consent.revoke_session_grants(session.id)
     adapter = adapter_for(session.provider)
     if hasattr(adapter, 'ensure_connected'):
         adapter.ensure_connected(session)
@@ -263,15 +264,13 @@ def enforce_deadlines(session: SessionRef, maximum: float, now: float | None = N
 
 def stop_session(session: SessionRef) -> None:
     """Stops the agent session and its watchdog unit (a retired session must not leave it running)."""
-    try:
-        adapter_for(session.provider).stop(session)
-    finally:
-        if shutil.which('systemctl'):
-            try:
-                subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+    adapter_for(session.provider).stop(session)   # raises while the backend may still run: keep the watchdog
+    if shutil.which('systemctl'):
+        try:
+            subprocess.run(['systemctl', '--user', 'stop', 'jarvis-watch-' + session.id + '.service'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
 
 def start_watchdog(session: SessionRef) -> None:

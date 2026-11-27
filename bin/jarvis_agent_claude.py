@@ -328,7 +328,8 @@ def consent_context(session: SessionRef) -> dict:
     backend = sessions.read_record(session.id)['backend']
     if not backend.get('running') or not backend.get('current_turn'):
         return {}
-    return {'call_id': session.id + '-' + backend['current_turn'], 'question': backend.get('question', '')}
+    return {'call_id': session.id + '-' + backend['current_turn'], 'question': backend.get('question', ''),
+            'started_at': backend.get('started_at')}
 
 
 def active_turns(session: SessionRef) -> list[tuple[str, float]]:
@@ -356,15 +357,16 @@ def stop(session: SessionRef) -> None:
             failed = result.returncode != 0
         except (OSError, subprocess.TimeoutExpired):
             failed = True
+    # A worker that already exited makes `claude stop` fail too. One still listed may still run
+    # a turn: keep its record (and so its watchdog) until a stop is confirmed.
+    if failed and background_listed(backend):
+        raise RuntimeError('claude_stop_failed')
     try:
         tmux(session, 'kill-server')
     except Exception:
         pass
     sessions.update_backend(session, {'stopped': True, 'ready': False, 'running': False,
                                       'pending_request_id': '', 'pending_text_sha256': ''})
-    # A worker that already exited makes `claude stop` fail too: only one still listed is an error.
-    if failed and background_listed(backend):
-        raise RuntimeError('claude_stop_failed')
 
 
 def background_listed(backend: dict) -> bool:

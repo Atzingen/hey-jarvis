@@ -75,16 +75,22 @@ def reply_error(req_id, code: int, message: str) -> None:
     send({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
 
 
-def handed_off(context: dict) -> bool:
-    """A native turn already handed to a terminal gets no new "allow the rest" grant: a
-    decision still pending at the handoff counts as allow-once."""
+def grant_rest_of_turn(context: dict, call_id: str) -> None:
+    """`a`: allow the rest of this turn. A native turn that started before the session's last
+    terminal handoff gets no grant (the decision counts as allow-once). The check and the
+    grant hold the session lock that sessions.open_terminal holds to record the handoff and
+    revoke, so a grant can't land after that revocation. Unknown start: no grant."""
     if not context.get('native'):
-        return False
+        jarvis_consent.grant_allow_all(call_id)
+        return
     try:
         import jarvis_sessions
-        return jarvis_sessions.read_record(context['session_id'])['state'] == 'handed_off'
+        with jarvis_sessions.locked(context['session_id']):
+            handoff = float(jarvis_sessions.read_record(context['session_id']).get('handoff_at') or 0)
+            if float(context['started_at']) > handoff:
+                jarvis_consent.grant_allow_all(call_id)
     except Exception:
-        return True
+        pass
 
 
 def current_context() -> dict | None:
@@ -128,8 +134,8 @@ def run_tool(args: dict) -> str:
         log(f"asking user: {cmd[:120]!r}")
         decision = jarvis_consent.ask(req, timeout=context.get('timeout', TIMEOUT), should_cancel=cancelled)
         log(f"decision: {decision}")
-        if decision == "allow_all" and call_id and not handed_off(context):
-            jarvis_consent.grant_allow_all(call_id)
+        if decision == "allow_all" and call_id:
+            grant_rest_of_turn(context, call_id)
     if not decision.startswith("allow"):
         return (f"$ {cmd}\n→ DENIED: the user did not authorize this command on screen. "
                 "Do not retry it; answer without it and say the action was not authorized.")

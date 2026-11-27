@@ -242,7 +242,9 @@ def consent_context(session: SessionRef) -> dict:
             questions = [block.get('text', '') for item in turn.get('items', [])
                          if item.get('type') == 'userMessage' for block in item.get('content', [])
                          if block.get('type') == 'text']
-            return {'call_id': session.id + '-' + turn['id'], 'question': '\n'.join(questions)}
+            started = turn.get('startedAt') or read_record(session.id)['backend'].get('turn_started', {}).get(turn['id'])
+            return {'call_id': session.id + '-' + turn['id'], 'question': '\n'.join(questions),
+                    'started_at': started}
     return {}
 
 

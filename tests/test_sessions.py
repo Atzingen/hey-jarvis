@@ -53,6 +53,15 @@ class SessionTest(unittest.TestCase):
             self.assertTrue(jarvis_consent.has_grant(other.id + '-turn-1'))
         self.assertEqual(sessions.read_record(session.id)['state'], 'handed_off')
 
+    def test_a_failed_stop_keeps_the_watchdog(self) -> None:
+        # The backend may still be running a turn: its time limit must stay enforced.
+        session = sessions.new_session(self.request, self.profile, 'native-1')
+        self.adapter.stop.side_effect = RuntimeError('claude_stop_failed')
+        with patch.object(sessions.subprocess, 'run') as run:
+            with self.assertRaises(RuntimeError):
+                sessions.stop_session(session)
+        run.assert_not_called()
+
     def test_start_once_and_attach_never_resends(self) -> None:
         session = sessions.start_session(self.request, self.profile)
         self.assertEqual(sessions.submit_turn(session, self.request), 'turn-1')

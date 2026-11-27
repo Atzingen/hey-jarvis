@@ -33,32 +33,55 @@ class SessionConsentTest(unittest.TestCase):
         ask.assert_not_called()
         execute.assert_not_called()
 
-    @patch('jarvis_consent_mcp.handed_off', return_value=False)
+    def native_session(self):
+        import tempfile
+        import jarvis_sessions
+        from jarvis_routing import RouteRequest, ExecutionProfile
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = patch.object(jarvis_sessions, 'SESSIONS_DIR', Path(folder.name) / 'sessions')
+        root.start()
+        self.addCleanup(root.stop)
+        request = RouteRequest('r1', 'c1', 'q', (), Path(folder.name))
+        profile = ExecutionProfile('agent_default', 'agent', 'claude', 'haiku', 'low', 'ask')
+        return jarvis_sessions, jarvis_sessions.new_session(request, profile, 'native-1')
+
     @patch('jarvis_consent_mcp.current_context')
     @patch('jarvis_consent_mcp.jarvis_consent.has_grant', return_value=False)
     @patch('jarvis_consent_mcp.jarvis_consent.grant_allow_all')
     @patch('jarvis_consent_mcp.jarvis_consent.execute_brokered', return_value=(0, 'ok'))
     @patch('jarvis_consent_mcp.jarvis_consent.ask', return_value='allow_all')
     def test_grants_bind_to_each_native_turn(self, ask: Mock, execute: Mock, grant: Mock,
-                                           has_grant: Mock, context: Mock, handed_off: Mock) -> None:
-        for turn in ('session-turn1', 'session-turn2'):
-            context.return_value = {'call_id': turn, 'question': 'question', 'native': True, 'lang': 'en'}
+                                           has_grant: Mock, context: Mock) -> None:
+        _, session = self.native_session()
+        for turn in ('turn1', 'turn2'):
+            call = session.id + '-' + turn
+            context.return_value = {'call_id': call, 'session_id': session.id, 'started_at': time.time(),
+                                    'question': 'question', 'native': True, 'lang': 'en'}
             mcp.run_tool({'command': 'echo ok'})
-            grant.assert_called_with(turn)
+            grant.assert_called_with(call)
             self.assertTrue(callable(execute.call_args.kwargs['should_cancel']))
         self.assertEqual(ask.call_count, 2)
 
-    @patch('jarvis_consent_mcp.handed_off', return_value=True)
     @patch('jarvis_consent_mcp.current_context')
     @patch('jarvis_consent_mcp.jarvis_consent.has_grant', return_value=False)
     @patch('jarvis_consent_mcp.jarvis_consent.grant_allow_all')
     @patch('jarvis_consent_mcp.jarvis_consent.execute_brokered', return_value=(0, 'ok'))
     @patch('jarvis_consent_mcp.jarvis_consent.ask', return_value='allow_all')
     def test_allow_rest_answered_after_handoff_allows_only_once(self, ask: Mock, execute: Mock, grant: Mock,
-                                                                has_grant: Mock, context: Mock,
-                                                                handed_off: Mock) -> None:
-        # A window still open at the handoff must not recreate the grant the handoff revoked.
-        context.return_value = {'call_id': 'session-turn1', 'session_id': 'session', 'question': 'q',
-                                'native': True, 'lang': 'en'}
+                                                                has_grant: Mock, context: Mock) -> None:
+        # A window still open at the handoff must not recreate the grant the handoff revoked,
+        # even after a newer question changed the session state; a turn started after the
+        # handoff may be granted again.
+        sessions, session = self.native_session()
+        with sessions.locked(session.id):
+            record = sessions.read_record(session.id)
+            record.update(handoff_at=1000.0, state='submitting')
+            sessions.write_record(session.id, record)
+        context.return_value = {'call_id': session.id + '-old', 'session_id': session.id, 'started_at': 900.0,
+                                'question': 'q', 'native': True, 'lang': 'en'}
         self.assertIn('exit 0', mcp.run_tool({'command': 'echo ok'}))
         grant.assert_not_called()
+        context.return_value = dict(context.return_value, call_id=session.id + '-new', started_at=1100.0)
+        mcp.run_tool({'command': 'echo ok'})
+        grant.assert_called_once_with(session.id + '-new')

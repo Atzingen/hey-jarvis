@@ -444,7 +444,7 @@ class OpenAISession:
             if self.on_partial:
                 self.on_partial(self.partial)
         elif t == "conversation.item.input_audio_transcription.completed":
-            transcript = ev.get("transcript", "")
+            transcript = ev.get("transcript")   # ausente ou fora do tipo: falha e vai pro Whisper
             if not isinstance(transcript, str):
                 return self._fail("transcript fora do formato")
             if len(transcript) > OPENAI_MAX_TEXT_CHARS:

@@ -95,7 +95,9 @@ def retire_session(session: sessions.SessionRef) -> None:
             try:
                 busy = adapter.active_turns(session)
             except Exception:
-                busy = []   # a dead backend runs nothing; still stop it and its watchdog
+                # unknown: a live but slow backend may be running a turn (its watchdog stays);
+                # a dead one runs nothing, so stop it and its watchdog
+                busy = ['unknown'] if adapter.alive(session) else []
             if not busy:
                 sessions.stop_session(session)
         except Exception:
