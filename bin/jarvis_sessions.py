@@ -135,16 +135,23 @@ def start_session(request: RouteRequest, profile: ExecutionProfile, cancel: thre
     if not all(caps.get(key, False) for key in (*REQUIRED_CAPABILITIES, 'access_' + profile.system_access)):
         raise SessionUnsupported('native_capabilities_missing')
     session = adapter.start(request, profile)
+
+    def stop_quietly(stopper) -> None:
+        # Nothing was sent yet: a cleanup error must not hide the cancel or the fallback.
+        try:
+            stopper(session)
+        except Exception:
+            pass
     if cancel is not None and cancel.is_set():
-        adapter.stop(session)
+        stop_quietly(adapter.stop)
         raise RouterCancelled()
     try:
         start_watchdog(session)
     except Exception:
-        adapter.stop(session)
+        stop_quietly(adapter.stop)
         raise SessionUnsupported('native_watchdog_unavailable') from None
     if cancel is not None and cancel.is_set():
-        stop_session(session)
+        stop_quietly(stop_session)
         raise RouterCancelled()
     submit_turn(session, request)
     return session

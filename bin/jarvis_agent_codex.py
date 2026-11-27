@@ -159,10 +159,10 @@ def start(request: RouteRequest, profile: ExecutionProfile) -> SessionRef:
         thread(session)  # Required event interface, checked before any user input.
         return session
     except SessionUnsupported:
-        stop(session)
+        cleanup_quietly(session)
         raise
     except Exception:
-        stop(session)
+        cleanup_quietly(session)
         raise SessionUnsupported('codex_session_setup_failed') from None
 
 
@@ -285,5 +285,14 @@ def stop(session: SessionRef) -> None:
     # Confirmed only when the scope is gone; otherwise the caller keeps the watchdog.
     state = subprocess.run(['systemctl', '--user', 'is-active', unit], capture_output=True, text=True,
                            timeout=5).stdout.strip()
-    if state in ('active', 'activating', 'deactivating', 'reloading'):
+    if state not in ('inactive', 'failed'):   # empty: systemd unreachable, nothing confirmed
         raise RuntimeError('codex_stop_failed')
+
+
+def cleanup_quietly(session: SessionRef) -> None:
+    # Setup failed before any request was sent: a cleanup error must not hide that result,
+    # which is what sends the request to the legacy executor.
+    try:
+        stop(session)
+    except Exception:
+        pass

@@ -171,6 +171,12 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertEqual(argv[-1], 'jarvis-session-' + self.session.id + '.scope')
 
     @patch('jarvis_agent_codex.subprocess.run')
+    def test_unreachable_systemd_is_not_a_confirmed_stop(self, run: Mock) -> None:
+        run.side_effect = [Mock(returncode=1), Mock(stdout='')]
+        with self.assertRaises(RuntimeError):
+            codex.stop(self.session)
+
+    @patch('jarvis_agent_codex.subprocess.run')
     def test_stop_reports_a_scope_that_is_still_running(self, run: Mock) -> None:
         # stop_session keeps the watchdog only when the adapter reports the failure.
         run.side_effect = [Mock(returncode=1), Mock(stdout='active\n')]
