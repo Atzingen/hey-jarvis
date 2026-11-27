@@ -79,7 +79,7 @@ Item {
     voiceTitle: "CONVERSA POR VOZ",
     intro: "Diga “hey jarvis” e fale depois da saudação — ele escuta até você parar e abre a janela da conversa. Não há palavras-chave: o modelo decide.",
     rows: [
-      ["“abre o projeto X”", "layout dev: Ghostty 2×2 + VS Code + Chrome"],
+      ["“abre o projeto X”", "layout dev: terminais 2×2 + VS Code + Chrome"],
       ["“abre o btop / o Chrome”", "abre um app instalado"],
       ["“continue de onde parou”", "retoma a sessão do agente"],
       ["“quantos containers no Docker?”", "roda o comando e responde o resultado"],
@@ -118,7 +118,7 @@ Item {
     voiceTitle: "VOICE CONVERSATION",
     intro: "Say “hey jarvis” and talk after the greeting — it listens until you stop and opens the conversation window. No keywords: the model decides.",
     rows: [
-      ["“open project X”", "dev layout: Ghostty 2×2 + VS Code + Chrome"],
+      ["“open project X”", "dev layout: 2×2 terminals + VS Code + Chrome"],
       ["“open btop / Chrome”", "launches an installed app"],
       ["“continue where you stopped”", "continues the same agent session"],
       ["“how many Docker containers?”", "runs the command, answers with the result"],

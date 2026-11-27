@@ -125,14 +125,14 @@ SETTINGS: list[Setting] = [
     Setting("jev_api_key", "", "Chave do Jev",
             "Usada somente no modo jev. Vazio usa JEV_API_KEY; sem chave, usa a assinatura.",
             group="Roteamento", secret=True),
-    Setting("agent_strong_model", "", "Modelo do agente para tarefas complexas",
+    Setting("agent_strong_model", "", "Modelo do agente (tarefa complexa)",
             "Opcional, do mesmo provedor do agente. Vazio mantém o modelo atual.", group="Roteamento"),
-    Setting("agent_strong_effort", "", "Esforço do agente para tarefas complexas",
+    Setting("agent_strong_effort", "", "Esforço do agente (tarefa complexa)",
             "Vazio mantém o esforço atual. Usado pelo roteador se o modelo forte estiver configurado.",
             group="Roteamento", choices=["", "low", "medium", "high", "xhigh", "max"]),
-    Setting("api_strong_model", "", "Modelo da API para tarefas complexas",
+    Setting("api_strong_model", "", "Modelo da API (tarefa complexa)",
             "Opcional; vazio impede escalar para outra API.", section="advanced", group="Roteamento"),
-    Setting("api_strong_effort", "high", "Esforço da API para tarefas complexas",
+    Setting("api_strong_effort", "high", "Esforço da API (tarefa complexa)",
             "Precisa ser suportado pelo modelo configurado; vazio omite o parâmetro.",
             section="advanced", group="Roteamento", choices=["", "none", "minimal", "low", "medium", "high", "xhigh"]),
     Setting("router_timeout_seconds", 5.0, "Limite da classificação (s)",
@@ -141,7 +141,7 @@ SETTINGS: list[Setting] = [
     Setting("api_timeout_seconds", 30.0, "Limite da resposta por API (s)",
             "Prazo por chamada. Uma execução de estado incerto não é reenviada automaticamente.",
             section="advanced", group="Roteamento", min=1.0, max=300.0, step=1.0),
-    Setting("local_router_idle_seconds", 300, "Descarregar classificador ocioso (s)",
+    Setting("local_router_idle_seconds", 300, "Classificador: descarregar após (s)",
             "Libera a memória do classificador local após inatividade.",
             section="advanced", group="Roteamento", min=10, max=3600, step=10),
     Setting("agent_session_mode", "auto", "Sessões do agente",
@@ -290,7 +290,7 @@ SETTINGS: list[Setting] = [
     Setting("handoff_seconds_deep", 180, "Prazo do pense bem (s)",
             "Idem, para o pense bem.",
             section="advanced", group="Conversa", min=30, max=1800, step=30),
-    Setting("handoff_max_minutes", 30, "Vida máxima do trabalho entregue (min)",
+    Setting("handoff_max_minutes", 30, "Duração máxima do turno (min)",
             "Um trabalho que foi pro terminal rascunho é encerrado (scope inteiro) depois disso.",
             section="advanced", group="Conversa", min=1, max=240, step=1),
     Setting("narration_interval_quick", 8, "Narração — intervalo rápida (s)",
@@ -372,7 +372,8 @@ BY_KEY = {s.key: s for s in SETTINGS}
 
 GROUP_EN = {"Roteamento": "Routing", "Geral": "General", "Escuta": "Listening", "Modelos": "Models", "Voz": "Voice",
             "Interface": "Interface", "Reconhecimento": "Recognition", "Conversa": "Conversation",
-            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation"}
+            "Interrupção (barge-in)": "Interruption (barge-in)", "Sistema": "System", "Ditado": "Dictation",
+            "Narração": "Narration"}
 
 
 def text_for(setting: Setting, lang: str) -> tuple[str, str]:
