@@ -1,12 +1,14 @@
 import QtQuick
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 
 // Shim de qs.Ui.PanelActionButton (subconjunto usado pelo PanelContent).
 Rectangle {
   id: root
   property string iconText: ""
   property string tooltipText: ""
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property color hoverColor: foreground
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.icon
@@ -46,14 +48,14 @@ Rectangle {
     width: tipText.implicitWidth + 12
     height: tipText.implicitHeight + 8
     radius: Style.cornerRadius > 0 ? 4 : 0
-    color: Color.background
+    color: Commons.Color.background
     border.width: 1
-    border.color: Util.alpha(Color.foreground, 0.4)
+    border.color: Util.alpha(Commons.Color.foreground, 0.4)
     Text {
       id: tipText
       anchors.centerIn: parent
       text: root.tooltipText
-      color: Color.foreground
+      color: Commons.Color.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
     }

@@ -60,6 +60,9 @@ explained in [RELEASING.md](RELEASING.md).
   style, music ducking, narration) and said the Jev key falls back to `OPENAI_API_KEY`; it is
   `JEV_API_KEY`. Long Portuguese labels no longer get cut.
 - The panel's voice guide no longer says the dev layout uses Ghostty.
+- Bar icon, panel and conversation window colors with Qt 6.12: a bare `Color` now resolved to
+  QtQuick's own type, so every themed color came out undefined (black icon in the bar, colorless
+  `jarvis app`). The shared QML now uses the qualified `Commons.Color`.
 - Speech longer than 60 seconds is no longer cut off (the playback ceiling follows the audio length).
 
 ## [2.4.0] — 2026-09-22

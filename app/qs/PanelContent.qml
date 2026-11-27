@@ -1,5 +1,7 @@
 import QtQuick
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 import qs.Ui
 
 // Conteúdo do painel do Jarvis — o MESMO QML nos dois lugares:
@@ -53,12 +55,12 @@ Item {
   // Section tints derive from the theme accent so every theme stays coherent:
   // voice = accent, dictation = accent rotated one way, keys = the other way.
   // Achromatic accents (gray themes) get a minimum saturation.
-  readonly property color fg: Color.popups.text
-  readonly property color voiceColor: Color.accent
-  readonly property color dictColor: panel.tone(Color.accent, -0.22)
-  readonly property color keysColor: panel.tone(Color.accent, 0.38)
+  readonly property color fg: Commons.Color.popups.text
+  readonly property color voiceColor: Commons.Color.accent
+  readonly property color dictColor: panel.tone(Commons.Color.accent, -0.22)
+  readonly property color keysColor: panel.tone(Commons.Color.accent, 0.38)
   readonly property color pausedColor: "#d9a441"
-  readonly property color stateColor: dictating ? Color.urgent : isOn ? Color.accent : isPaused ? pausedColor : Qt.darker(fg, 1.6)
+  readonly property color stateColor: dictating ? Commons.Color.urgent : isOn ? Commons.Color.accent : isPaused ? pausedColor : Qt.darker(fg, 1.6)
 
   function tone(base, shift) {
     var h = base.hslHue < 0 ? 0.08 : base.hslHue
@@ -164,7 +166,7 @@ Item {
     property string title: ""
     property string meta: ""
     property color metaColor: Qt.darker(panel.fg, 1.5)
-    property color tint: Color.accent
+    property color tint: Commons.Color.accent
     property int pad: Style.space(12)
     property int bodySpacing: Style.space(6)
     default property alias body: bodyCol.data
@@ -227,7 +229,7 @@ Item {
   component PanelSwitch: Item {
     id: sw
     property bool checked: false
-    property color accent: Color.accent
+    property color accent: Commons.Color.accent
     signal toggled()
 
     readonly property int trackH: Style.space(22)
@@ -497,7 +499,7 @@ Item {
             }
             PanelSwitch {
               checked: panel.serviceChecked
-              accent: Color.accent
+              accent: Commons.Color.accent
               onToggled: panel.toggleService()
             }
           }
@@ -515,7 +517,7 @@ Item {
             }
             PanelSwitch {
               checked: panel.wakeChecked
-              accent: Color.accent
+              accent: Commons.Color.accent
               onToggled: panel.toggleWake()
             }
           }
@@ -543,7 +545,7 @@ Item {
       Chip { label: panel.str.chipDeep;  value: panel.config.routing_mode || "";      tint: panel.keysColor }
       // machine access mode: "full" is the only one without a consent step, so it stands out
       Chip { label: panel.str.chipAccess; value: panel.config.system_access || "";
-             tint: panel.config.system_access === "full" ? Color.urgent : panel.fg }
+             tint: panel.config.system_access === "full" ? Commons.Color.urgent : panel.fg }
     }
 
     // ---- Voice conversation guide.
@@ -583,7 +585,7 @@ Item {
         title: panel.str.dictTitle
         tint: panel.dictColor
         meta: panel.dictating ? "● " + panel.str.dictRecording : panel.isOn ? panel.str.dictReady : panel.str.dictNeedsOn
-        metaColor: panel.dictating ? Color.urgent : panel.isOn ? panel.dictColor : Qt.darker(panel.fg, 1.5)
+        metaColor: panel.dictating ? Commons.Color.urgent : panel.isOn ? panel.dictColor : Qt.darker(panel.fg, 1.5)
 
         Text {
           width: parent.width
@@ -610,8 +612,8 @@ Item {
           selected: panel.dictating
           enabled: panel.isOn
           opacity: enabled ? 1.0 : 0.45
-          foreground: panel.dictating ? Color.urgent : panel.dictColor
-          accent: panel.dictating ? Color.urgent : panel.dictColor
+          foreground: panel.dictating ? Commons.Color.urgent : panel.dictColor
+          accent: panel.dictating ? Commons.Color.urgent : panel.dictColor
           fontFamily: panel.fontFamily
           fontSize: Style.font.bodySmall
           onClicked: if (panel.isOn) panel.run("jarvis dictate toggle", false)
@@ -651,7 +653,7 @@ Item {
 
         FooterAction {
           iconText: "󰐥"
-          hoverColor: panel.isOn ? Color.urgent : Color.accent
+          hoverColor: panel.isOn ? Commons.Color.urgent : Commons.Color.accent
           tooltipText: panel.isOn ? panel.str.tipOff : panel.str.tipOn
           onClicked: panel.toggleService()
         }
@@ -666,7 +668,7 @@ Item {
           iconText: panel.dictating ? "󰓛" : "󰍬"
           enabled: panel.isOn
           opacity: enabled ? 1.0 : 0.4
-          hoverColor: panel.dictating ? Color.urgent : panel.dictColor
+          hoverColor: panel.dictating ? Commons.Color.urgent : panel.dictColor
           tooltipText: panel.dictating ? panel.str.tipDictateStop : panel.str.tipDictate
           onClicked: if (panel.isOn) panel.run("jarvis dictate toggle", false)
         }

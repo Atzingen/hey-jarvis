@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+// Qualificado: desde o Qt 6.12 um `Color` solto resolve para o tipo Color do próprio QtQuick.
+import qs.Commons as Commons
 import qs.Ui
 import "app/qs" as Shared
 
@@ -58,7 +60,7 @@ BarWidget {
     text: poller.dictating ? "󰍬" : root.isOn ? "󰧑" : root.isPaused ? "󱍎" : "󱍄"
     active: poller.serviceState === "on" || poller.dictating  // modo manual: cérebro sem cor de ativo
     // Active state in the theme accent (the bar default falls back to `urgent`, red).
-    activeColor: poller.dictating ? Color.urgent : Color.accent
+    activeColor: poller.dictating ? Commons.Color.urgent : Commons.Color.accent
     tooltipText: root.popupOpen ? "" : "Jarvis — " + root.stateWord
 
     onPressed: function(b) {
