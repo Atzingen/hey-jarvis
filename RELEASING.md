@@ -70,6 +70,11 @@ python3 -m json.tool manifest.json >/dev/null
       its claims against the code (`grep -- --dangerously` included).
 - [ ] New downloads are pinned (version or revision), checksummed and size-capped; new
       Python dependencies are in the hash-locked `requirements*.lock`.
+- [ ] The marketplace's own validator accepts the commit. `omarchy plugin validate` does not
+      check every marketplace rule (the manifest `description` is limited to 500 characters,
+      covered by `tests/test_manifest.py`); after pushing, run the marketplace's
+      `scripts/build-catalog.mjs` inspection locally if the issue bot reports
+      `update-compatibility-invalid`, since the bot does not say why.
 
 ### On a real machine
 

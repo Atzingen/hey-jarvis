@@ -4,7 +4,7 @@
   "name": "Jarvis",
   "version": "2.5.0",
   "author": "Gustavo von Atzingen",
-  "description": "Local-first voice assistant for Omarchy: wake word, natural conversation, barge-in, answers from your own Codex or Claude subscription with machine access gated by per-command consent (the model has no tools of its own by default), live conversation window, dictation into any app. Every option is customizable from a settings screen: speech recognition (Whisper, Nemotron or OpenAI) and vocabulary, agent and model, computer access, voice, dictation. Bar widget with status, dictation controls and settings.",
+  "description": "Voice assistant for Omarchy: wake word, natural conversation with barge-in, answers from your own Codex or Claude subscription, machine access gated by per-command consent by default, a live conversation window and dictation into any app. Every option is customizable from a settings screen: speech recognition (Whisper, Nemotron or OpenAI) and vocabulary, agent and model, computer access, voice, dictation. Bar widget with status, dictation controls and settings.",
   "homepage": "https://github.com/Atzingen/hey-jarvis",
   "kinds": [
     "bar-widget"
