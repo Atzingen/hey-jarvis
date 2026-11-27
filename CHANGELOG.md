@@ -6,6 +6,13 @@ explained in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Picoh reconnects without replugging**: when the robot's Pico does not answer the first
+  handshake (still booting, port busy), Jarvis tries it again every 30 s for up to 5 minutes;
+  before, the robot stayed dark until it was unplugged. Other serial boards are still opened
+  only once, because opening the port can reset them.
+
 ## [2.5.0] — 2026-11-27
 
 ### Added

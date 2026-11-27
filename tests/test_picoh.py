@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import math
 import random
 import signal
@@ -14,6 +16,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bin"))
 
@@ -141,6 +144,47 @@ class PortDiscovery(unittest.TestCase):
                          "/dev/ttyACM1")
         self.assertEqual(asked, ["/dev/ttyUSB0", "/dev/ttyACM1"])
         self.assertIsNone(picoh.find_port([], check))
+
+
+class Reconnect(unittest.TestCase):
+    """Pico que não respondeu ao handshake ganha novas tentativas; outra placa serial
+    (que pode resetar ao abrir a porta) é sondada uma vez só."""
+
+    BOTH = ["/dev/ttyACM0", "/dev/ttyUSB0"]
+
+    def run_daemon(self, seconds: float, present_at) -> list[list[str]]:
+        start = 1000.0
+        clock = [start]
+        probes: list[list[str]] = []
+
+        def fake_sleep(delay: float) -> None:
+            clock[0] += delay
+            if clock[0] >= start + seconds:
+                raise KeyboardInterrupt
+
+        def fake_find_port(candidates=None, check=None):
+            probes.append(list(candidates))
+            return None
+
+        vendors = {"/dev/ttyACM0": picoh.PICO_VENDOR, "/dev/ttyUSB0": "1a86"}
+        with mock.patch.object(picoh.time, "time", lambda: clock[0]), \
+                mock.patch.object(picoh.time, "sleep", fake_sleep), \
+                mock.patch.object(picoh, "ignore_launcher_signals", lambda: None), \
+                mock.patch.object(picoh, "serial_candidates", lambda: present_at(clock[0] - start)), \
+                mock.patch.object(picoh, "usb_vendor", vendors.get), \
+                mock.patch.object(picoh, "find_port", fake_find_port), \
+                contextlib.redirect_stdout(io.StringIO()):
+            picoh.run()
+        return probes
+
+    def test_failed_pico_is_retried_other_board_is_not(self):
+        probes = self.run_daemon(65, lambda t: self.BOTH)
+        self.assertEqual(probes, [self.BOTH, ["/dev/ttyACM0"], ["/dev/ttyACM0"]])
+
+    def test_retries_stop_until_the_usb_changes(self):
+        probes = self.run_daemon(400, lambda t: [] if 389 <= t < 395 else self.BOTH)
+        self.assertEqual(probes,
+                         [self.BOTH] + [["/dev/ttyACM0"]] * picoh.RETRY_ATTEMPTS + [self.BOTH])
 
 
 class LauncherSignals(unittest.TestCase):

@@ -280,7 +280,7 @@ CLI: `jarvis dictate toggle | start | stop | cancel | skip` — this is what the
 
 The eye LEDs stay in a low brightness band in every phase (`MAX_BRIGHT` in `bin/jarvis_picoh.py`); phases that share an eye shape are told apart by the base colour.
 
-The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. Nothing in the service depends on it.
+The mouth also moves for the greeting and for the progress narration while the model works — anything Jarvis says out loud. The robot is a spectator of the same files the conversation window watches: `jarvis-state.json` (phase) plus `jarvis-tts.json` (the volume envelope written by `tts()` right when playback starts). `bin/jarvis_picoh.py` is the daemon (launched by the voice service, exits with it); if the robot is unplugged it just waits for a serial port to appear and reconnects. A Pico that does not answer the handshake (still booting, port busy) is tried again every 30 s for 5 minutes. Nothing in the service depends on it.
 
 - `jarvis picoh probe` — which serial ports exist and whether one answered as a Picoh.
 - `jarvis picoh demo` — walks through the phases on the robot (`jarvis picoh fake` prints the serial commands instead, no robot needed).

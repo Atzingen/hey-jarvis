@@ -53,6 +53,9 @@ HANDSHAKE_REPLY = b"v2"
 ENVELOPE_STEP = 0.05          # s por amostra do envelope da fala (20 Hz)
 TICK = 0.05                   # período do loop do daemon
 RESCAN_SECONDS = 3.0          # com que frequência olhar se apareceu uma porta nova
+RETRY_SECONDS = 30.0          # nova tentativa de handshake num Pico que não respondeu
+RETRY_ATTEMPTS = 10           # 5 min de tentativas; depois, só quando o USB mudar
+PICO_VENDOR = "2e8a"          # Raspberry Pi Pico: USB nativo, abrir a porta não reseta a placa
 
 # --- motores (MotorDefinitionsPicoh.omd da lib oficial) ----------------------
 # índice -> (mín graus, máx graus, invertido). Posições na API vão de 0 a 10.
@@ -232,6 +235,22 @@ def serial_candidates() -> list[str]:
     for dev in glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"):
         found.add(dev)
     return sorted(found)
+
+
+def usb_vendor(port: str) -> str:
+    """idVendor USB da porta (ex.: "2e8a"); "" se não for USB ou não der para ler."""
+    try:
+        device = (Path("/sys/class/tty") / Path(port).name / "device").resolve(strict=True)
+    except OSError:
+        return ""
+    for folder in (device, *device.parents):
+        vendor_file = folder / "idVendor"
+        if vendor_file.is_file():
+            try:
+                return vendor_file.read_text().strip()
+            except OSError:
+                return ""
+    return ""
 
 
 def handshake(port: str, settle: float = 0.3) -> bool:
@@ -468,14 +487,14 @@ def _read_json(path: Path, cache: dict) -> dict | None:
     return data
 
 
-def connect(port: str | None, fake: bool) -> tuple[Picoh | None, str]:
+def connect(port: str | None, fake: bool, candidates: list[str] | None = None) -> tuple[Picoh | None, str]:
     if fake:
         return Picoh(FakeLink(echo=True)), "fake"
     if port:
         if not handshake(port):
             return None, ""
         return Picoh(SerialLink(port)), port
-    found = find_port()
+    found = find_port(candidates)
     if found is None:
         return None, ""
     return Picoh(SerialLink(found)), found
@@ -499,6 +518,8 @@ def run(port: str | None = None, fake: bool = False, parent: int | None = None) 
     where = ""
     seen: list[str] = []
     next_scan = 0.0
+    next_retry = 0.0
+    retries_left = 0
     cache: dict = {}
     face: Face | None = None
     print(f"[picoh] daemon: estado={STATE_FILE} fala={TTS_FILE} porta={port or 'auto'}")
@@ -511,16 +532,28 @@ def run(port: str | None = None, fake: bool = False, parent: int | None = None) 
             if picoh is None and now >= next_scan:
                 next_scan = now + RESCAN_SECONDS
                 present = serial_candidates()
-                # só sonda quando aparece porta nova: sondar reseta placas com auto-reset
+                # Sondar abre a serial, o que reseta placas com auto-reset: cada porta nova
+                # é sondada uma vez. Um Pico que não respondeu (ainda ligando, porta ocupada)
+                # ganha RETRY_ATTEMPTS novas tentativas; as outras placas não são reabertas.
                 if fake or port or present != seen:
                     seen = present
-                    picoh, where = connect(port, fake)
+                    to_probe = present
+                    retries_left = RETRY_ATTEMPTS
+                elif retries_left > 0 and now >= next_retry:
+                    to_probe = [p for p in present if usb_vendor(p) == PICO_VENDOR]
+                    retries_left -= 1
+                else:
+                    to_probe = []
+                if fake or port or to_probe:
+                    next_retry = now + RETRY_SECONDS
+                    picoh, where = connect(port, fake, to_probe)
                     if picoh is not None:
                         print(f"[picoh] conectado em {where}")
                         face = Face(picoh)
                         picoh.reset()
                     elif present:
-                        print(f"[picoh] nenhuma porta respondeu ao handshake: {', '.join(present)}")
+                        tried = [port] if port else to_probe
+                        print(f"[picoh] nenhuma porta respondeu ao handshake: {', '.join(tried)}")
             if picoh is None or face is None:
                 time.sleep(0.5)
                 continue
